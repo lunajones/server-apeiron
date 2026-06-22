@@ -321,9 +321,9 @@ func RecoveredRuntimeContracts() RuntimeContracts {
 	}
 	for _, contract := range []MovementActionRuntimeContract{
 		{ID: "move_contract", AbilityKey: "move", ActionType: "move", DurationMS: 180, ActiveMS: 120, RecoveryMS: 60, ReconciliationContractID: "grounded_move_reconciliation", ReconciliationCategory: "grounded_move_reconciliation", PhaseWindowPolicy: "server_authoritative", PredictionErrorPolicy: "bounded_smooth_correction"},
-		{ID: "turn_contract", AbilityKey: "turn", ActionType: "turn", DurationMS: 180, ActiveMS: 120, RecoveryMS: 60, ReconciliationContractID: "turn_reconciliation", ReconciliationCategory: "turn_reconciliation", PhaseWindowPolicy: "server_authoritative", PredictionErrorPolicy: "bounded_smooth_correction"},
-		{ID: "dodge_contract", AbilityKey: "dodge", ActionType: "dodge", DurationMS: 320, ActiveMS: 260, RecoveryMS: 60, DistanceCM: 260, ReconciliationContractID: "dodge_reconciliation", ReconciliationCategory: "dodge_reconciliation", PhaseWindowPolicy: "server_authoritative", PredictionErrorPolicy: "bounded_smooth_correction"},
-		{ID: "jump_contract", AbilityKey: "jump", ActionType: "leap", DurationMS: 620, ActiveMS: 560, RecoveryMS: 60, DistanceCM: 280, ReconciliationContractID: "leap_reconciliation", ReconciliationCategory: "leap_reconciliation", PhaseWindowPolicy: "server_authoritative", PredictionErrorPolicy: "bounded_smooth_correction"},
+		{ID: "turn_contract", AbilityKey: "turn", ActionType: "turn", DurationMS: 180, ActiveMS: 120, RecoveryMS: 60, YawRateDegPerSec: 720, ReconciliationContractID: "turn_reconciliation", ReconciliationCategory: "turn_reconciliation", PhaseWindowPolicy: "server_authoritative", PredictionErrorPolicy: "bounded_smooth_correction"},
+		{ID: "dodge_contract", AbilityKey: "dodge", ActionType: "dodge", DurationMS: 320, ActiveMS: 260, RecoveryMS: 60, DistanceCM: 260, BaseSpeedCMS: 812.5, SpeedCurveSamples: recoveredMovementCurve("dodge_v1_full_iframe"), VerticalCurveSamples: recoveredVerticalCurve("dodge_v1_full_iframe"), ReconciliationContractID: "dodge_reconciliation", ReconciliationCategory: "dodge_reconciliation", PhaseWindowPolicy: "server_authoritative", PredictionErrorPolicy: "bounded_smooth_correction"},
+		{ID: "jump_contract", AbilityKey: "jump", ActionType: "leap", DurationMS: 620, AirborneDurationMS: 560, ActiveMS: 560, RecoveryMS: 60, DistanceCM: 280, BaseSpeedCMS: 452, SpeedCurveSamples: recoveredMovementCurve("jump_v1_authoritative_grounded_handoff"), VerticalCurveSamples: recoveredVerticalCurve("jump_v1_authoritative_grounded_handoff"), JumpZVelocity: 620, GravityScale: 1, ExpectedApexMS: 310, LandingDetectionPolicy: "server_grounded_handoff", GroundZPolicy: "server_position_is_actor_root", AllowsAirControl: true, AirControlModifier: 0.35, ReconciliationContractID: "leap_reconciliation", ReconciliationCategory: "leap_reconciliation", PhaseWindowPolicy: "server_authoritative", PredictionErrorPolicy: "bounded_smooth_correction"},
 	} {
 		contracts.ActionContracts[contract.AbilityKey] = contract
 	}
@@ -415,6 +415,52 @@ func recoveredPlayerSkillHitboxes(skillID string) []*dbv1.SkillHitboxProfile {
 	return []*dbv1.SkillHitboxProfile{profile}
 }
 
+func curvePoint(t, value float64) movement.MovementActionCurvePoint {
+	return movement.MovementActionCurvePoint{T: t, Value: value}
+}
+
+func recoveredMovementCurve(contractID string) []movement.MovementActionCurvePoint {
+	switch contractID {
+	case "dodge_v1_full_iframe":
+		return []movement.MovementActionCurvePoint{curvePoint(0, 0.35), curvePoint(0.35, 1), curvePoint(1, 0.2)}
+	case "jump_v1_authoritative_grounded_handoff":
+		return []movement.MovementActionCurvePoint{curvePoint(0, 0.25), curvePoint(0.35, 0.85), curvePoint(1, 0.35)}
+	case "player_basic_attack_1":
+		return []movement.MovementActionCurvePoint{curvePoint(0, 0.35), curvePoint(0.35, 1), curvePoint(1, 0.2)}
+	case "player_basic_attack_2":
+		return []movement.MovementActionCurvePoint{curvePoint(0, 0.25), curvePoint(0.5, 0.8), curvePoint(1, 0.15)}
+	case "player_basic_attack_3":
+		return []movement.MovementActionCurvePoint{curvePoint(0, 0.2), curvePoint(0.25, 0.75), curvePoint(0.65, 1), curvePoint(1, 0.25)}
+	case "player_shield_bash":
+		return []movement.MovementActionCurvePoint{curvePoint(0, 0.2), curvePoint(0.4, 1), curvePoint(1, 0.15)}
+	case "player_shield_rush":
+		return []movement.MovementActionCurvePoint{curvePoint(0, 0.1), curvePoint(0.2, 0.85), curvePoint(0.75, 1), curvePoint(1, 0.25)}
+	case "lunge":
+		return []movement.MovementActionCurvePoint{curvePoint(0, 0.4), curvePoint(0.18, 1), curvePoint(0.72, 0.85), curvePoint(1, 0.35)}
+	case "wolf_dodge":
+		return []movement.MovementActionCurvePoint{curvePoint(0, 0.4), curvePoint(0.35, 1), curvePoint(1, 0.2)}
+	case "maul":
+		return []movement.MovementActionCurvePoint{curvePoint(0, 0.2), curvePoint(0.45, 1), curvePoint(1, 0.25)}
+	default:
+		return nil
+	}
+}
+
+func recoveredVerticalCurve(contractID string) []movement.MovementActionCurvePoint {
+	switch contractID {
+	case "dodge_v1_full_iframe":
+		return []movement.MovementActionCurvePoint{curvePoint(0, 0), curvePoint(0.4, 18), curvePoint(1, 0)}
+	case "jump_v1_authoritative_grounded_handoff":
+		return []movement.MovementActionCurvePoint{curvePoint(0, 0), curvePoint(0.5, 180), curvePoint(1, 0)}
+	case "lunge":
+		return []movement.MovementActionCurvePoint{curvePoint(0, 0), curvePoint(0.36, 120), curvePoint(1, 0)}
+	case "wolf_dodge":
+		return []movement.MovementActionCurvePoint{curvePoint(0, 0), curvePoint(0.4, 28), curvePoint(1, 0)}
+	default:
+		return nil
+	}
+}
+
 func recoveredSkillContract(skillID string, distance float64, durationMS, activeMS, recoveryMS int32) SkillRuntimeContract {
 	action := MovementActionRuntimeContract{
 		ID:                       skillID + "_contract",
@@ -424,6 +470,7 @@ func recoveredSkillContract(skillID string, distance float64, durationMS, active
 		ActiveMS:                 activeMS,
 		RecoveryMS:               recoveryMS,
 		DistanceCM:               distance,
+		SpeedCurveSamples:        recoveredMovementCurve(skillID),
 		ReconciliationContractID: "grounded_skill_action_reconciliation",
 		// Published reconciliation_mode MUST be a string the Unreal client recognizes
 		// (ApeironReconciliationModeFromServerString). The category is the wire mode
@@ -465,15 +512,25 @@ func recoveredCreatureSkillContract(skillID string, contractID string, actionTyp
 		AbilityKey:               skillID,
 		ActionType:               actionType,
 		DurationMS:               durationMS,
+		AirborneDurationMS:       activeMS,
 		ActiveMS:                 activeMS,
 		RecoveryMS:               recoveryMS,
 		DistanceCM:               distance,
+		SpeedCurveSamples:        recoveredMovementCurve(skillID),
+		VerticalCurveSamples:     recoveredVerticalCurve(skillID),
+		GravityScale:             1,
 		ReconciliationContractID: reconciliation,
 		ReconciliationCategory:   reconciliation,
 		PhaseWindowPolicy:        actionType,
 		PredictionErrorPolicy:    "bounded_smooth_correction",
 		RootMotionOwner:          "movement",
 		ContactPolicy:            contactPolicy,
+	}
+	if skillID == "lunge" {
+		action.JumpZVelocity = 700
+		action.ExpectedApexMS = 350
+		action.LandingDetectionPolicy = "server_grounded_handoff"
+		action.GroundZPolicy = "server_position_is_actor_root"
 	}
 	return SkillRuntimeContract{
 		SkillID:                  skillID,
