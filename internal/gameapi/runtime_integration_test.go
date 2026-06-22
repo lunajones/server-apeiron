@@ -72,8 +72,8 @@ func TestRuntimeLocomotionTransitionKeepsReconciliationFields(t *testing.T) {
 		if got.GetAbilityKey() != "player_shield_rush" {
 			t.Fatalf("skill ability = %q, want player_shield_rush", got.GetAbilityKey())
 		}
-		if got.GetReconciliationMode() != "grounded_skill_action_reconciliation" {
-			t.Fatalf("skill reconciliation = %q", got.GetReconciliationMode())
+		if got.GetReconciliationMode() != "grounded_skill_action" {
+			t.Fatalf("skill reconciliation = %q, want grounded_skill_action (Unreal-recognized wire mode)", got.GetReconciliationMode())
 		}
 		if got.GetTargetSpeed() <= 0 || got.GetEffectiveSpeed() <= 0 {
 			t.Fatalf("skill locomotion should publish motion speed: target=%v effective=%v", got.GetTargetSpeed(), got.GetEffectiveSpeed())
@@ -443,8 +443,8 @@ func TestRuntimeShiftStrafeYawInversionKeepsMoveReconciled(t *testing.T) {
 			if player.locomotion == nil || player.locomotion.GetAction() != "grounded_skill" {
 				t.Fatalf("iteration %d expected grounded_skill after shield bash", i)
 			}
-			if player.locomotion.GetReconciliationMode() != "grounded_skill_action_reconciliation" {
-				t.Fatalf("iteration %d shield bash reconciliation=%q expected grounded_skill_action_reconciliation", i, player.locomotion.GetReconciliationMode())
+			if player.locomotion.GetReconciliationMode() != "grounded_skill_action" {
+				t.Fatalf("iteration %d shield bash reconciliation=%q expected grounded_skill_action", i, player.locomotion.GetReconciliationMode())
 			}
 		}
 	}
@@ -537,8 +537,8 @@ func TestRuntimeShiftRunRepeatedBasicAttackPresses(t *testing.T) {
 		if player.locomotion.GetAction() != "grounded_skill" {
 			t.Fatalf("iteration %d expected grounded_skill after cast, got=%q", i, player.locomotion.GetAction())
 		}
-		if player.locomotion.GetReconciliationMode() != "grounded_skill_action_reconciliation" {
-			t.Fatalf("iteration %d expected grounded_skill_action_reconciliation, got=%q", i, player.locomotion.GetReconciliationMode())
+		if player.locomotion.GetReconciliationMode() != "grounded_skill_action" {
+			t.Fatalf("iteration %d expected grounded_skill_action, got=%q", i, player.locomotion.GetReconciliationMode())
 		}
 	}
 

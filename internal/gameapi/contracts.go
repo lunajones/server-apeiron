@@ -327,11 +327,15 @@ func recoveredSkillContract(skillID string, distance float64, durationMS, active
 		RecoveryMS:               recoveryMS,
 		DistanceCM:               distance,
 		ReconciliationContractID: "grounded_skill_action_reconciliation",
-		ReconciliationCategory:   "grounded_skill_action_reconciliation",
-		PhaseWindowPolicy:        "server_authoritative",
-		PredictionErrorPolicy:    "bounded_smooth_correction",
-		RootMotionOwner:          "skill",
-		ContactPolicy:            "authoritative_contact",
+		// Published reconciliation_mode MUST be a string the Unreal client recognizes
+		// (ApeironReconciliationModeFromServerString). The category is the wire mode
+		// "grounded_skill_action" -> EApeironPlayerReconciliationMode::SkillGroundedAction.
+		// The verbose "_reconciliation" form parsed as None and made player skills rubberband.
+		ReconciliationCategory: "grounded_skill_action",
+		PhaseWindowPolicy:      "server_authoritative",
+		PredictionErrorPolicy:  "bounded_smooth_correction",
+		RootMotionOwner:        "skill",
+		ContactPolicy:          "authoritative_contact",
 	}
 	return SkillRuntimeContract{
 		SkillID:                  skillID,
