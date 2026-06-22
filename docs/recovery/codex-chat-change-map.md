@@ -352,7 +352,7 @@ Prioridade do que **sumiu** e precisa voltar:
 | Alta | **Roteamento do M1**: left-click tem que sair como `player_basic_attack` (não `player_quick_slash`) | chat 6 #2 | `Tools/ApeironGrpcBridge/main.go`, `app/dependencies.go`, `gameapi/services.go` |
 | ✅ Alta | **Gate de skill em jump/dodge**: basic/cast = `action_locked` se em leap/dodge. **FEITO `c5c99e8`** no runtime vivo (gameapi): leap/dodge setam lock temporal, `SubmitCommand` rejeita CAST_SKILL durante o lock; basic coberto (passa por CAST_SKILL); combo não afetado. + teste. | chat 6 #3 | `gameapi/runtime.go` |
 | Alta | Parry por **direção de defesa** (`SubmitBlock`), não yaw | 13/06 #1 | `systems/defense_system.go`, `controllers/defense_controller.go` |
-| Alta | **Redução de velocidade no block** (0.5x/0.55x/0.75x) autoritativa + seed | 13/06 #3 | resolver de movimento + `bootstrap/019_..._seed.sql` |
+| ✅ Alta | **Redução de velocidade no block** — **FEITO `809cdd5`**: `applyMove` capa o movimento a 0.5× walk durante block (mesmo sprintando), no runtime vivo + testes. (Nuance direcional 0.55/0.75 = refino futuro.) | 13/06 #3 | `gameapi/runtime.go` |
 | Alta | **Despawn grace** da creature (não apagar por ausência temporária) | 04/06 #9 | `ApeironGameServerBridge.cpp` |
 | Alta | **CTRL troca de combat mode** — processar ACK (active/target/phase) + bridge fresco; Q/R/F só do modo ativo | chat 1 #1-3 | `ApeironGameServerBridge.cpp` (`ApplyCommandAckResponse`), HUD viewmodel |
 | Alta | **Fila HTTP coalesce/prioriza** (switch_mode/leap/dodge/cast) — conserta pulo preso atrás de spam de movimento | chat 1 #4 | `ApeironTestPlayerCharacter.cpp` (`coalesce` sumiu) |
