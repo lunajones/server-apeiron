@@ -277,7 +277,53 @@ processava o **ACK** de `/submit-switch-combat-mode`.
 > `C:/Users/elmir/.codex/skills/apeiron-aaa-roadmap-governor/assets/apeiron-game-visual-reference.jpg`
 > — quando o usuário falar "identidade visual do meu game", abrir essa imagem. (HUD visual = 🚫 adiado.)
 
+#### ★★ CHAT ATUAL (o do delete) — rubberband em TODA skill de movimento do player
+
+Último chat antes do delete. Dedicado **só** ao rubberband no fim **e durante** cada skill de
+movimento do player. 4 tentativas, nenhuma resolveu antes do delete — e a conclusão do usuário é a
+direção da Fatia 1.
+
+| Tentativa | Hipótese / fix | Resultado |
+| --- | --- | --- |
+| 1 | `MovementLocked` de skill virava correção: sem input, server gerava `StopIntent`, validator rejeitava "movement locked", gravava `movement_correction`, Unreal lia como erro autoritativo → snap. Fix: `ServerMovementHold` (`intent.go:101`, `system.go:62`, `validator.go:45`, `resolver.go:919`) | ❌ "nada, mesma merda" |
+| 2 | Skill locomotion passava **fora** do resolver e vazava `LastCorrection` antigo no snapshot no fim | ❌ não resolveu |
+| 3 | Trace pesado persistente (`logs/movement-trace.enabled`): resolve_start, candidate, navmesh, collision_probe, depenetration, `hard_enemy_body_block` | (diagnóstico) |
+| 4 | **Causa central:** player skill movement **mutava `SetPosition` FORA do `movement.Resolver`**, enquanto dodge/jump passam pelo pipeline correto. Fix: skill movement pelo resolver (navmesh/body-block/depenetration/correction/trace); `MovementLocked` libera só root motion da própria skill; contato respeita separação de cápsulas (source+target radius); resolvido auto-conflito `action channel conflict player_basic_attack_1 -> player_basic_attack_1` | ❌ "rubberbanding até entupir, desisto" |
+
+**Conclusão do usuário (= direção da Fatia 1):** *"o caminho é INTEGRAR a movimentação normal com a
+de skill movement"* — comparar o que cada skill-movement faz vs movement normal (walk/run, fluido) e
+achar a divergência server↔client. Skills com movimento rubberbandam **até durante a execução**.
+
+**Status no código atual — o subsistema inteiro SUMIU:**
+- `internal/movement` hoje só tem `action_contract_registry`, `action_timeline`, `types`.
+- ❌ SUMIRAM: `resolver.go`, `intent.go`, `system.go`, `validator.go`, `depenetration.go`.
+- ❌ `ServerMovementHold`, `hard_enemy_body_block`, `movement_trace`, depenetration, action-channel-conflict — **0 refs**.
+- `SetPosition` em combat só aparece em testes. **A Fatia 1 é reconstruir o resolver do zero**, com skill movement no MESMO pipeline de walk/run/dodge/jump. Chat final + chat 5 + chat 4 = brief completo.
+
 ---
+
+## Síntese: por que as skills de movimento rubberbandam (brief da Fatia 1)
+
+Cruzando os chats **5, 4 e o final**, a causa é **uma só**: movimento normal (walk/run), dodge e jump
+passam por um pipeline reconciliável (resolver); **o movimento de skill NÃO** — é produzido/sobrescrito
+fora do resolver. Daí:
+- o combat monta/sobrescreve locomotion na mão (chat 5: `player_skill_combat_system.go:2566`);
+- o deslocamento de skill não é publicado como `SkillGroundedAction` reconciliável (chat 4);
+- o skill movement muta `SetPosition` fora do resolver, vazando `LastCorrection` (chat final).
+
+O cliente — que sabe reconciliar movimento normal — recebe a skill como **correção autoritativa
+genérica** → snap → rubberband (no fim **e** durante).
+
+**Fatia 1 (conserto definitivo, sem hardcode, replicável):**
+1. Reconstruir `internal/movement` como **único produtor** de locomotion (os 10 campos do chat 5).
+2. **Todo** movimento — walk/run, turn, dodge, leap **e skill** — passa pelo MESMO resolver (navmesh, body-block, depenetration, separação de cápsula, correction/LastCorrection).
+3. Combat emite só **intent/timeline**; nunca monta nem sobrescreve locomotion.
+4. Skill movement publicado como `SkillGroundedAction` reconciliável, com `command_id`/sequence no intent e velocidade de Distance/Duration; cliente prevê local e dá replay.
+5. `MovementLocked` libera só a root motion da própria skill ativa.
+6. Resolver auto-conflito de action channel (`skill -> mesma skill`).
+7. **Teste obrigatório:** paridade dos 10 campos de locomotion entre walk/run e skill movement.
+
+Não é patch campo-a-campo — é unificar os dois caminhos num resolver só.
 
 ## Tabela consolidada de gaps (o que falta re-aplicar)
 
@@ -328,4 +374,7 @@ Apêndar aqui, mantendo a ordem cronológica, conforme forem colados:
 - [x] `recuperação 3` — 🚫 Niagara/VFX, ignorado por decisão do usuário
 - [x] `recuperação 2` — boneco preso (leap/3º hit/pesado) + mode_slots (sáb 20/06)
 - [x] `recuperação 1` — ★ CTRL combat mode + Shield Rush meio-cilindro (sáb 20/06)
-- [ ] **chat ATUAL** (o maior, com o momento do delete) — aguardando
+- [x] **chat ATUAL** (o do delete) — ★★ rubberband de skill movement; resolver inteiro sumiu = Fatia 1
+
+**✅ DOC COMPLETO** — todos os chats (10→1 + atual) integrados e validados contra o código de
+`04/06 → o delete`. Pronto para o **"vai"** (Fatia 1: reconstruir o resolver de movimento).
