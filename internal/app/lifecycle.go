@@ -30,8 +30,14 @@ func Run(ctx context.Context, cfg *config.Config) error {
 		loadCtx, cancel := context.WithTimeout(ctx, cfg.DBApeiron.RequestTimeout)
 		runtimeContracts = gameapi.LoadRuntimeContractsFromDB(loadCtx, dbClient.Skills, dbClient.Profiles)
 		cancel()
+		if err := runtimeContracts.ValidateRequiredCoverage(true); err != nil {
+			return err
+		}
 		log.Info().Str("source", runtimeContracts.Source).Msg("game runtime contracts loaded")
 	} else {
+		if err := runtimeContracts.ValidateRequiredCoverage(false); err != nil {
+			return err
+		}
 		log.Warn().Str("source", runtimeContracts.Source).Msg("game runtime using recovered fallback contracts")
 	}
 

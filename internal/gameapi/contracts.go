@@ -3,7 +3,9 @@ package gameapi
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"math"
+	"strings"
 
 	dbv1 "db-apeiron/gen/apeiron/v1"
 	gamev1 "server-apeiron/gen/apeiron/game/v1"
@@ -33,6 +35,7 @@ type RuntimeContracts struct {
 	SkillContracts  map[string]SkillRuntimeContract
 	WolfPolicy      WolfRuntimePolicy
 	CombatModes     []*gamev1.CombatModeSlot
+	LoadIssues      []string
 }
 
 type MovementActionRuntimeContract = movement.RuntimeActionContract
@@ -132,13 +135,16 @@ func LoadRuntimeContractsFromDB(ctx context.Context, skills ContractSource, prof
 			contract := runtimeContractFromDB(resp.GetContract(), ability.abilityKey)
 			if contract.ID != "" {
 				contracts.ActionContracts[ability.abilityKey] = contract
+				continue
 			}
 		}
+		contracts.LoadIssues = append(contracts.LoadIssues, fmt.Sprintf("missing movement action %s -> %s", ability.abilityKey, ability.contractID))
 	}
 
 	for _, skillID := range requiredRuntimeSkillIDs() {
 		loaded, ok := loadSkillRuntimeContract(ctx, skills, skillID)
 		if !ok {
+			contracts.LoadIssues = append(contracts.LoadIssues, "missing skill runtime "+skillID)
 			continue
 		}
 		contracts.SkillContracts[skillID] = loaded
@@ -168,6 +174,58 @@ func LoadRuntimeContractsFromDB(ctx context.Context, skills ContractSource, prof
 		}
 	}
 	return contracts
+}
+
+func (c RuntimeContracts) ValidateRequiredCoverage(strictLoadedSource bool) error {
+	var missing []string
+	if c.MovementProfile == nil {
+		missing = append(missing, "movement reconciliation profile")
+	}
+	for _, ability := range requiredBaseMovementActions() {
+		contract, ok := c.ActionContracts[ability.abilityKey]
+		if !ok || contract.ID == "" {
+			missing = append(missing, fmt.Sprintf("movement action %s", ability.abilityKey))
+			continue
+		}
+		if contract.ReconciliationContractID == "" {
+			missing = append(missing, fmt.Sprintf("movement action %s reconciliation", ability.abilityKey))
+		}
+	}
+	for _, skillID := range requiredRuntimeSkillIDs() {
+		skill, ok := c.SkillContracts[skillID]
+		if !ok || skill.SkillID == "" {
+			missing = append(missing, "skill runtime "+skillID)
+			continue
+		}
+		if !skill.Enabled {
+			missing = append(missing, "skill runtime disabled "+skillID)
+		}
+		if skill.MovementActionContractID == "" {
+			missing = append(missing, "skill movement binding "+skillID)
+		}
+		if skill.MovementAction.ID == "" {
+			missing = append(missing, "skill movement action "+skillID)
+		}
+		if skill.MovementAction.ReconciliationContractID == "" {
+			missing = append(missing, "skill movement reconciliation "+skillID)
+		}
+		if action, ok := c.ActionContracts[skillID]; !ok || action.ID == "" {
+			missing = append(missing, "skill action manifest "+skillID)
+		}
+	}
+	if c.WolfPolicy.ContractID == "" || c.WolfPolicy.DodgeSkillID == "" {
+		missing = append(missing, "wolf runtime policy")
+	}
+	if len(c.CombatModes) == 0 {
+		missing = append(missing, "sword shield combat mode slots")
+	}
+	if strictLoadedSource && len(c.LoadIssues) > 0 {
+		missing = append(missing, c.LoadIssues...)
+	}
+	if len(missing) > 0 {
+		return fmt.Errorf("runtime contract coverage incomplete: %s", strings.Join(missing, "; "))
+	}
+	return nil
 }
 
 func loadSkillRuntimeContract(ctx context.Context, skills ContractSource, skillID string) (SkillRuntimeContract, bool) {

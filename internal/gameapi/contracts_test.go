@@ -2,6 +2,7 @@ package gameapi
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	dbv1 "db-apeiron/gen/apeiron/v1"
@@ -11,6 +12,9 @@ import (
 
 func TestRecoveredRuntimeContractsExposeRequiredSkillContracts(t *testing.T) {
 	contracts := RecoveredRuntimeContracts()
+	if err := contracts.ValidateRequiredCoverage(false); err != nil {
+		t.Fatalf("recovered contract coverage failed: %v", err)
+	}
 	for _, skillID := range requiredRuntimeSkillIDs() {
 		skill := contracts.skillContract(skillID)
 		if !skill.Enabled {
@@ -47,6 +51,9 @@ func TestRecoveredRuntimeContractsExposeCreatureSkillContracts(t *testing.T) {
 func TestLoadRuntimeContractsFromDBUsesRequiredSkillBindings(t *testing.T) {
 	source := fakeRuntimeContractSource{}
 	contracts := LoadRuntimeContractsFromDB(context.Background(), source, source)
+	if err := contracts.ValidateRequiredCoverage(true); err != nil {
+		t.Fatalf("db contract coverage failed: %v", err)
+	}
 
 	for _, skillID := range requiredRuntimeSkillIDs() {
 		skill := contracts.skillContract(skillID)
@@ -61,6 +68,19 @@ func TestLoadRuntimeContractsFromDBUsesRequiredSkillBindings(t *testing.T) {
 		if contracts.ActionContracts[action.abilityKey].ID != action.contractID {
 			t.Fatalf("%s base action contract id = %q", action.abilityKey, contracts.ActionContracts[action.abilityKey].ID)
 		}
+	}
+}
+
+func TestLoadRuntimeContractsFromDBRejectsMissingRequiredBinding(t *testing.T) {
+	source := fakeRuntimeContractSource{missingSkills: map[string]bool{"maul": true}}
+	contracts := LoadRuntimeContractsFromDB(context.Background(), source, source)
+
+	err := contracts.ValidateRequiredCoverage(true)
+	if err == nil {
+		t.Fatal("expected missing DB runtime contract to fail strict coverage")
+	}
+	if !strings.Contains(err.Error(), "missing skill runtime maul") {
+		t.Fatalf("coverage error = %v", err)
 	}
 }
 
@@ -103,9 +123,15 @@ func TestMovementValidationRuntimeDoesNotSpawnCreature(t *testing.T) {
 	}
 }
 
-type fakeRuntimeContractSource struct{}
+type fakeRuntimeContractSource struct {
+	missingActions map[string]bool
+	missingSkills  map[string]bool
+}
 
-func (fakeRuntimeContractSource) GetSkillActionTiming(_ context.Context, req *dbv1.IdRequest, _ ...grpc.CallOption) (*dbv1.SkillActionTimingResponse, error) {
+func (f fakeRuntimeContractSource) GetSkillActionTiming(_ context.Context, req *dbv1.IdRequest, _ ...grpc.CallOption) (*dbv1.SkillActionTimingResponse, error) {
+	if f.missingSkills[req.GetId()] {
+		return &dbv1.SkillActionTimingResponse{Found: false}, nil
+	}
 	return &dbv1.SkillActionTimingResponse{
 		Found: true,
 		Contract: &dbv1.SkillActionTimingContract{
@@ -122,7 +148,10 @@ func (fakeRuntimeContractSource) GetSkillActionTiming(_ context.Context, req *db
 	}, nil
 }
 
-func (fakeRuntimeContractSource) GetSkillMovementActionBinding(_ context.Context, req *dbv1.IdRequest, _ ...grpc.CallOption) (*dbv1.SkillMovementActionBindingResponse, error) {
+func (f fakeRuntimeContractSource) GetSkillMovementActionBinding(_ context.Context, req *dbv1.IdRequest, _ ...grpc.CallOption) (*dbv1.SkillMovementActionBindingResponse, error) {
+	if f.missingSkills[req.GetId()] {
+		return &dbv1.SkillMovementActionBindingResponse{Found: false}, nil
+	}
 	contractID := "db_" + req.GetId() + "_movement"
 	return &dbv1.SkillMovementActionBindingResponse{
 		Found: true,
@@ -140,7 +169,10 @@ func (fakeRuntimeContractSource) GetSkillMovementActionBinding(_ context.Context
 	}, nil
 }
 
-func (fakeRuntimeContractSource) GetMovementActionContract(_ context.Context, req *dbv1.IdRequest, _ ...grpc.CallOption) (*dbv1.MovementActionContractResponse, error) {
+func (f fakeRuntimeContractSource) GetMovementActionContract(_ context.Context, req *dbv1.IdRequest, _ ...grpc.CallOption) (*dbv1.MovementActionContractResponse, error) {
+	if f.missingActions[req.GetId()] {
+		return &dbv1.MovementActionContractResponse{Found: false}, nil
+	}
 	actionType := "move"
 	if req.GetId() == "turn_v1_rate_limited_contextual" {
 		actionType = "turn"
