@@ -1,6 +1,22 @@
 package gameapi
 
-import "testing"
+import (
+	"context"
+	"testing"
+)
+
+// TestLoadSkillRuntimeContractMapsDBDamage locks brick 2b: loadSkillRuntimeContract
+// pulls base_damage/posture_damage/max_range from the DB Skill (GetSkill) into the
+// runtime contract. The fake source returns 12/20/300.
+func TestLoadSkillRuntimeContractMapsDBDamage(t *testing.T) {
+	c, ok := loadSkillRuntimeContract(context.Background(), fakeRuntimeContractSource{}, "player_shield_rush")
+	if !ok {
+		t.Fatal("expected skill to load from DB source")
+	}
+	if c.Damage != 12 || c.PostureDamage != 20 || c.Range != 300 {
+		t.Fatalf("DB damage mapping: damage=%v posture=%v range=%v, want 12/20/300", c.Damage, c.PostureDamage, c.Range)
+	}
+}
 
 // TestRecoveredPlayerSkillsCarrySeedDamage locks that player skill contracts carry the
 // canonical base/posture damage from db-apeiron seed 013 (damage-pipeline brick 2a).

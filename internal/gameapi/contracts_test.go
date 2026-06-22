@@ -128,6 +128,21 @@ type fakeRuntimeContractSource struct {
 	missingSkills  map[string]bool
 }
 
+func (f fakeRuntimeContractSource) GetSkill(_ context.Context, req *dbv1.IdRequest, _ ...grpc.CallOption) (*dbv1.SkillResponse, error) {
+	if f.missingSkills[req.GetId()] {
+		return &dbv1.SkillResponse{Found: false}, nil
+	}
+	return &dbv1.SkillResponse{
+		Found: true,
+		Skill: &dbv1.Skill{
+			Id:            req.GetId(),
+			BaseDamage:    12,
+			PostureDamage: 20,
+			MaxRange:      300,
+		},
+	}, nil
+}
+
 func (f fakeRuntimeContractSource) GetSkillActionTiming(_ context.Context, req *dbv1.IdRequest, _ ...grpc.CallOption) (*dbv1.SkillActionTimingResponse, error) {
 	if f.missingSkills[req.GetId()] {
 		return &dbv1.SkillActionTimingResponse{Found: false}, nil

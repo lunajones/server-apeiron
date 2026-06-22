@@ -15,6 +15,7 @@ import (
 )
 
 type ContractSource interface {
+	GetSkill(context.Context, *dbv1.IdRequest, ...grpc.CallOption) (*dbv1.SkillResponse, error)
 	GetSkillActionTiming(context.Context, *dbv1.IdRequest, ...grpc.CallOption) (*dbv1.SkillActionTimingResponse, error)
 	GetSkillMovementActionBinding(context.Context, *dbv1.IdRequest, ...grpc.CallOption) (*dbv1.SkillMovementActionBindingResponse, error)
 }
@@ -57,11 +58,13 @@ type SkillRuntimeContract struct {
 	NormalInputPolicy        string
 	TargetPolicy             string
 	ContactPolicy            string
-	// Damage / PostureDamage are authoritative tuning from the DB skill seed (013/009).
-	// Until the DB skill proto exposes base_damage/posture_damage (damage-pipeline brick
-	// 2b), the recovered runtime materializes the canonical seed values here.
+	// Damage / PostureDamage / Range are DB-authoritative: loadSkillRuntimeContract sets
+	// them from the DB Skill (GetSkill -> base_damage/posture_damage/max_range). The
+	// recovered runtime falls back to the canonical seed values (recoveredPlayerSkillDamage)
+	// when the DB is unavailable.
 	Damage        float64
 	PostureDamage float64
+	Range         float64
 	Enabled       bool
 }
 
@@ -246,7 +249,7 @@ func loadSkillRuntimeContract(ctx context.Context, skills ContractSource, skillI
 	if action.ID == "" {
 		return SkillRuntimeContract{}, false
 	}
-	return SkillRuntimeContract{
+	contract := SkillRuntimeContract{
 		SkillID:                  skillID,
 		MovementActionContractID: binding.GetMovementActionContractId(),
 		MovementAction:           action,
@@ -264,7 +267,17 @@ func loadSkillRuntimeContract(ctx context.Context, skills ContractSource, skillI
 		TargetPolicy:             binding.GetTargetPolicy(),
 		ContactPolicy:            binding.GetContactPolicy(),
 		Enabled:                  binding.GetIsEnabled(),
-	}, true
+	}
+
+	// DB-authoritative damage/range (brick 2b): enrich from the base Skill. Best-effort —
+	// if GetSkill is unavailable the contract still loads via timing/binding.
+	if skillResp, err := skills.GetSkill(ctx, &dbv1.IdRequest{Id: skillID}); err == nil && skillResp.GetFound() {
+		s := skillResp.GetSkill()
+		contract.Damage = s.GetBaseDamage()
+		contract.PostureDamage = s.GetPostureDamage()
+		contract.Range = s.GetMaxRange()
+	}
+	return contract, true
 }
 
 func RecoveredRuntimeContracts() RuntimeContracts {
