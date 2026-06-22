@@ -1,10 +1,20 @@
 package dbapeiron
 
 import (
+	"errors"
 	"fmt"
 
 	"google.golang.org/grpc/status"
 )
+
+var ErrRequiredDBUnavailable = errors.New("required db-apeiron unavailable")
+
+func ErrRequiredUnavailable(reason string) error {
+	if reason == "" {
+		return ErrRequiredDBUnavailable
+	}
+	return fmt.Errorf("%w: %s", ErrRequiredDBUnavailable, reason)
+}
 
 func mapGRPCError(operation string, err error) error {
 	if err == nil {

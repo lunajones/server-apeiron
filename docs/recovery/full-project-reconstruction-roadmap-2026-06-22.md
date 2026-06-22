@@ -191,11 +191,19 @@ Restore or reconstruct:
 - Static data warmup.
 - Runtime region/session/game API surfaces.
 
-2026-06-22 current audit:
+2026-06-22 pre-slice audit:
 
-- `internal/app.Run` is still a stub returning `nil`.
-- `internal/dbapeiron` has connection helpers, retry helpers, errors, and mappers, but no concrete gRPC clients for the restored DB services yet.
-- This means server tests passing currently proves package coherence, not full historical runtime completeness.
+- `internal/app.Run` was a stub returning `nil`.
+- `internal/dbapeiron` had connection helpers, retry helpers, errors, and mappers, but no concrete gRPC clients for the restored DB services yet.
+- That meant server tests passing proved package coherence, not full historical runtime completeness.
+
+2026-06-22 slice notes:
+
+- Restored a typed `dbapeiron.Client` for Cache, Creature, Inventory, Observability, Player, Profile, Skill, and World services.
+- `app.Run` now attempts DB startup connection/readiness when configured.
+- If `DB_APEIRON_STARTUP_REQUIRED=true`, missing endpoint, connection failure, or readiness failure returns an explicit required-DB error instead of silently succeeding.
+- If DB startup is optional and no endpoint is configured, server bootstrap logs and skips the DB connection.
+- Remaining Phase 3 gap: runtime region/session/game API startup is still not reconstructed.
 
 Done when:
 
