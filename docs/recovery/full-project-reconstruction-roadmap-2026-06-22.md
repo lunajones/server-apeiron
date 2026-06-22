@@ -286,7 +286,7 @@ Done when:
 
 ### Phase 7 - Rebuild Creature Brain
 
-Status: pending.
+Status: in progress.
 
 Target: wolf feels intelligent without hardcoded wolf-only behavior.
 
@@ -298,6 +298,13 @@ Restore or reconstruct:
 - Orbit/flank/retreat side stability.
 - Lunge windup movement, airborne movement, landing inertia.
 - Bite/maul counter opportunities under pressure.
+
+2026-06-22 slice notes:
+
+- Found that `maul` had skill/timing/slot/setup policy in DB but no movement action binding.
+- Added `wolf_maul_lateral_counter_v1` movement contract and bound `maul` to it.
+- Updated reconstructed game runtime to load `maul` and publish selected creature skill movement fields from the selected skill contract instead of always using lunge values.
+- Full creature brain remains incomplete: current in-memory wolf policy is still a recovery runtime, not the final policy/state-machine implementation.
 
 Done when:
 

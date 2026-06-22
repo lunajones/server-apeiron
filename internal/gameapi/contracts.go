@@ -108,6 +108,7 @@ func LoadRuntimeContractsFromDB(ctx context.Context, skills ContractSource, prof
 		"player_shield_rush",
 		"lunge",
 		"wolf_dodge",
+		"maul",
 	} {
 		loaded, ok := loadSkillRuntimeContract(ctx, skills, skillID)
 		if !ok {
@@ -220,6 +221,9 @@ func RecoveredRuntimeContracts() RuntimeContracts {
 		recoveredSkillContract("player_basic_attack_3", 200, 420, 300, 120),
 		recoveredSkillContract("player_shield_bash", 130, 360, 260, 100),
 		recoveredSkillContract("player_shield_rush", 340, 640, 520, 120),
+		recoveredCreatureSkillContract("lunge", "wolf_lunge_airborne_v1", "leap", "leap_reconciliation", "airborne_passthrough", 620, 980, 430, 260, 3600, 500, 4200),
+		recoveredCreatureSkillContract("wolf_dodge", "wolf_dodge_lateral_leap_v1", "dodge", "dodge_reconciliation", "iframe", 210, 520, 420, 100, 0, 100, 0),
+		recoveredCreatureSkillContract("maul", "wolf_maul_lateral_counter_v1", "grounded_skill", "grounded_skill_action_reconciliation", "lateral_counter_contact", 140, 800, 260, 360, 180, 360, 5200),
 	} {
 		contracts.SkillContracts[skill.SkillID] = skill
 		contracts.ActionContracts[skill.SkillID] = skill.MovementAction
@@ -257,6 +261,42 @@ func recoveredSkillContract(skillID string, distance float64, durationMS, active
 		NormalInputPolicy:        "buffer_until_recovery_handoff",
 		TargetPolicy:             "aim_direction",
 		ContactPolicy:            action.ContactPolicy,
+		Enabled:                  true,
+	}
+}
+
+func recoveredCreatureSkillContract(skillID string, contractID string, actionType string, reconciliation string, contactPolicy string, distance float64, durationMS, activeMS, recoveryMS, windupMS, skillRecoveryMS, cooldownMS int32) SkillRuntimeContract {
+	action := MovementActionRuntimeContract{
+		ID:                       contractID,
+		AbilityKey:               skillID,
+		ActionType:               actionType,
+		DurationMS:               durationMS,
+		ActiveMS:                 activeMS,
+		RecoveryMS:               recoveryMS,
+		DistanceCM:               distance,
+		ReconciliationContractID: reconciliation,
+		ReconciliationCategory:   reconciliation,
+		PhaseWindowPolicy:        actionType,
+		PredictionErrorPolicy:    "bounded_smooth_correction",
+		RootMotionOwner:          "movement",
+		ContactPolicy:            contactPolicy,
+	}
+	return SkillRuntimeContract{
+		SkillID:                  skillID,
+		MovementActionContractID: action.ID,
+		MovementAction:           action,
+		WindupMS:                 windupMS,
+		ActiveMS:                 activeMS,
+		RecoveryMS:               skillRecoveryMS,
+		CooldownMS:               cooldownMS,
+		MovementLockPolicy:       "contract",
+		QueuePolicy:              "none",
+		CancelPolicy:             "none",
+		StartsAtPhase:            "active",
+		HandoffPolicy:            "explicit_recovery_handoff",
+		NormalInputPolicy:        "blocked_during_owned_root",
+		TargetPolicy:             "target_direction",
+		ContactPolicy:            contactPolicy,
 		Enabled:                  true,
 	}
 }
@@ -341,6 +381,7 @@ func (c RuntimeContracts) orderedActionKeys() []string {
 		"player_shield_rush",
 		"lunge",
 		"wolf_dodge",
+		"maul",
 	}
 	return movement.NewActionContractRegistry(c.ActionContracts).OrderedKeys(preferred)
 }

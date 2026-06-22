@@ -248,3 +248,24 @@ Because of that, missing recovered files must not be copied by path name. Recove
 ## Why This Matters
 
 The historical rubberbanding work repeatedly failed when movement authority was split across multiple paths. This slice restores a single movement-owned contract classification point so `gameapi` can publish manifests and locomotion snapshots without owning reconciliation semantics itself.
+
+# 2026-06-22 - Wolf maul contract recovery slice
+
+## Finding
+
+The reconstructed DB already had `maul` as a wolf skill, timing, skill slot, and setup policy, but it did not have a movement action binding. That left the game runtime able to select `maul` conceptually while still publishing lunge-shaped movement fields in `CreatureAIState`.
+
+## Implemented
+
+- Added DB seed `wolf_maul_lateral_counter_v1` as a grounded skill movement contract.
+- Bound `maul` to `wolf_maul_lateral_counter_v1` through `skill_movement_action_binding`.
+- Updated `gameapi` DB contract loading to include `maul`.
+- Added recovered runtime fallback contracts for `lunge`, `wolf_dodge`, and `maul`.
+- Updated wolf snapshot publication so selected creature skill timing/movement fields come from the selected skill contract instead of always using lunge values.
+
+## Validated
+
+- `db-apeiron`: `go test ./...`
+- `db-apeiron`: `go build ./cmd/db-api`
+- `server-apeiron`: `go test ./...`
+- `server-apeiron`: `go build ./cmd/game-server`

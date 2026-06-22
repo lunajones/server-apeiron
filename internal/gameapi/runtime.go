@@ -419,6 +419,7 @@ func (r *Runtime) updateWolfPolicyLocked(wolf *entityState, player *entityState)
 		moveDir = scale(toPlayer, -1)
 	}
 
+	selectedRuntime := r.contracts.skillContract(selectedSkill)
 	step := scale(normalize(moveDir), speed/float64(tickRate))
 	wolf.position = add(wolf.position, step)
 	wolf.velocity = scale(normalize(moveDir), speed)
@@ -454,15 +455,15 @@ func (r *Runtime) updateWolfPolicyLocked(wolf *entityState, player *entityState)
 		SkillMovementArcCurve:                 "low_fast",
 		SkillMovementTakeoffMs:                140,
 		SkillMovementLandingLockMs:            120,
-		SkillWindupMs:                         policy.LungeWindupMS,
-		SkillActiveStartMs:                    policy.LungeWindupMS,
-		SkillActiveEndMs:                      policy.LungeActiveEndMS,
-		SkillRecoveryMs:                       policy.LungeRecoveryMS,
-		SkillActionLockMs:                     policy.LungeActiveEndMS + policy.LungeRecoveryMS,
-		SkillMovementType:                     "leap",
-		SkillMovementStartMs:                  3600,
-		SkillMovementDurationMs:               policy.LungeDurationMS,
-		SkillMovementDistanceCm:               policy.LungeDistanceCM,
+		SkillWindupMs:                         selectedRuntime.WindupMS,
+		SkillActiveStartMs:                    selectedRuntime.WindupMS,
+		SkillActiveEndMs:                      selectedRuntime.WindupMS + selectedRuntime.ActiveMS,
+		SkillRecoveryMs:                       selectedRuntime.RecoveryMS,
+		SkillActionLockMs:                     selectedRuntime.WindupMS + selectedRuntime.ActiveMS + selectedRuntime.RecoveryMS,
+		SkillMovementType:                     selectedRuntime.MovementAction.ActionType,
+		SkillMovementStartMs:                  selectedRuntime.WindupMS,
+		SkillMovementDurationMs:               selectedRuntime.MovementAction.DurationMS,
+		SkillMovementDistanceCm:               selectedRuntime.MovementAction.DistanceCM,
 		SkillMovementDesiredLandingDistanceCm: 760,
 		SkillMovementMinLandingDistanceCm:     180,
 		SkillMovementStopAtContactRatio:       1,
