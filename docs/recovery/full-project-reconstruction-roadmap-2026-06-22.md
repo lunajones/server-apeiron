@@ -390,6 +390,14 @@ Done when:
 - Server log confirmed `db-apeiron readiness confirmed` and `game runtime contracts loaded`.
 - Unreal C++ build succeeded after visual root conversion was added to `ApeironCreaturePlaceholder` to keep creature placeholders on the ground plane when the server publishes capsule-center/root Z.
 
+### 2026-06-22 Skill Movement Timing Fix
+
+- Finding: player skill movement contracts were present in DB and the server physically moved the player, but `LocomotionState` snapshots for grounded skills were publishing zero `phase_elapsed_ms`, zero `phase_remaining_ms`, and zero `startup_ms`.
+- Impact: Unreal could start local prediction and receive authoritative movement, but repeated snapshots could realign the action as if it were still at the beginning, causing missing/weak visible skill movement and rubberband risk.
+- Fix: `gameapi` now derives locomotion phase elapsed/remaining/startup/active/recovery/duration from the authoritative `ActionInstance` timeline when publishing skill movement snapshots.
+- Guard: `TestRuntimeGroundedSkillMotionProgressesBySnapshotAndOwnsRoot` now fails if mid-action skill locomotion publishes zero phase timing or a broken timing envelope.
+- Runtime check: gRPC probe for `player_shield_rush` returned `phaseElapsedMs=147`, `phaseRemainingMs=283`, `startupMs=160`, `activeMs=430`, `recoveryMs=240`, and non-zero `actionDistanceTraveled`.
+
 ### Push Status
 
 Git remotes are configured, but this machine does not currently have `gh` installed and HTTPS push previously timed out waiting for credentials. The commits are local until GitHub authentication is configured.
