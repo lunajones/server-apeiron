@@ -205,6 +205,7 @@ Restore or reconstruct:
 - If DB startup is optional and no endpoint is configured, server bootstrap logs and skips the DB connection.
 - 2026-06-22: Reconstructed the `apeiron.game.v1` gRPC surface expected by the Unreal HTTP bridge and restored a minimal in-memory game runtime for `SessionService`, `SnapshotService`, `CommandService`, and `ObservabilityService`.
 - Validated through the preserved Unreal bridge path: `/open-session`, `/attach-player`, `/submit-move`, `/submit-cast-skill` for `player_shield_rush`, `/snapshot`, and `/runtime-status` all return successfully with player + wolf entities and command acks.
+- 2026-06-22: Added a recovered wolf runtime policy to prevent a static creature during recovery testing. It publishes orbit/chase/lunge/maul/retreat state, `CreatureAIState`, locomotion action, selected skill, and target range in snapshots. This is marked as DB-contract-backed pending, not final AI architecture.
 - Remaining Phase 3 gap: the runtime is still using recovered in-memory profiles for movement/action/snapshot contracts. Phase 4/5/6/7 must replace those values with DB-backed contract loading before calling this fully AAA.
 
 Done when:
