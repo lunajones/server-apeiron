@@ -94,11 +94,11 @@ type movementActionContractMetadata struct {
 	YawRateDegPerSec       float64 `json:"yaw_rate_deg_per_sec"`
 }
 
-func LoadRuntimeContractsFromDB(ctx context.Context, skills ContractSource, profiles ProfileContractSource) RuntimeContracts {
-	contracts := RecoveredRuntimeContracts()
-	contracts.Source = "db_contracts_with_recovered_fallback"
-
-	for _, ability := range []struct {
+func requiredBaseMovementActions() []struct {
+	abilityKey string
+	contractID string
+} {
+	return []struct {
 		abilityKey string
 		contractID string
 	}{
@@ -106,16 +106,11 @@ func LoadRuntimeContractsFromDB(ctx context.Context, skills ContractSource, prof
 		{"turn", "turn_v1_rate_limited_contextual"},
 		{"dodge", "dodge_v1_full_iframe"},
 		{"jump", "jump_v1_authoritative_grounded_handoff"},
-	} {
-		if resp, err := profiles.GetMovementActionContract(ctx, &dbv1.IdRequest{Id: ability.contractID}); err == nil && resp.GetFound() {
-			contract := runtimeContractFromDB(resp.GetContract(), ability.abilityKey)
-			if contract.ID != "" {
-				contracts.ActionContracts[ability.abilityKey] = contract
-			}
-		}
 	}
+}
 
-	for _, skillID := range []string{
+func requiredRuntimeSkillIDs() []string {
+	return []string{
 		"player_basic_attack_1",
 		"player_basic_attack_2",
 		"player_basic_attack_3",
@@ -125,7 +120,23 @@ func LoadRuntimeContractsFromDB(ctx context.Context, skills ContractSource, prof
 		"lunge",
 		"wolf_dodge",
 		"maul",
-	} {
+	}
+}
+
+func LoadRuntimeContractsFromDB(ctx context.Context, skills ContractSource, profiles ProfileContractSource) RuntimeContracts {
+	contracts := RecoveredRuntimeContracts()
+	contracts.Source = "db_contracts_with_recovered_fallback"
+
+	for _, ability := range requiredBaseMovementActions() {
+		if resp, err := profiles.GetMovementActionContract(ctx, &dbv1.IdRequest{Id: ability.contractID}); err == nil && resp.GetFound() {
+			contract := runtimeContractFromDB(resp.GetContract(), ability.abilityKey)
+			if contract.ID != "" {
+				contracts.ActionContracts[ability.abilityKey] = contract
+			}
+		}
+	}
+
+	for _, skillID := range requiredRuntimeSkillIDs() {
 		loaded, ok := loadSkillRuntimeContract(ctx, skills, skillID)
 		if !ok {
 			continue
@@ -391,16 +402,8 @@ func (c RuntimeContracts) orderedActionKeys() []string {
 		"turn",
 		"dodge",
 		"jump",
-		"player_basic_attack_1",
-		"player_basic_attack_2",
-		"player_basic_attack_3",
-		"player_shield_bash",
-		"player_shield_rush",
-		"bite",
-		"lunge",
-		"wolf_dodge",
-		"maul",
 	}
+	preferred = append(preferred, requiredRuntimeSkillIDs()...)
 	return movement.NewActionContractRegistry(c.ActionContracts).OrderedKeys(preferred)
 }
 
