@@ -203,7 +203,9 @@ Restore or reconstruct:
 - `app.Run` now attempts DB startup connection/readiness when configured.
 - If `DB_APEIRON_STARTUP_REQUIRED=true`, missing endpoint, connection failure, or readiness failure returns an explicit required-DB error instead of silently succeeding.
 - If DB startup is optional and no endpoint is configured, server bootstrap logs and skips the DB connection.
-- Remaining Phase 3 gap: runtime region/session/game API startup is still not reconstructed.
+- 2026-06-22: Reconstructed the `apeiron.game.v1` gRPC surface expected by the Unreal HTTP bridge and restored a minimal in-memory game runtime for `SessionService`, `SnapshotService`, `CommandService`, and `ObservabilityService`.
+- Validated through the preserved Unreal bridge path: `/open-session`, `/attach-player`, `/submit-move`, `/submit-cast-skill` for `player_shield_rush`, `/snapshot`, and `/runtime-status` all return successfully with player + wolf entities and command acks.
+- Remaining Phase 3 gap: the runtime is still using recovered in-memory profiles for movement/action/snapshot contracts. Phase 4/5/6/7 must replace those values with DB-backed contract loading before calling this fully AAA.
 
 Done when:
 
