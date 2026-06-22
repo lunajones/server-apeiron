@@ -1,6 +1,7 @@
 param(
     [switch]$Build,
     [switch]$Restart,
+    [switch]$MovementValidation,
     [string]$DbEndpoint = "127.0.0.1:50051"
 )
 
@@ -34,12 +35,12 @@ $env:STATICDATA_PRELOAD_CREATURE_TEMPLATE_IDS = "steppe_wolf"
 $env:STATICDATA_PRELOAD_SKILL_IDS = "player_basic_attack_1,player_basic_attack_2,player_basic_attack_3,player_shield_bash,player_shield_rush,bite,lunge,wolf_dodge,maul"
 $env:STATICDATA_PRELOAD_SKILL_SET_IDS = "skillset_steppe_wolf"
 $env:STATICDATA_PRELOAD_WEAPON_KIT_IDS = "weaponkit_sword_shield"
-$env:MOVEMENT_VALIDATION_MODE = "false"
+$env:MOVEMENT_VALIDATION = if ($MovementValidation) { "true" } else { "false" }
 
 $OutLog = Join-Path $LogDir "game-server-db-$Stamp.out.log"
 $ErrLog = Join-Path $LogDir "game-server-db-$Stamp.err.log"
 
 Start-Process -FilePath $Bin -WorkingDirectory $Root -RedirectStandardOutput $OutLog -RedirectStandardError $ErrLog -WindowStyle Hidden
-Write-Host "game-server started with DB_APEIRON_ENDPOINT=$DbEndpoint"
+Write-Host "game-server started with DB_APEIRON_ENDPOINT=$DbEndpoint MOVEMENT_VALIDATION=$env:MOVEMENT_VALIDATION"
 Write-Host "stdout: $OutLog"
 Write-Host "stderr: $ErrLog"
