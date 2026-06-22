@@ -19,6 +19,7 @@ type ContractSource interface {
 	GetSkillActionTiming(context.Context, *dbv1.IdRequest, ...grpc.CallOption) (*dbv1.SkillActionTimingResponse, error)
 	GetSkillMovementActionBinding(context.Context, *dbv1.IdRequest, ...grpc.CallOption) (*dbv1.SkillMovementActionBindingResponse, error)
 	GetSkillHitboxProfiles(context.Context, *dbv1.IdRequest, ...grpc.CallOption) (*dbv1.SkillHitboxProfilesResponse, error)
+	GetWeaponCombatModeSlots(context.Context, *dbv1.IdRequest, ...grpc.CallOption) (*dbv1.WeaponCombatModeSlotsResponse, error)
 }
 
 type ProfileContractSource interface {
@@ -184,6 +185,14 @@ func LoadRuntimeContractsFromDB(ctx context.Context, skills ContractSource, prof
 			contracts.WolfPolicy.EvasionChainCount = evasion.GetMaxChainCount()
 			break
 		}
+	}
+	if modeResp, err := skills.GetWeaponCombatModeSlots(ctx, &dbv1.IdRequest{Id: "weaponkit_sword_shield"}); err == nil && modeResp.GetFound() {
+		modeSlots := combatModeSlotsFromDB(modeResp.GetSlots())
+		if len(modeSlots) > 0 {
+			contracts.CombatModes = modeSlots
+		}
+	} else {
+		contracts.LoadIssues = append(contracts.LoadIssues, "missing weapon combat mode slots weaponkit_sword_shield")
 	}
 	return contracts
 }
@@ -560,6 +569,43 @@ func recoveredCombatModeSlots() []*gamev1.CombatModeSlot {
 		{CombatModeId: "mode_sword_shield_bulwark", SlotIndex: 1, SkillId: "player_basic_attack_1", Enabled: true},
 		{CombatModeId: "mode_sword_shield_bulwark", SlotIndex: 3, SkillId: "player_shield_bash", Enabled: true},
 		{CombatModeId: "mode_sword_shield_bulwark", SlotIndex: 4, SkillId: "player_shield_rush", Enabled: true},
+	}
+}
+
+func combatModeSlotsFromDB(slots []*dbv1.WeaponCombatModeSlot) []*gamev1.CombatModeSlot {
+	out := make([]*gamev1.CombatModeSlot, 0, len(slots))
+	for _, slot := range slots {
+		if slot == nil {
+			continue
+		}
+		slotIndex := combatInputSlotIndex(slot.GetInputSlot())
+		if slotIndex == 0 {
+			continue
+		}
+		out = append(out, &gamev1.CombatModeSlot{
+			CombatModeId: slot.GetCombatModeId(),
+			SlotIndex:    slotIndex,
+			SkillId:      slot.GetSkillId(),
+			Enabled:      slot.GetIsEnabled() && slot.GetSkillId() != "",
+		})
+	}
+	return out
+}
+
+func combatInputSlotIndex(input string) uint32 {
+	switch strings.ToUpper(strings.TrimSpace(input)) {
+	case "M1":
+		return 1
+	case "Q":
+		return 2
+	case "R":
+		return 3
+	case "F":
+		return 4
+	case "G":
+		return 5
+	default:
+		return 0
 	}
 }
 

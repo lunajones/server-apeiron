@@ -168,6 +168,7 @@ Restore or reconstruct:
 - `ObservabilityService.GetReadiness` was restored and reports `READY` only when the Postgres pool responds to `Ping`.
 - Phase 2 basic service surface is restored. Deeper gameplay contract endpoints remain under Phase 4/5/6/7, not this basic CRUD/static-data surface.
 - Remaining movement gap: this restored legacy endpoint is not the final skill movement contract model; Phase 4/6 still need the named movement action contract and temporal hitbox contract services reconstructed.
+- 2026-06-22 later slice: `SkillDataService.GetWeaponCombatModeSlots` was restored so the server no longer needs to infer sword/shield HUD slots from `recoveredCombatModeSlots` when DB contracts are available. The endpoint reads `weapon_combat_mode` + `weapon_combat_mode_skill_slot`, preserving empty Vanguard Q/R/F slots and Bulwark R/F bindings from DB seed.
 
 Use repository structs and current bootstrap/migrations as the source. Do not invent fields that are not in SQL or recovered runtime facts.
 
@@ -377,6 +378,17 @@ Done when:
 - `db-api` starts successfully.
 - `game-server` starts successfully against `DB_APEIRON_ENDPOINT=127.0.0.1:50051`.
 - Normal gameplay mode is restored after validation mode runs.
+- 2026-06-22 later slice: added safe startup scripts:
+  - `db-apeiron/scripts/start_db_api.ps1`
+  - `server-apeiron/scripts/start_game_server_with_db.ps1`
+  Both write timestamped logs and do not delete old logs. The game-server script forces `DB_APEIRON_STARTUP_REQUIRED=true` so a missing DB contract path fails instead of silently using recovered fallback contracts.
+
+### Current Recovery Runtime Check
+
+- `db-api` started from `db-apeiron/bin/db-api.exe`; migrations were skipped/applied as expected and all bootstrap seeds through `019_combat_defense_contract_seed.sql` were applied successfully.
+- `game-server` started from `server-apeiron/bin/game-server.exe` with `DB_APEIRON_ENDPOINT=127.0.0.1:50051`.
+- Server log confirmed `db-apeiron readiness confirmed` and `game runtime contracts loaded`.
+- Unreal C++ build succeeded after visual root conversion was added to `ApeironCreaturePlaceholder` to keep creature placeholders on the ground plane when the server publishes capsule-center/root Z.
 
 ### Push Status
 

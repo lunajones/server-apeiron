@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	dbv1 "db-apeiron/gen/apeiron/v1"
+	gamev1 "server-apeiron/gen/apeiron/game/v1"
 
 	"google.golang.org/grpc"
 )
@@ -68,6 +69,12 @@ func TestLoadRuntimeContractsFromDBUsesRequiredSkillBindings(t *testing.T) {
 		if contracts.ActionContracts[action.abilityKey].ID != action.contractID {
 			t.Fatalf("%s base action contract id = %q", action.abilityKey, contracts.ActionContracts[action.abilityKey].ID)
 		}
+	}
+	if !hasCombatModeSlot(contracts.CombatModes, "mode_sword_shield_bulwark", 4, "player_shield_rush") {
+		t.Fatalf("DB combat mode slots did not load Bulwark F -> Shield Rush: %#v", contracts.CombatModes)
+	}
+	if hasCombatModeSlot(contracts.CombatModes, "mode_sword_shield_vanguard", 3, "player_shield_bash") {
+		t.Fatalf("Vanguard must not inherit Bulwark R skill from fallback")
 	}
 }
 
@@ -210,6 +217,22 @@ func (f fakeRuntimeContractSource) GetSkillMovementActionBinding(_ context.Conte
 	}, nil
 }
 
+func (fakeRuntimeContractSource) GetWeaponCombatModeSlots(context.Context, *dbv1.IdRequest, ...grpc.CallOption) (*dbv1.WeaponCombatModeSlotsResponse, error) {
+	return &dbv1.WeaponCombatModeSlotsResponse{
+		Found: true,
+		Slots: []*dbv1.WeaponCombatModeSlot{
+			{CombatModeId: "mode_sword_shield_vanguard", InputSlot: "M1", SkillId: "player_basic_attack_1", IsBasicAttack: true, IsEnabled: true},
+			{CombatModeId: "mode_sword_shield_vanguard", InputSlot: "Q", IsEnabled: false},
+			{CombatModeId: "mode_sword_shield_vanguard", InputSlot: "R", IsEnabled: false},
+			{CombatModeId: "mode_sword_shield_vanguard", InputSlot: "F", IsEnabled: false},
+			{CombatModeId: "mode_sword_shield_bulwark", InputSlot: "M1", SkillId: "player_basic_attack_1", IsBasicAttack: true, IsEnabled: true},
+			{CombatModeId: "mode_sword_shield_bulwark", InputSlot: "Q", IsEnabled: false},
+			{CombatModeId: "mode_sword_shield_bulwark", InputSlot: "R", SkillId: "player_shield_bash", IsEnabled: true},
+			{CombatModeId: "mode_sword_shield_bulwark", InputSlot: "F", SkillId: "player_shield_rush", IsEnabled: true},
+		},
+	}, nil
+}
+
 func (f fakeRuntimeContractSource) GetMovementActionContract(_ context.Context, req *dbv1.IdRequest, _ ...grpc.CallOption) (*dbv1.MovementActionContractResponse, error) {
 	if f.missingActions[req.GetId()] {
 		return &dbv1.MovementActionContractResponse{Found: false}, nil
@@ -268,4 +291,13 @@ func fakeMovementActionContract(id string, abilityKey string, actionType string,
 			Category: reconciliation,
 		},
 	}
+}
+
+func hasCombatModeSlot(slots []*gamev1.CombatModeSlot, combatModeID string, slotIndex uint32, skillID string) bool {
+	for _, slot := range slots {
+		if slot.GetCombatModeId() == combatModeID && slot.GetSlotIndex() == slotIndex && slot.GetSkillId() == skillID && slot.GetEnabled() {
+			return true
+		}
+	}
+	return false
 }
