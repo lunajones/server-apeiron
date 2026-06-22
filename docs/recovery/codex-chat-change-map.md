@@ -23,6 +23,19 @@ recuperação reconstruiu *depois* do delete). Para cada mudança registramos:
 > vamos fazer — perda de tempo, quero o funcional de volta, não firula"*. Mudanças de VFX/Niagara
 > ficam registradas como histórico, mas **não entram na lista de gaps a re-aplicar**.
 
+## Objetivo final (definição de "pronto")
+
+Mandato do usuário: a reconstrução é para a **versão final e completa do jogo**, não um estado "de
+recuperação". Concretamente:
+- Recriar **do zero** os arquivos Go corrompidos/ausentes sem fonte, **com base nos outros arquivos
+  já recuperados + no que o Unreal exige**.
+- **O Unreal é a fonte de verdade que sobreviveu:** o que o cliente consome (comandos enviados,
+  campos de snapshot/ack, contratos, `ability_key`) **define** o que server/DB/proto/migrations/seeds
+  precisam ter. Dá pra derivar os Go/protos/migrations/seeds faltantes a partir do que o Unreal pede.
+- **Criar todos os seeds que faltam** pra o Unreal carregar com o jogo **rodando no PlainTestMap**
+  como já estava.
+- Nada de fallback silencioso como estado final; contratos de DB/profile são autoritativos.
+
 ## Como usar / precedência de fontes
 
 1. Relato direto do usuário no chat + valor testado em runtime.
@@ -353,6 +366,33 @@ Prioridade do que **sumiu** e precisa voltar:
 | Baixa | Recuperar doc de request sumido | 04/06 | `docs/reviews/unreal-movement-prediction-reconciliation-requests-2026-06-04.md` |
 | 🚫 | **Niagara/VFX** — fora de escopo (decisão do usuário) | 16/06 #4 | — |
 
+## Anexo: meta-sessão de recuperação (provenance do HEAD atual)
+
+O HEAD atual dos repos foi produzido por uma sessão de recuperação do Codex (pós-delete), em commits
+locais **sem push** (`gh` ausente / push HTTPS travou). O que ela fez:
+
+**server-apeiron:** `71395c0` movement action contract registry (tira duplicação de classificação/hash
+do gameapi) · `add58f5`/`8fdd1b2` load+cover creature skill movement contracts · `67d3fc3` wolf bite
+runtime contract · `a85aa68` temporal hitbox sweep · `678b334` movement validation runtime (+ modo
+`MovementValidation`; fix do client buscando contrato pra `action=grounded_skill` genérico em vez de
+`ability_key`) · `cf8ebec` reconciliation change ledger · `7508918` guard required runtime contract ·
+`4066899` enforce runtime contract coverage (falha claro se faltar move/turn/dodge/jump, basic combo,
+shield_bash/rush, bite/lunge/wolf_dodge/maul) · `ebd505f` combat hitbox runtime (CombatDefenseContract
+no proto/API/cache/repo; block arco frontal; parry na pipeline; impact response player vs creature) ·
+`0b1ae78` recovery thread gap audit.
+
+**db-apeiron:** `4f01e98`/`87977fb` wolf maul+bite action contracts · `14c3e5a` recovered DB movement
+schemas · `cf97af3`/`987f702` sortable migration filenames (`20_spawn_zone.sql` → `020_`) · `f54f297`
+normalize runtime schema (`028_temporal_melee_hitbox.sql` como modelo final) · `9bbfbaf` combat defense
+contract api.
+
+A própria recuperação confirmou: **`internal/movement/resolver.go` não existe** (P0); fallbacks ainda
+alcançáveis (`RecoveredRuntimeContracts`, AttackProfile); muitos arquivos winfr têm nome certo mas
+conteúdo corrompido. Template reutilizável: `docs/recovery/continuous-recovery-request-template.md`.
+
+> Este HEAD **compila**, mas é a base da recuperação — **não** a versão final. A reconstrução
+> (Fatia 1+) parte daqui em direção ao **Objetivo final** lá em cima.
+
 ## Fontes / docs relacionados (limpos)
 
 - `B:/Unreal Projects/PlainTestMap/Docs/unreal-player-locomotion-ready-2026-06-04.md`
@@ -376,5 +416,9 @@ Apêndar aqui, mantendo a ordem cronológica, conforme forem colados:
 - [x] `recuperação 1` — ★ CTRL combat mode + Shield Rush meio-cilindro (sáb 20/06)
 - [x] **chat ATUAL** (o do delete) — ★★ rubberband de skill movement; resolver inteiro sumiu = Fatia 1
 
-**✅ DOC COMPLETO** — todos os chats (10→1 + atual) integrados e validados contra o código de
-`04/06 → o delete`. Pronto para o **"vai"** (Fatia 1: reconstruir o resolver de movimento).
+- [x] **meta-sessão de recuperação** (pós-delete) — ver Anexo (provenance do HEAD + Objetivo final)
+- [ ] continuação da meta-sessão — usuário avisou "ainda tem mais"
+
+**Chats de gameplay (10→1 + skill-rubberband): completos e validados** (`04/06 → delete`). Falta só a
+continuação da meta-sessão de recuperação. Direção travada: **Fatia 1 = reconstruir o resolver de
+movimento** rumo ao Objetivo final.
