@@ -212,6 +212,34 @@ Combat fornece intenção; movement publica o estado final. Teste obrigatório =
 - **Fatia 1** = reconstruir `internal/movement` como **único produtor** de locomotion (os 10 campos),
   e fazer o combat emitir só intent/timeline.
 
+#### ★ recuperação 4 — Shield Rush (R) / Shield Bash (F): rubberband na avançada (= BUG ATUAL)
+
+**GIGANTE.** Sessão inteira caçando o rubberband do deslocamento de Shield Rush/Bash **sem** tocar em
+walk/run/dodge/leap. É a aplicação concreta da arquitetura do chat 5 às duas skills de chão — e
+descreve **exatamente** o rubberband que o usuário está tendo agora no R/F.
+
+**Causa-raiz (do chat):** Shield Rush/Bash eram deslocamento autoritativo no server, **mas não eram
+publicados como `Movement.Locomotion` reconciliável** → o cliente via como correção genérica. Bash
+tinha previsão local hardcoded fora do replay; Rush não tinha previsão local nenhuma.
+
+| # | Mudança | Arquivos originais (chat) | Status |
+| --- | --- | --- | --- |
+| 1 | Server preserva `command_id`/`sequence` no intent de skill | `internal/skill/context.go:36` | ❌ `skill/context.go` **sumiu** |
+| 2 | Shield skill movement publica `grounded_action` com `ReconciliationMode=SkillGroundedAction`, action root, distância, curva, `LastProcessedSequence/ClientTick` | `player_skill_combat_system.go:1601` | ❌ `SkillGroundedAction` **0 refs no server** — não publica mais |
+| 3 | Unreal Bridge: modo `SkillGroundedAction`, registra casts de Rush/Bash no input buffer, replay ativo só pra essas skills | `ApeironGameServerBridge.cpp:103` | ⚠️ `SkillGroundedAction` presente no UE (3 refs) — **client pronto, server não** |
+| 4 | Player local prevê Bash/Rush por distância/curva alinhado ao server | `ApeironTestPlayerCharacter.cpp:2132` | ❌ `SkillDash` **0 refs no UE** — previsão local sumiu |
+| 5 | **Câmera descola no dodge+hit** (vira MMO/WoW, fica solta): cortar `CameraVisualCorrectionOffset`, prender no `CameraBoomLocalOffset`, só o mesh suaviza | `ApeironTestPlayerCharacter.cpp/.h`, `ApeironGameServerBridge.cpp` | ⚠️ `CameraVisualCorrectionOffset` ainda presente (3 refs) — **bug pode voltar** |
+| 6 | Rush snap: server publicava `base_speed=10.6/199.6` em vez do deslocamento real. Derivar `EntrySpeed/TargetSpeed` de `Distance/Duration` | `player_skill_combat_system.go:1652` | ❌ `EntrySpeed` **0 refs** — sumiu |
+| 7 | Rush/Bash começam deslocamento autoritativo em `action_start` (não startup/active); seed Rush `movement_start_phase='action_start'`. Bash vibrando parado: cooldown local + rollback de ACK rejeitado | `player_skill_combat_system.go`, `db:026_player_shield_rush_seed.sql` | ❌ seed `026` sumiu (config em `013`); cooldown/rollback a verificar |
+
+> **★ Por que o R/F rubberbanda AGORA:** a assimetria. O Unreal ainda conhece `SkillGroundedAction`
+> (pronto pra reconciliar), mas o server **não publica mais** esse modo (`0 refs`), `skill/context.go`
+> sumiu (sem `command_id` no intent), e a derivação de velocidade (`EntrySpeed`) sumiu. Deslocamento
+> autoritativo **sem** locomotion reconciliável → cliente trata como correção genérica → rubberband.
+> Isto é **Fatia 1**: o movimento de skill tem que ser publicado pelo resolver único como
+> `SkillGroundedAction`, não sobrescrito pelo combat. A câmera descolando (#5) é um bug separado mas
+> da mesma família (correção visual vazando pra câmera).
+
 ---
 
 ## Tabela consolidada de gaps (o que falta re-aplicar)
@@ -221,6 +249,8 @@ Prioridade do que **sumiu** e precisa voltar:
 | Prioridade | Gap | Origem | Onde re-aplicar |
 | --- | --- | --- | --- |
 | **Crítica** | **Ownership do resolver de movimento** — combat só emite intent/timeline; movement publica locomotion (10 campos, com teste de paridade). Eliminar autoridade dupla, não patch campo-a-campo | **chat 5** + 16/06 #3 | `internal/movement` (resolver a reconstruir) — **Fatia 1** |
+| **Crítica** | **Shield Rush/Bash reconciliáveis** — server publica `SkillGroundedAction` + `command_id` no intent (`skill/context.go`) + `EntrySpeed` de Distance/Duration; client prevê local. **= rubberband atual do R/F** | **chat 4** | server `player_skill_combat_system.go` + `skill/context.go` (sumiu); UE já tem o modo — parte da **Fatia 1** |
+| Alta | **Câmera descola no dodge+hit** — prender no `CameraBoomLocalOffset`, só o mesh suaviza | chat 4 #5 | `ApeironTestPlayerCharacter.cpp` (`CameraVisualCorrectionOffset`) |
 | Alta | **Wolf lunge pós-pouso**: timeline do movimento dentro da action; `landing_lock` como continuação horizontal; skill pendente até o fim do movimento | chat 7 | `db:018_..._seed.sql`, wolf runtime em `gameapi/runtime.go` |
 | Alta | **Basic Attack combo 3 etapas** server-authoritative (`_1/_2/_3`, combo_group/index, step-in) + seed `old_china` (320 linhas sumiu) | chat 6 #1 | `combat/player_skill_combat_system.go`, `db:bootstrap` |
 | Alta | **Roteamento do M1**: left-click tem que sair como `player_basic_attack` (não `player_quick_slash`) | chat 6 #2 | `Tools/ApeironGrpcBridge/main.go`, `app/dependencies.go`, `gameapi/services.go` |
@@ -254,7 +284,7 @@ Apêndar aqui, mantendo a ordem cronológica, conforme forem colados:
 - [x] `recuperação 7` — wolf lunge pós-pouso (continuação natural)
 - [x] `recuperação 6` — basic attack combo 3 etapas + roteamento M1 + gate jump/dodge
 - [x] `recuperação 5` — ★ autoridade skill-movement (spec da Fatia 1)
-- [ ] `recuperação 4`
+- [x] `recuperação 4` — ★ Shield Rush/Bash rubberband (= bug atual do usuário; implementação do chat 5)
 - [ ] `recuperação 3`
 - [ ] `recuperação 2`
 - [ ] `recuperação 1`
