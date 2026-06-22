@@ -3,6 +3,7 @@ package movement
 import (
 	"math"
 	"testing"
+	"time"
 
 	domainmath "server-apeiron/internal/domain/math"
 )
@@ -107,6 +108,49 @@ func TestResolveActionMotionPrefersContractBaseSpeed(t *testing.T) {
 	}
 	if got.Velocity.Y != 760 {
 		t.Fatalf("velocity = %+v", got.Velocity)
+	}
+}
+
+func TestResolveActionMotionProgressIntegratesSpeedCurve(t *testing.T) {
+	contract := RuntimeActionContract{
+		ID:         "curved_action_v1",
+		ActionType: "grounded_skill",
+		DistanceCM: 100,
+		DurationMS: 1000,
+		SpeedCurveSamples: []MovementActionCurvePoint{
+			{T: 0, Value: 0},
+			{T: 0.5, Value: 1},
+			{T: 1, Value: 0},
+		},
+	}
+
+	quarter := ResolveActionMotionProgress(ActionMotionProgressInput{
+		Position:  domainmath.V3(0, 0, 0),
+		Direction: domainmath.V3(1, 0, 0),
+		Contract:  contract,
+		Elapsed:   250 * time.Millisecond,
+	})
+	half := ResolveActionMotionProgress(ActionMotionProgressInput{
+		Position:  domainmath.V3(0, 0, 0),
+		Direction: domainmath.V3(1, 0, 0),
+		Contract:  contract,
+		Elapsed:   500 * time.Millisecond,
+	})
+	done := ResolveActionMotionProgress(ActionMotionProgressInput{
+		Position:  domainmath.V3(0, 0, 0),
+		Direction: domainmath.V3(1, 0, 0),
+		Contract:  contract,
+		Elapsed:   1200 * time.Millisecond,
+	})
+
+	if math.Abs(quarter.DistanceCM-12.5) > 0.0001 {
+		t.Fatalf("quarter distance = %v, want 12.5 from integrated curve", quarter.DistanceCM)
+	}
+	if math.Abs(half.DistanceCM-50) > 0.0001 {
+		t.Fatalf("half distance = %v, want 50", half.DistanceCM)
+	}
+	if !done.Complete || math.Abs(done.DistanceCM-100) > 0.0001 {
+		t.Fatalf("done = complete:%v distance:%v, want complete/100", done.Complete, done.DistanceCM)
 	}
 }
 

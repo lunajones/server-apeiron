@@ -11,11 +11,21 @@ Este roadmap substitui roadmaps recuperados corrompidos quando houver conflito. 
 - Reconciliation engine global com profiles por categoria.
 - `movement_action_contract` referencia reconciliation profile adequado.
 - Action channels/policies devem vir de DB quando virarem fonte primaria.
+- [x] 2026-06-22: runtime vivo deixou de teleportar grounded skill no `SubmitCommand`.
+  Skill movement agora cria `actionMotion` autoritativa e progride por snapshot/tick usando
+  `internal/movement.ResolveActionMotionProgress`.
+- [x] 2026-06-22: `MOVE` durante owned root respeita `NormalInputPolicy`
+  (`blocked_during_owned_root` / `buffer_until_recovery_handoff`) e nao rouba a posicao da skill.
+- [x] 2026-06-22: segunda skill durante grounded owned root agora recebe `action_locked`
+  ate o handoff completar, evitando substituir a action motion autoritativa em andamento.
+- [x] 2026-06-22: wolf nao publica `SkillRuntimeState` a cada orbit/chase; skill runtime da
+  criatura so fica ativo em acao comprometida e preserva `StartedAtMs` ate o fim da janela.
 - Testes:
   - paridade dos campos de locomotion;
   - dodge/leap/airborne bloqueiam skill/basic;
   - command queue prioriza action sobre movement spam;
   - leap ACK/handoff nao prende player.
+  - grounded skill nao teleporta no cast, progride por snapshot e mantem root-motion ownership.
 
 ## Fase 2 - Combat Mode/Weapon Kit/HUD
 
@@ -54,6 +64,8 @@ Este roadmap substitui roadmaps recuperados corrompidos quando houver conflito. 
   - airborne passthrough;
   - post landing inertia;
   - nao encerrar skill antes do movement completo.
+- [x] 2026-06-22: eliminada reinicializacao constante de `SkillRuntimeState` no wolf durante
+  orbit/chase, que fazia o cliente tratar lunge/dodge visual como sempre recem-iniciado.
 - Creature usa hitbox/movement contracts como player.
 - Creature dodge/leap/maul respeitam stamina/action runtime.
 

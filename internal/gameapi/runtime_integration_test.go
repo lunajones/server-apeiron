@@ -62,6 +62,7 @@ func TestRuntimeLocomotionTransitionKeepsReconciliationFields(t *testing.T) {
 		t.Fatalf("turn should not stomp active move locomotion, action = %q", got.GetAction())
 	}
 
+	beforeSkillPosition := player.position
 	submit(testRuntimeCastSkillCommand(sessionID, 3, "player_shield_rush", gamev1Vector(1, 0, 0)))
 	if got := player.locomotion; got == nil {
 		t.Fatal("locomotion is nil after cast skill")
@@ -79,6 +80,10 @@ func TestRuntimeLocomotionTransitionKeepsReconciliationFields(t *testing.T) {
 			t.Fatalf("skill locomotion should publish motion speed: target=%v effective=%v", got.GetTargetSpeed(), got.GetEffectiveSpeed())
 		}
 	}
+	if moved := distance(beforeSkillPosition, player.position); moved > 1 {
+		t.Fatalf("skill command teleported player by %.2fcm; movement must progress through snapshots", moved)
+	}
+	forceCompleteRuntimeAction(t, runtime, sessionID, player)
 
 	for i := uint64(0); i < 6; i++ {
 		dir := gamev1Vector(0, 1, 0)
@@ -283,6 +288,7 @@ func TestRuntimeSprintStrafeYawInversionInterleavedWithSkills(t *testing.T) {
 			if player.locomotion == nil || player.locomotion.GetAction() != "grounded_skill" {
 				t.Fatalf("iteration %d expected skill locomotion after cast", i)
 			}
+			forceCompleteRuntimeAction(t, runtime, sessionID, player)
 		}
 
 		if player.locomotion != nil && player.locomotion.GetTargetSpeed() > 0 && player.locomotion.GetTargetSpeed() < 20 {
@@ -446,6 +452,7 @@ func TestRuntimeShiftStrafeYawInversionKeepsMoveReconciled(t *testing.T) {
 			if player.locomotion.GetReconciliationMode() != "grounded_skill_action" {
 				t.Fatalf("iteration %d shield bash reconciliation=%q expected grounded_skill_action", i, player.locomotion.GetReconciliationMode())
 			}
+			forceCompleteRuntimeAction(t, runtime, sessionID, player)
 		}
 	}
 
@@ -540,6 +547,7 @@ func TestRuntimeShiftRunRepeatedBasicAttackPresses(t *testing.T) {
 		if player.locomotion.GetReconciliationMode() != "grounded_skill_action" {
 			t.Fatalf("iteration %d expected grounded_skill_action, got=%q", i, player.locomotion.GetReconciliationMode())
 		}
+		forceCompleteRuntimeAction(t, runtime, sessionID, player)
 	}
 
 	if player.locomotion == nil {
@@ -646,6 +654,89 @@ func TestRuntimeSnapshotAdvancesAndCompletesActionInstance(t *testing.T) {
 	}
 }
 
+func TestRuntimeGroundedSkillMotionProgressesBySnapshotAndOwnsRoot(t *testing.T) {
+	t.Parallel()
+
+	runtime := NewRuntimeWithOptions(RecoveredRuntimeContracts(), RuntimeOptions{MovementValidation: true})
+	sessionID := "runtime-integration-skill-root-motion"
+	if _, err := runtime.OpenSession(context.Background(), &gamev1.OpenSessionRequest{
+		Context: &gamev1.RequestContext{SessionId: sessionID},
+	}); err != nil {
+		t.Fatalf("OpenSession failed: %v", err)
+	}
+	if _, err := runtime.AttachPlayer(context.Background(), &gamev1.AttachPlayerRequest{
+		Context:  &gamev1.RequestContext{SessionId: sessionID},
+		PlayerId: "local_player",
+	}); err != nil {
+		t.Fatalf("AttachPlayer failed: %v", err)
+	}
+
+	player := runtime.ensurePlayerLocked("local_player")
+	start := player.position
+	contract := runtime.contracts.skillContract("player_shield_rush").MovementAction
+
+	ack, err := runtime.SubmitCommand(context.Background(), testRuntimeCastSkillCommand(sessionID, 1, "player_shield_rush", gamev1Vector(1, 0, 0)))
+	if err != nil {
+		t.Fatalf("SubmitCommand failed: %v", err)
+	}
+	if !ack.GetAccepted() {
+		t.Fatalf("cast rejected: %s %s", ack.GetRejectionCode(), ack.GetMessage())
+	}
+	if player.actionMotion == nil {
+		t.Fatal("skill with movement did not create an owned action motion")
+	}
+	if moved := distance(start, player.position); moved > 1 {
+		t.Fatalf("cast applied final displacement immediately: moved %.2fcm", moved)
+	}
+	if player.locomotion == nil || player.locomotion.GetAction() != "grounded_skill" {
+		t.Fatalf("skill locomotion missing: action=%s", safeAction(player.locomotion))
+	}
+	if player.locomotion.GetActionDistanceTraveled() != 0 {
+		t.Fatalf("initial action distance = %v, want 0", player.locomotion.GetActionDistanceTraveled())
+	}
+
+	moveAck, err := runtime.SubmitCommand(context.Background(), testRuntimeMoveCommand(sessionID, 2, gamev1Vector(0, 1, 0), 1, true, nil))
+	if err != nil {
+		t.Fatalf("move during skill submit failed: %v", err)
+	}
+	if !moveAck.GetAccepted() {
+		t.Fatalf("move during owned root should be buffered/accepted, not rejected: %s", moveAck.GetRejectionCode())
+	}
+	if player.actionMotion == nil {
+		t.Fatal("move during owned root cleared the action motion")
+	}
+	if player.locomotion.GetAction() != "grounded_skill" {
+		t.Fatalf("move stole locomotion ownership during skill: %q", player.locomotion.GetAction())
+	}
+
+	duration := durationFromMS(contract.DurationMS)
+	if duration <= 0 {
+		duration = time.Second
+	}
+	startedAt := time.Now().Add(-(duration / 2))
+	player.actionMotion.StartedAt = startedAt
+	player.actionInstance.StartedAt = startedAt
+	if _, err := runtime.GetSnapshot(context.Background(), &gamev1.SnapshotRequest{
+		Context:          &gamev1.RequestContext{SessionId: sessionID},
+		IncludeFullState: true,
+	}); err != nil {
+		t.Fatalf("GetSnapshot mid-action failed: %v", err)
+	}
+	midDistance := distance(start, player.position)
+	if midDistance <= 0 || midDistance >= contract.DistanceCM {
+		t.Fatalf("mid-action distance = %.2f, want between 0 and %.2f", midDistance, contract.DistanceCM)
+	}
+
+	forceCompleteRuntimeAction(t, runtime, sessionID, player)
+	finalDistance := distance(start, player.position)
+	if finalDistance < contract.DistanceCM-1 {
+		t.Fatalf("final action distance = %.2f, want about %.2f", finalDistance, contract.DistanceCM)
+	}
+	if player.actionMotion != nil {
+		t.Fatal("completed skill left actionMotion active")
+	}
+}
+
 func testRuntimeMoveCommand(
 	sessionID string,
 	sequence uint64,
@@ -709,6 +800,28 @@ func testRuntimeCastSkillCommand(sessionID string, sequence uint64, skillID stri
 
 func gamev1Vector(x, y, z float64) *gamev1.Vector3 {
 	return &gamev1.Vector3{X: x, Y: y, Z: z}
+}
+
+func forceCompleteRuntimeAction(t *testing.T, runtime *Runtime, sessionID string, player *entityState) {
+	t.Helper()
+	startedAt := time.Now().Add(-2 * time.Second)
+	if player.actionMotion != nil {
+		duration := durationFromMS(player.actionMotion.Contract.DurationMS)
+		if duration <= 0 {
+			duration = 2 * time.Second
+		}
+		startedAt = time.Now().Add(-duration - 100*time.Millisecond)
+		player.actionMotion.StartedAt = startedAt
+	}
+	if player.actionInstance != nil {
+		player.actionInstance.StartedAt = startedAt
+	}
+	if _, err := runtime.GetSnapshot(context.Background(), &gamev1.SnapshotRequest{
+		Context:          &gamev1.RequestContext{SessionId: sessionID},
+		IncludeFullState: true,
+	}); err != nil {
+		t.Fatalf("GetSnapshot force-complete failed: %v", err)
+	}
 }
 
 func safeAction(loco *gamev1.LocomotionState) string {

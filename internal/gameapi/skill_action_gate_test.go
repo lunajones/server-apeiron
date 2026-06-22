@@ -55,3 +55,43 @@ func TestSkillRejectedDuringLeap(t *testing.T) {
 		t.Fatalf("rejection code = %q, want action_locked", ack.GetRejectionCode())
 	}
 }
+
+func TestSkillRejectedDuringGroundedSkillRootMotion(t *testing.T) {
+	t.Parallel()
+
+	runtime := NewRuntimeWithOptions(RecoveredRuntimeContracts(), RuntimeOptions{MovementValidation: true})
+	sessionID := "runtime-grounded-skill-gate"
+
+	if _, err := runtime.OpenSession(context.Background(), &gamev1.OpenSessionRequest{
+		Context: &gamev1.RequestContext{SessionId: sessionID},
+	}); err != nil {
+		t.Fatalf("OpenSession failed: %v", err)
+	}
+	if _, err := runtime.AttachPlayer(context.Background(), &gamev1.AttachPlayerRequest{
+		Context:  &gamev1.RequestContext{SessionId: sessionID},
+		PlayerId: "local_player",
+	}); err != nil {
+		t.Fatalf("AttachPlayer failed: %v", err)
+	}
+
+	first, err := runtime.SubmitCommand(context.Background(),
+		testRuntimeCastSkillCommand(sessionID, 1, "player_shield_rush", gamev1Vector(1, 0, 0)))
+	if err != nil {
+		t.Fatalf("first cast submit failed: %v", err)
+	}
+	if !first.GetAccepted() {
+		t.Fatalf("first cast rejected: %s %s", first.GetRejectionCode(), first.GetMessage())
+	}
+
+	second, err := runtime.SubmitCommand(context.Background(),
+		testRuntimeCastSkillCommand(sessionID, 2, "player_basic_attack_1", gamev1Vector(1, 0, 0)))
+	if err != nil {
+		t.Fatalf("second cast submit failed: %v", err)
+	}
+	if second.GetAccepted() {
+		t.Fatal("skill during grounded owned root was accepted; expected action_locked rejection")
+	}
+	if second.GetRejectionCode() != "action_locked" {
+		t.Fatalf("rejection code = %q, want action_locked", second.GetRejectionCode())
+	}
+}

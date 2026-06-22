@@ -83,6 +83,7 @@ type entityState struct {
 	locomotion     *gamev1.LocomotionState
 	skillRuntime   *gamev1.SkillRuntimeState
 	actionInstance *actionruntime.Instance
+	actionMotion   *actionMotionState
 	combatMode     *gamev1.CombatModeState
 	creatureAI     *gamev1.CreatureAIState
 
@@ -91,6 +92,20 @@ type entityState struct {
 	// jumping/dodging. Time-based so it auto-expires with the action.
 	actionLockedUntil time.Time
 	actionLockReason  string
+}
+
+type actionMotionState struct {
+	SkillID           string
+	CommandID         string
+	Sequence          uint64
+	ClientTick        uint64
+	StartedAt         time.Time
+	StartPosition     vector
+	ProjectedPosition vector
+	Direction         vector
+	Contract          MovementActionRuntimeContract
+	NormalInputPolicy string
+	TotalDistanceCM   float64
 }
 
 type vector struct {
@@ -259,6 +274,8 @@ func (r *Runtime) SubmitCommand(ctx context.Context, cmd *gamev1.PlayerCommand) 
 		return ack, nil
 	}
 
+	now := time.Now()
+	r.refreshActionRuntimeStatesLocked(now)
 	player.lastSequence = cmd.GetSequence()
 	player.lastClientTick = cmd.GetClientTick()
 
@@ -434,33 +451,41 @@ func (r *Runtime) updateWolfPolicyLocked(wolf *entityState, player *entityState)
 	start := wolf.position
 
 	policy := r.contracts.WolfPolicy
+	nowTime := time.Now()
 	phaseTick := r.tick % 240
 	action := "orbit"
 	selectedSkill := "bite"
 	speed := policy.OrbitSpeedCMS
 	moveDir := right
 
-	switch {
-	case rangeCM > policy.ChaseRangeCM:
-		action = "chase"
-		selectedSkill = "lunge"
-		speed = policy.ChaseSpeedCMS
-		moveDir = toPlayer
-	case phaseTick >= 72 && phaseTick < 92 && rangeCM > policy.LungeRangeCM:
-		action = "lunge"
-		selectedSkill = "lunge"
-		speed = policy.LungeSpeedCMS
-		moveDir = toPlayer
-	case phaseTick >= 150 && phaseTick < 166 && rangeCM < 260:
-		action = "maul"
-		selectedSkill = "maul"
-		speed = policy.MaulSpeedCMS
-		moveDir = right
-	case rangeCM < policy.RetreatRangeCM:
-		action = "retreat"
-		selectedSkill = policy.DodgeSkillID
-		speed = policy.RetreatSpeedCMS
-		moveDir = scale(toPlayer, -1)
+	if activeSkill, active := r.activeCreatureSkillLocked(wolf, nowTime); active {
+		selectedSkill = activeSkill
+		action = creatureActionForSkill(activeSkill, policy)
+		speed = creatureSpeedForSkill(activeSkill, policy)
+		moveDir = creatureMoveDirectionForSkill(activeSkill, policy, toPlayer, right)
+	} else {
+		switch {
+		case rangeCM > policy.ChaseRangeCM:
+			action = "chase"
+			selectedSkill = "lunge"
+			speed = policy.ChaseSpeedCMS
+			moveDir = toPlayer
+		case phaseTick >= 72 && phaseTick < 92 && rangeCM > policy.LungeRangeCM:
+			action = "lunge"
+			selectedSkill = "lunge"
+			speed = policy.LungeSpeedCMS
+			moveDir = toPlayer
+		case phaseTick >= 150 && phaseTick < 166 && rangeCM < 260:
+			action = "maul"
+			selectedSkill = "maul"
+			speed = policy.MaulSpeedCMS
+			moveDir = right
+		case rangeCM < policy.RetreatRangeCM:
+			action = "retreat"
+			selectedSkill = policy.DodgeSkillID
+			speed = policy.RetreatSpeedCMS
+			moveDir = scale(toPlayer, -1)
+		}
 	}
 
 	selectedRuntime := r.contracts.skillContract(selectedSkill)
@@ -474,7 +499,11 @@ func (r *Runtime) updateWolfPolicyLocked(wolf *entityState, player *entityState)
 	wolf.velocity = fromDomainVector(motion.Velocity)
 	wolf.yaw = vectorYaw(toPlayer)
 	wolf.movementState = action
-	wolf.skillState = selectedSkill
+	if creatureActionPublishesSkill(action) {
+		wolf.skillState = action
+	} else {
+		wolf.skillState = "idle"
+	}
 	wolf.locomotion = locomotionFromContractWithOverrides(r.contracts.contractForAbility(selectedSkill), "active", start, wolf.position, r.tick, 0, motion.SpeedCMPerSecond, motion.DistanceCM)
 	wolf.locomotion.MovementMode = "grounded"
 	wolf.locomotion.Action = action
@@ -515,8 +544,82 @@ func (r *Runtime) updateWolfPolicyLocked(wolf *entityState, player *entityState)
 		SkillMovementMinLandingDistanceCm:     180,
 		SkillMovementStopAtContactRatio:       1,
 	}
-	now := time.Now().UnixMilli()
-	wolf.skillRuntime = &gamev1.SkillRuntimeState{CurrentSkillId: selectedSkill, State: action, StartedAtMs: now, LastResolvedAtMs: now}
+	now := nowTime.UnixMilli()
+	if creatureActionPublishesSkill(action) {
+		startedAt := now
+		if wolf.skillRuntime != nil && wolf.skillRuntime.GetCurrentSkillId() == selectedSkill && wolf.skillRuntime.GetStartedAtMs() > 0 {
+			startedAt = wolf.skillRuntime.GetStartedAtMs()
+		}
+		wolf.skillRuntime = &gamev1.SkillRuntimeState{CurrentSkillId: selectedSkill, State: action, StartedAtMs: startedAt, LastResolvedAtMs: now}
+	} else {
+		wolf.skillRuntime = &gamev1.SkillRuntimeState{State: "idle", LastResolvedAtMs: now}
+	}
+}
+
+func (r *Runtime) activeCreatureSkillLocked(creature *entityState, now time.Time) (string, bool) {
+	if creature == nil || creature.skillRuntime == nil {
+		return "", false
+	}
+	skillID := creature.skillRuntime.GetCurrentSkillId()
+	startedAtMS := creature.skillRuntime.GetStartedAtMs()
+	if skillID == "" || startedAtMS <= 0 {
+		return "", false
+	}
+	contract := r.contracts.skillContract(skillID)
+	duration := durationFromMS(contract.WindupMS + contract.ActiveMS + contract.RecoveryMS)
+	if duration <= 0 {
+		duration = durationFromMS(contract.MovementAction.DurationMS)
+	}
+	if duration <= 0 {
+		return "", false
+	}
+	return skillID, now.Before(time.UnixMilli(startedAtMS).Add(duration))
+}
+
+func creatureActionPublishesSkill(action string) bool {
+	switch action {
+	case "lunge", "maul", "retreat", "dodge":
+		return true
+	default:
+		return false
+	}
+}
+
+func creatureActionForSkill(skillID string, policy WolfRuntimePolicy) string {
+	switch skillID {
+	case "lunge":
+		return "lunge"
+	case "maul":
+		return "maul"
+	case policy.DodgeSkillID:
+		return "retreat"
+	default:
+		return "skill"
+	}
+}
+
+func creatureSpeedForSkill(skillID string, policy WolfRuntimePolicy) float64 {
+	switch skillID {
+	case "lunge":
+		return policy.LungeSpeedCMS
+	case "maul":
+		return policy.MaulSpeedCMS
+	case policy.DodgeSkillID:
+		return policy.RetreatSpeedCMS
+	default:
+		return policy.OrbitSpeedCMS
+	}
+}
+
+func creatureMoveDirectionForSkill(skillID string, policy WolfRuntimePolicy, toPlayer vector, right vector) vector {
+	switch skillID {
+	case "maul":
+		return right
+	case policy.DodgeSkillID:
+		return scale(toPlayer, -1)
+	default:
+		return toPlayer
+	}
 }
 
 func (r *Runtime) playerForCommandLocked(cmd *gamev1.PlayerCommand) *entityState {
@@ -530,6 +633,14 @@ func (r *Runtime) playerForCommandLocked(cmd *gamev1.PlayerCommand) *entityState
 }
 
 func (r *Runtime) applyMove(player *entityState, cmd *gamev1.PlayerCommand) {
+	if r.advanceActionMotionLocked(player, time.Now()) {
+		if player.actionMotion != nil && blocksNormalInputDuringOwnedRoot(player.actionMotion.NormalInputPolicy) {
+			player.lastSequence = cmd.GetSequence()
+			player.lastClientTick = cmd.GetClientTick()
+			return
+		}
+	}
+
 	move := cmd.GetMove()
 	dir := normalize(fromProto(move.GetDirection()))
 	if dir == (vector{}) {
@@ -660,6 +771,12 @@ func (r *Runtime) applyImpulse(player *entityState, cmd *gamev1.PlayerCommand, c
 // movement action) and therefore must not start a skill or basic attack. Caller holds
 // r.mu. Restores the chat 6 #3 rule "no skill while jumping/dodging" in the live runtime.
 func (r *Runtime) skillActionLockedLocked(player *entityState) (string, bool) {
+	if player != nil && player.actionMotion != nil && blocksNormalInputDuringOwnedRoot(player.actionMotion.NormalInputPolicy) {
+		if player.actionMotion.SkillID != "" {
+			return "active_skill_root_motion:" + player.actionMotion.SkillID, true
+		}
+		return "active_skill_root_motion", true
+	}
 	if player == nil || player.actionLockedUntil.IsZero() {
 		return "", false
 	}
@@ -685,27 +802,51 @@ func (r *Runtime) applySkill(player *entityState, cmd *gamev1.PlayerCommand) {
 	}
 	skillContract := r.contracts.skillContract(skillID)
 	start := player.position
-	motion := movement.ResolveActionMotion(movement.ActionMotionInput{
+	fullMotion := movement.ResolveActionMotion(movement.ActionMotionInput{
 		Position:  toDomainVector(player.position),
 		Direction: toDomainVector(dir),
 		Contract:  skillContract.MovementAction,
 	})
-	player.position = fromDomainVector(motion.Projected)
-	player.velocity = fromDomainVector(motion.Velocity)
+	nowTime := time.Now()
+	instance := r.newActionInstance(player, cmd, skillID, skillContract, start, nowTime)
+	player.actionInstance = &instance
+	player.actionMotion = nil
+	if !fullMotion.Stopped && fullMotion.DistanceCM > 0 {
+		player.actionMotion = &actionMotionState{
+			SkillID:           skillID,
+			CommandID:         cmd.GetCommandId(),
+			Sequence:          cmd.GetSequence(),
+			ClientTick:        cmd.GetClientTick(),
+			StartedAt:         nowTime,
+			StartPosition:     start,
+			ProjectedPosition: fromDomainVector(fullMotion.Projected),
+			Direction:         dir,
+			Contract:          skillContract.MovementAction,
+			NormalInputPolicy: skillContract.NormalInputPolicy,
+			TotalDistanceCM:   fullMotion.DistanceCM,
+		}
+	}
+	progress := movement.ResolveActionMotionProgress(movement.ActionMotionProgressInput{
+		Position:  toDomainVector(start),
+		Direction: toDomainVector(dir),
+		Contract:  skillContract.MovementAction,
+		Elapsed:   0,
+	})
+	player.position = start
+	player.velocity = fromDomainVector(progress.Velocity)
 	player.skillState = "active"
 	player.combatState = "committed"
-	player.locomotion = locomotionFromContractWithOverrides(skillContract.MovementAction, "active", start, player.position, r.tick, cmd.GetSequence(), motion.SpeedCMPerSecond, motion.DistanceCM)
-	now := time.Now().UnixMilli()
-	instance := r.newActionInstance(player, cmd, skillID, skillContract, start, time.UnixMilli(now))
-	player.actionInstance = &instance
+	player.locomotion = locomotionFromContractWithOverrides(skillContract.MovementAction, "active", start, start, r.tick, cmd.GetSequence(), fullMotion.SpeedCMPerSecond, progress.DistanceCM)
+	player.locomotion.ActionDistanceTraveled = progress.DistanceCM
+	now := nowTime.UnixMilli()
 	player.skillRuntime = &gamev1.SkillRuntimeState{
 		CurrentSkillId:   skillID,
-		State:            string(instance.PhaseAt(time.UnixMilli(now))),
+		State:            string(instance.PhaseAt(nowTime)),
 		StartedAtMs:      now,
 		CooldownEndMs:    time.UnixMilli(now).Add(durationFromMS(skillContract.CooldownMS)).UnixMilli(),
 		LastResolvedAtMs: now,
 	}
-	r.applySkillImpact(player, skillContract, start, player.position, dir)
+	r.applySkillImpact(player, skillContract, start, fromDomainVector(fullMotion.Projected), dir)
 }
 
 func (r *Runtime) applyDefense(player *entityState, cmd *gamev1.PlayerCommand) {
@@ -764,6 +905,7 @@ func (r *Runtime) newActionInstance(player *entityState, cmd *gamev1.PlayerComma
 
 func (r *Runtime) refreshActionRuntimeStatesLocked(now time.Time) {
 	for _, entity := range r.entities {
+		r.advanceActionMotionLocked(entity, now)
 		if entity.actionInstance == nil || entity.skillRuntime == nil {
 			continue
 		}
@@ -773,9 +915,70 @@ func (r *Runtime) refreshActionRuntimeStatesLocked(now time.Time) {
 		if phase == actionruntime.PhaseComplete {
 			entity.skillState = "idle"
 			entity.combatState = "ready"
+			entity.actionMotion = nil
 			continue
 		}
 		entity.skillState = string(phase)
+	}
+}
+
+func (r *Runtime) advanceActionMotionLocked(entity *entityState, now time.Time) bool {
+	if entity == nil || entity.actionMotion == nil {
+		return false
+	}
+	motion := entity.actionMotion
+	progress := movement.ResolveActionMotionProgress(movement.ActionMotionProgressInput{
+		Position:           toDomainVector(motion.StartPosition),
+		Direction:          toDomainVector(motion.Direction),
+		Contract:           motion.Contract,
+		FallbackDistanceCM: motion.TotalDistanceCM,
+		Elapsed:            now.Sub(motion.StartedAt),
+	})
+
+	entity.position = fromDomainVector(progress.Projected)
+	entity.velocity = fromDomainVector(progress.Velocity)
+	entity.movementState = motion.Contract.ActionType
+	if motion.SkillID != "" {
+		entity.skillState = "active"
+		entity.combatState = "committed"
+	}
+
+	phase := "active"
+	if entity.actionInstance != nil {
+		instancePhase := entity.actionInstance.PhaseAt(now)
+		if instancePhase == actionruntime.PhaseComplete {
+			phase = "recovery"
+		} else {
+			phase = string(instancePhase)
+		}
+	}
+	entity.locomotion = locomotionFromContractWithOverrides(motion.Contract, phase, motion.StartPosition, entity.position, r.tick, motion.Sequence, progress.SpeedCMPerSecond, progress.DistanceCM)
+	entity.locomotion.ActionDistanceTraveled = progress.DistanceCM
+	entity.locomotion.ActionProjectedPosition = toProto(entity.position)
+	entity.locomotion.ClientActionSequence = motion.Sequence
+	entity.locomotion.ServerReceivedTick = r.tick
+	entity.locomotion.LastUpdatedTick = r.tick
+
+	if progress.Complete {
+		entity.position = motion.ProjectedPosition
+		entity.velocity = vector{}
+		entity.locomotion.ActionProjectedPosition = toProto(entity.position)
+		entity.locomotion.ActionDistanceTraveled = progress.TotalDistanceCM
+		entity.actionMotion = nil
+		return false
+	}
+	return true
+}
+
+func blocksNormalInputDuringOwnedRoot(policy string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(policy))
+	switch normalized {
+	case "allow", "allowed", "none", "normal", "free":
+		return false
+	case "", "blocked_during_owned_root", "buffer_until_recovery_handoff":
+		return true
+	default:
+		return strings.Contains(normalized, "block") || strings.Contains(normalized, "buffer")
 	}
 }
 
