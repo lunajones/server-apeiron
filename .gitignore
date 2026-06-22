@@ -5,6 +5,7 @@ logs/
 *.out.log
 *.err.log
 game-server.exe
+game-server.exe~
 coverage.out
 *.test
 .env.local
