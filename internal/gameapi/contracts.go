@@ -565,10 +565,8 @@ func recoveredCreatureSkillContract(skillID string, contractID string, actionTyp
 
 func recoveredCombatModeSlots() []*gamev1.CombatModeSlot {
 	return []*gamev1.CombatModeSlot{
-		{CombatModeId: "mode_sword_shield_vanguard", SlotIndex: 1, SkillId: "player_basic_attack_1", Enabled: true},
-		{CombatModeId: "mode_sword_shield_bulwark", SlotIndex: 1, SkillId: "player_basic_attack_1", Enabled: true},
-		{CombatModeId: "mode_sword_shield_bulwark", SlotIndex: 3, SkillId: "player_shield_bash", Enabled: true},
-		{CombatModeId: "mode_sword_shield_bulwark", SlotIndex: 4, SkillId: "player_shield_rush", Enabled: true},
+		{CombatModeId: swordShieldBulwarkModeID, SlotIndex: 2, SkillId: "player_shield_bash", Enabled: true},
+		{CombatModeId: swordShieldBulwarkModeID, SlotIndex: 3, SkillId: "player_shield_rush", Enabled: true},
 	}
 }
 
@@ -583,7 +581,7 @@ func combatModeSlotsFromDB(slots []*dbv1.WeaponCombatModeSlot) []*gamev1.CombatM
 			continue
 		}
 		out = append(out, &gamev1.CombatModeSlot{
-			CombatModeId: slot.GetCombatModeId(),
+			CombatModeId: normalizeCombatModeID(slot.GetCombatModeId()),
 			SlotIndex:    slotIndex,
 			SkillId:      slot.GetSkillId(),
 			Enabled:      slot.GetIsEnabled() && slot.GetSkillId() != "",
@@ -594,19 +592,38 @@ func combatModeSlotsFromDB(slots []*dbv1.WeaponCombatModeSlot) []*gamev1.CombatM
 
 func combatInputSlotIndex(input string) uint32 {
 	switch strings.ToUpper(strings.TrimSpace(input)) {
-	case "M1":
-		return 1
 	case "Q":
-		return 2
+		return 1
 	case "R":
-		return 3
+		return 2
 	case "F":
-		return 4
+		return 3
 	case "G":
-		return 5
+		return 4
 	default:
 		return 0
 	}
+}
+
+const (
+	swordShieldVanguardModeID = "mode_sword_shield_vanguard"
+	swordShieldBulwarkModeID  = "mode_sword_shield_bulwark"
+)
+
+func normalizeCombatModeID(mode string) string {
+	normalized := strings.ToLower(strings.TrimSpace(mode))
+	switch normalized {
+	case "vanguard", swordShieldVanguardModeID:
+		return swordShieldVanguardModeID
+	case "bulwark", swordShieldBulwarkModeID:
+		return swordShieldBulwarkModeID
+	default:
+		return strings.TrimSpace(mode)
+	}
+}
+
+func isBulwarkCombatMode(mode string) bool {
+	return normalizeCombatModeID(mode) == swordShieldBulwarkModeID
 }
 
 func (c RuntimeContracts) contractForAbility(ability string) MovementActionRuntimeContract {

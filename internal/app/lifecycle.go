@@ -43,8 +43,12 @@ func Run(ctx context.Context, cfg *config.Config) error {
 
 	runtimeOptions := gameapi.RuntimeOptions{
 		MovementValidation: cfg.Validation.MovementValidation,
+		DisableCreatures:   !cfg.AI.CreatureRuntimeEnabled,
 	}
-	log.Info().Bool("movement_validation", runtimeOptions.MovementValidation).Msg("game server bootstrap completed")
+	log.Info().
+		Bool("movement_validation", runtimeOptions.MovementValidation).
+		Bool("creature_runtime_enabled", cfg.AI.CreatureRuntimeEnabled).
+		Msg("game server bootstrap completed")
 	return gameapi.ServeRuntime(ctx, cfg.Network, gameapi.NewRuntimeWithOptions(runtimeContracts, runtimeOptions))
 }
 

@@ -89,6 +89,7 @@ type NavigationConfig struct {
 
 type AIConfig struct {
 	StrictCreatureBehavior bool
+	CreatureRuntimeEnabled bool
 }
 
 type ValidationConfig struct {
@@ -207,6 +208,13 @@ func LoadConfig() (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	creatureRuntimeEnabled, err := getOptionalBool("CREATURE_RUNTIME_ENABLED", true)
+	if err != nil {
+		return nil, err
+	}
+	if hasArg("DisableCreatures") {
+		creatureRuntimeEnabled = false
+	}
 	movementValidation, err := getOptionalBool("MOVEMENT_VALIDATION", false)
 	if err != nil {
 		return nil, err
@@ -272,6 +280,7 @@ func LoadConfig() (*Config, error) {
 		},
 		AI: AIConfig{
 			StrictCreatureBehavior: strictCreatureBehavior,
+			CreatureRuntimeEnabled: creatureRuntimeEnabled,
 		},
 		Validation: ValidationConfig{
 			MovementValidation: movementValidation,

@@ -48,6 +48,7 @@ type Runtime struct {
 
 type RuntimeOptions struct {
 	MovementValidation bool
+	DisableCreatures   bool
 }
 
 type sessionState struct {
@@ -226,7 +227,7 @@ func (r *Runtime) AttachPlayer(ctx context.Context, req *gamev1.AttachPlayerRequ
 	}
 
 	player := r.ensurePlayerLocked(playerID)
-	if !r.options.MovementValidation {
+	if r.creaturesEnabled() {
 		r.ensureWolfLocked(player)
 	}
 
@@ -246,7 +247,7 @@ func (r *Runtime) GetSnapshot(ctx context.Context, req *gamev1.SnapshotRequest) 
 	defer r.mu.Unlock()
 
 	r.tick++
-	if !r.options.MovementValidation {
+	if r.creaturesEnabled() {
 		r.updateCreaturePoliciesLocked()
 	}
 	r.refreshActionRuntimeStatesLocked(time.Now())
@@ -282,6 +283,11 @@ func (r *Runtime) SubmitCommand(ctx context.Context, cmd *gamev1.PlayerCommand) 
 	if cmd.GetType() == gamev1.CommandType_COMMAND_TYPE_CAST_SKILL {
 		if reason, locked := r.skillActionLockedLocked(player); locked {
 			ack := r.ackLocked(cmd, player, false, "action_locked", reason)
+			r.queueAckLocked(cmd.GetContext().GetSessionId(), ack)
+			return ack, nil
+		}
+		if r.isBasicAttackCommandLockedByCombatMode(player, cmd) {
+			ack := r.ackLocked(cmd, player, false, "empty_skill_slot", "basic attack is not assigned to the active combat mode")
 			r.queueAckLocked(cmd.GetContext().GetSessionId(), ack)
 			return ack, nil
 		}
@@ -632,6 +638,25 @@ func (r *Runtime) playerForCommandLocked(cmd *gamev1.PlayerCommand) *entityState
 	return nil
 }
 
+func (r *Runtime) creaturesEnabled() bool {
+	return !r.options.MovementValidation && !r.options.DisableCreatures
+}
+
+func (r *Runtime) isBasicAttackCommandLockedByCombatMode(player *entityState, cmd *gamev1.PlayerCommand) bool {
+	if player == nil || cmd.GetCastSkill() == nil {
+		return false
+	}
+	skillID := cmd.GetCastSkill().GetSkillId()
+	if skillID != "" && skillID != "player_basic_attack" && !strings.HasPrefix(skillID, "player_basic_attack_") {
+		return false
+	}
+	activeMode := swordShieldBulwarkModeID
+	if player.combatMode != nil {
+		activeMode = player.combatMode.GetActiveCombatMode()
+	}
+	return !isBulwarkCombatMode(activeMode)
+}
+
 func (r *Runtime) applyMove(player *entityState, cmd *gamev1.PlayerCommand) {
 	if r.advanceActionMotionLocked(player, time.Now()) {
 		if player.actionMotion != nil && blocksNormalInputDuringOwnedRoot(player.actionMotion.NormalInputPolicy) {
@@ -744,17 +769,38 @@ func (r *Runtime) applyImpulse(player *entityState, cmd *gamev1.PlayerCommand, c
 		}
 	}
 	start := player.position
-	motion := movement.ResolveActionMotion(movement.ActionMotionInput{
+	fullMotion := movement.ResolveActionMotion(movement.ActionMotionInput{
 		Position:           toDomainVector(player.position),
 		Direction:          toDomainVector(dir),
 		Contract:           contract,
 		FallbackDistanceCM: fallbackDistanceCM,
 	})
-	player.position = fromDomainVector(motion.Projected)
-	player.velocity = fromDomainVector(motion.Velocity)
+	progress := movement.ResolveActionMotionProgress(movement.ActionMotionProgressInput{
+		Position:           toDomainVector(start),
+		Direction:          toDomainVector(dir),
+		Contract:           contract,
+		FallbackDistanceCM: fullMotion.DistanceCM,
+		Elapsed:            0,
+	})
+	player.actionMotion = &actionMotionState{
+		CommandID:         cmd.GetCommandId(),
+		Sequence:          cmd.GetSequence(),
+		ClientTick:        cmd.GetClientTick(),
+		StartedAt:         time.Now(),
+		StartPosition:     start,
+		ProjectedPosition: fromDomainVector(fullMotion.Projected),
+		Direction:         dir,
+		Contract:          contract,
+		NormalInputPolicy: "blocked_during_owned_root",
+		TotalDistanceCM:   fullMotion.DistanceCM,
+	}
+	player.position = start
+	player.velocity = fromDomainVector(progress.Velocity)
 	player.movementState = contract.ActionType
 	player.skillState = contract.AbilityKey
-	player.locomotion = locomotionFromContractWithOverrides(contract, "active", start, player.position, r.tick, cmd.GetSequence(), motion.SpeedCMPerSecond, motion.DistanceCM)
+	player.locomotion = locomotionFromContractWithOverrides(contract, "active", start, player.position, r.tick, cmd.GetSequence(), fullMotion.SpeedCMPerSecond, progress.DistanceCM)
+	player.locomotion.ActionDistanceTraveled = progress.DistanceCM
+	player.locomotion.ActionProjectedPosition = toProto(fromDomainVector(fullMotion.Projected))
 
 	lockMS := contract.DurationMS
 	if lockMS <= 0 {
@@ -864,8 +910,9 @@ func (r *Runtime) applyDefense(player *entityState, cmd *gamev1.PlayerCommand) {
 func (r *Runtime) applyCombatMode(player *entityState, cmd *gamev1.PlayerCommand) {
 	mode := cmd.GetSwitchCombatMode().GetTargetCombatModeId()
 	if mode == "" {
-		mode = "mode_sword_shield_bulwark"
+		mode = swordShieldBulwarkModeID
 	}
+	mode = normalizeCombatModeID(mode)
 	player.combatMode = swordShieldCombatMode(mode, r.contracts.CombatModes)
 }
 
@@ -1191,6 +1238,10 @@ func movementCurveSamplesToProto(samples []movement.MovementActionCurvePoint) []
 }
 
 func swordShieldCombatMode(active string, slots []*gamev1.CombatModeSlot) *gamev1.CombatModeState {
+	active = normalizeCombatModeID(active)
+	if active == "" {
+		active = swordShieldBulwarkModeID
+	}
 	return &gamev1.CombatModeState{
 		WeaponCombinationId: "sword_shield",
 		ActiveCombatMode:    active,

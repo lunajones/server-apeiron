@@ -70,11 +70,14 @@ func TestLoadRuntimeContractsFromDBUsesRequiredSkillBindings(t *testing.T) {
 			t.Fatalf("%s base action contract id = %q", action.abilityKey, contracts.ActionContracts[action.abilityKey].ID)
 		}
 	}
-	if !hasCombatModeSlot(contracts.CombatModes, "mode_sword_shield_bulwark", 4, "player_shield_rush") {
+	if !hasCombatModeSlot(contracts.CombatModes, "mode_sword_shield_bulwark", 3, "player_shield_rush") {
 		t.Fatalf("DB combat mode slots did not load Bulwark F -> Shield Rush: %#v", contracts.CombatModes)
 	}
-	if hasCombatModeSlot(contracts.CombatModes, "mode_sword_shield_vanguard", 3, "player_shield_bash") {
+	if hasCombatModeSlot(contracts.CombatModes, "mode_sword_shield_vanguard", 2, "player_shield_bash") {
 		t.Fatalf("Vanguard must not inherit Bulwark R skill from fallback")
+	}
+	if hasCombatModeSlot(contracts.CombatModes, "mode_sword_shield_vanguard", 1, "player_basic_attack_1") {
+		t.Fatalf("Vanguard must not expose M1 until sword-forward skills are implemented")
 	}
 }
 
@@ -221,7 +224,7 @@ func (fakeRuntimeContractSource) GetWeaponCombatModeSlots(context.Context, *dbv1
 	return &dbv1.WeaponCombatModeSlotsResponse{
 		Found: true,
 		Slots: []*dbv1.WeaponCombatModeSlot{
-			{CombatModeId: "mode_sword_shield_vanguard", InputSlot: "M1", SkillId: "player_basic_attack_1", IsBasicAttack: true, IsEnabled: true},
+			{CombatModeId: "mode_sword_shield_vanguard", InputSlot: "M1", IsBasicAttack: false, IsEnabled: false},
 			{CombatModeId: "mode_sword_shield_vanguard", InputSlot: "Q", IsEnabled: false},
 			{CombatModeId: "mode_sword_shield_vanguard", InputSlot: "R", IsEnabled: false},
 			{CombatModeId: "mode_sword_shield_vanguard", InputSlot: "F", IsEnabled: false},
