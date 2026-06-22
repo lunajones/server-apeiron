@@ -181,6 +181,7 @@ func (r *Runtime) GetSnapshot(ctx context.Context, req *gamev1.SnapshotRequest) 
 	defer r.mu.Unlock()
 
 	r.tick++
+	r.updateCreaturePoliciesLocked()
 	out := &gamev1.SnapshotResponse{
 		Tick:        r.serverTickLocked(),
 		Region:      regionRef(),
@@ -333,6 +334,111 @@ func (r *Runtime) ensureWolfLocked(player *entityState) *entityState {
 	}
 	r.entities[wolf.id] = wolf
 	return wolf
+}
+
+func (r *Runtime) updateCreaturePoliciesLocked() {
+	var player *entityState
+	for _, candidate := range r.players {
+		player = candidate
+		break
+	}
+	if player == nil {
+		return
+	}
+	for _, creature := range r.entities {
+		if creature.entityType != "creature" || creature.templateID != "steppe_wolf" {
+			continue
+		}
+		r.updateWolfPolicyLocked(creature, player)
+	}
+}
+
+func (r *Runtime) updateWolfPolicyLocked(wolf *entityState, player *entityState) {
+	toPlayer := normalize(vector{x: player.position.x - wolf.position.x, y: player.position.y - wolf.position.y})
+	if toPlayer == (vector{}) {
+		toPlayer = vector{x: -1}
+	}
+	right := vector{x: -toPlayer.y, y: toPlayer.x}
+	rangeCM := distance(wolf.position, player.position)
+	start := wolf.position
+
+	phaseTick := r.tick % 240
+	action := "orbit"
+	selectedSkill := "bite"
+	speed := 360.0
+	moveDir := right
+
+	switch {
+	case rangeCM > 760:
+		action = "chase"
+		selectedSkill = "lunge"
+		speed = 620
+		moveDir = toPlayer
+	case phaseTick >= 72 && phaseTick < 92 && rangeCM > 220:
+		action = "lunge"
+		selectedSkill = "lunge"
+		speed = 760
+		moveDir = toPlayer
+	case phaseTick >= 150 && phaseTick < 166 && rangeCM < 260:
+		action = "maul"
+		selectedSkill = "maul"
+		speed = 420
+		moveDir = right
+	case rangeCM < 130:
+		action = "retreat"
+		selectedSkill = "wolf_dodge"
+		speed = 520
+		moveDir = scale(toPlayer, -1)
+	}
+
+	step := scale(normalize(moveDir), speed/float64(tickRate))
+	wolf.position = add(wolf.position, step)
+	wolf.velocity = scale(normalize(moveDir), speed)
+	wolf.yaw = vectorYaw(toPlayer)
+	wolf.movementState = action
+	wolf.skillState = selectedSkill
+	wolf.locomotion = locomotion("grounded", action, selectedSkill, "active", creatureReconciliation(action), start, wolf.position, r.tick, 0)
+	wolf.locomotion.TargetSpeed = speed
+	wolf.locomotion.EffectiveSpeed = speed
+	wolf.locomotion.ActionDistanceTraveled = length(step)
+	wolf.creatureAI = &gamev1.CreatureAIState{
+		MovementTactic:                        "flank",
+		CombatTactic:                          "harass",
+		Commitment:                            "probing",
+		CapabilityId:                          "wolf_pack_harasser",
+		ContractId:                            "contract_wolf_pack_harasser_v1",
+		ContractHash:                          "contract_wolf_pack_harasser_v1",
+		OrbitSide:                             "left",
+		LastReason:                            "recovered_runtime_policy",
+		TacticalDestination:                   toProto(add(wolf.position, scale(moveDir, 180))),
+		BehaviorFamily:                        "beast_harasser",
+		CombatRole:                            "duelist",
+		DecisionScore:                         0.72,
+		DesiredRangeCm:                        420,
+		ActualRangeCm:                         rangeCM,
+		PathState:                             "direct",
+		LosState:                              "clear",
+		SelectedSkillId:                       selectedSkill,
+		ProfileSource:                         "db_contract_recovery_pending",
+		SkillMovementArcHeightCm:              120,
+		SkillMovementArcCurve:                 "low_fast",
+		SkillMovementTakeoffMs:                140,
+		SkillMovementLandingLockMs:            120,
+		SkillWindupMs:                         3600,
+		SkillActiveStartMs:                    3600,
+		SkillActiveEndMs:                      4030,
+		SkillRecoveryMs:                       500,
+		SkillActionLockMs:                     4530,
+		SkillMovementType:                     "leap",
+		SkillMovementStartMs:                  3600,
+		SkillMovementDurationMs:               980,
+		SkillMovementDistanceCm:               620,
+		SkillMovementDesiredLandingDistanceCm: 760,
+		SkillMovementMinLandingDistanceCm:     180,
+		SkillMovementStopAtContactRatio:       1,
+	}
+	now := time.Now().UnixMilli()
+	wolf.skillRuntime = &gamev1.SkillRuntimeState{CurrentSkillId: selectedSkill, State: action, StartedAtMs: now, LastResolvedAtMs: now}
 }
 
 func (r *Runtime) playerForCommandLocked(cmd *gamev1.PlayerCommand) *entityState {
@@ -760,4 +866,21 @@ func scale(v vector, amount float64) vector {
 func yawVector(yaw float64) vector {
 	radians := yaw * math.Pi / 180
 	return vector{x: math.Cos(radians), y: math.Sin(radians)}
+}
+
+func vectorYaw(v vector) float64 {
+	return math.Atan2(v.y, v.x) * 180 / math.Pi
+}
+
+func creatureReconciliation(action string) string {
+	switch action {
+	case "lunge":
+		return "leap_reconciliation"
+	case "maul":
+		return "grounded_skill_action_reconciliation"
+	case "retreat":
+		return "dodge_reconciliation"
+	default:
+		return "grounded_move_reconciliation"
+	}
 }
