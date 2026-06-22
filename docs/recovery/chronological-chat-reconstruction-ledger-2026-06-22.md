@@ -142,3 +142,70 @@ Recovered judgment at the time:
   - predicted position is preserved/available
   - predicted position does not drive authoritative movement
 - Snapshot/ack proto surface should eventually expose structured `last_processed_input_sequence` and correction info instead of relying only on metadata/stats.
+
+## Map / World Pipeline Thread Extracts
+
+Source thread: `019e808b-ac89-77d0-b9a0-08f669796584`
+
+### Unreal Map Is Not Server Data By Itself
+
+Recovered facts:
+
+- The Unreal landscape/lighting/map visual can be used as the player-facing level, but the game server only understands exported authoritative data.
+- Server-side map inputs were described as:
+  - `world_package.json`
+  - `navmesh.json`
+  - spawn zones
+  - safe zones
+  - biomes
+  - static/dynamic blockers
+  - offmesh links
+  - player spawn points
+  - gameplay volumes
+- Unreal authoring convention suggested:
+  - `SafeZone_*`
+  - `SpawnZone_*`
+  - `Biome_*`
+  - `Blocker_*`
+  - `NavArea_*`
+  - `OffMeshLink_*`
+  - `PlayerSpawn_*`
+  - `BossArena_*`
+  - `POI_*`
+- Anything that affects server gameplay needs stable exported IDs, transforms, sizes, flags, and type metadata. Visual-only meshes do not block server movement.
+
+### Runtime Startup And DB Integration
+
+Recovered facts:
+
+- `server-apeiron` historically loaded `plain_test_map` and connected to `db-apeiron`.
+- Startup validation expected logs like:
+  - connected to DB at `127.0.0.1:50051`
+  - static data warmup finished
+  - region package loaded
+  - region activated
+  - navmesh loaded
+  - fixed tick loop started
+- Multiple stale `db-api` processes caused mismatched proto/cache behavior in the past. When runtime data looks impossible, verify only one current DB API process is serving `50051`.
+- `WORLD_STARTUP_LOAD_ENABLED` and `NAVMESH_STARTUP_LOAD_ENABLED` controlled automatic world/navmesh load; otherwise an admin operation could load them.
+
+### Movement/Nav AAA Review From Map Thread
+
+Recovered findings:
+
+- Current movement was considered a good server-authoritative playable base, not full AAA at that time.
+- Known runtime gaps:
+  - body block policies named allies/enemies did not yet distinguish relation/faction in the hot path
+  - slope and step-height existed in contracts but were not fully applied in resolver/grounding
+  - blockers exported from Unreal needed to enter authoritative movement collision, not remain only in files
+  - collision/nav validation was based on candidate final position, not swept capsule/capsule cast
+  - leap/jump was still mostly horizontal/2D ability movement, not full vertical physics with landing/ledge/grounding
+  - anti-cheat existed as separate validators but needed to be proven plugged into the primary movement path
+- `plain_test_map` had minimal exported data at that time, with empty blockers/safe/offmesh arrays.
+- A spawn-zone issue existed where `spawn_prey_01` could spawn `steppe_wolf` because allowed tags/archetypes included `prey` and `beast`; proper prey testing needs prey-only zone or a real prey template.
+
+## World Reconstruction Implications
+
+- Restore DB/server world services around authoritative exported world data, not visual Unreal assets.
+- World service should expose region/package/spawn-zone/biome data currently present in repositories or SQL.
+- Movement reconstruction must eventually wire static blockers and nav metadata into runtime collision; merely restoring world rows is not enough for AAA movement.

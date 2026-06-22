@@ -151,7 +151,7 @@ Restore or reconstruct:
 - `SkillDataService` - restored 2026-06-22 for core skill, skill set, loadout, hitbox profile, and impact profile reads.
 - `ProfileDataService` - restored 2026-06-22 for movement profile and combat core profile reads.
 - `SkillDataService.GetSkillMovementEffect` - restored 2026-06-22 as compatibility endpoint keyed by `skill_id`, matching the recovered `lunge -> leap_default` contract from the DB thread.
-- `WorldDataService`
+- `WorldDataService` - restored 2026-06-22 for region, biome, and spawn-zone reads from the existing world repository/cache.
 - `PlayerDataService`
 - `InventoryDataService`
 - `ObservabilityService`
@@ -163,7 +163,8 @@ Restore or reconstruct:
 - DB `go test ./...` and server `go test ./...` both pass after regeneration.
 - `CreatureDataService` handler was restored and registered after this note, using the template cache and deriving runtime profile IDs from the template.
 - `GetSkillMovementEffect(skill_id)` was restored after chronological chat extraction showed this endpoint was the historical fix for wolf lunge movement. It returns DB `skill_movement_effect` rows by `skill_id` and maps them to `SkillMovementProfile` without inventing missing contract numbers.
-- Remaining gap: `World/Player/Inventory/Observability` services are still absent.
+- `WorldDataService` was restored after the map/world chat extraction confirmed the server needs authoritative exported world data, not visual Unreal assets.
+- Remaining gap: `Player/Inventory/Observability` services are still absent.
 - Remaining movement gap: this restored legacy endpoint is not the final skill movement contract model; Phase 4/6 still need the named movement action contract and temporal hitbox contract services reconstructed.
 
 Use repository structs and current bootstrap/migrations as the source. Do not invent fields that are not in SQL or recovered runtime facts.
