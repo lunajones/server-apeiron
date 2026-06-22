@@ -7,10 +7,23 @@ type RuntimeActionContract struct {
 	AbilityKey               string
 	ActionType               string
 	DurationMS               int32
+	AirborneDurationMS       int32
 	ActiveMS                 int32
 	RecoveryMS               int32
 	DistanceCM               float64
 	BaseSpeedCMS             float64
+	SpeedCurveID             string
+	SpeedCurveSamples        []MovementActionCurvePoint
+	VerticalCurveSamples     []MovementActionCurvePoint
+	JumpZVelocity            float64
+	GravityScale             float64
+	ExpectedApexMS           int32
+	LandingDetectionPolicy   string
+	GroundZPolicy            string
+	CapsuleBaseOffset        float64
+	AllowsAirControl         bool
+	AirControlModifier       float64
+	YawRateDegPerSec         float64
 	ReconciliationContractID string
 	ReconciliationCategory   string
 	PhaseWindowPolicy        string

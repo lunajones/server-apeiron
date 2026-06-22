@@ -3399,6 +3399,10 @@ type MovementReconciliationProfile struct {
 	MovementTurnResubmitMinIntervalMs int32                  `protobuf:"varint,48,opt,name=movement_turn_resubmit_min_interval_ms,json=movementTurnResubmitMinIntervalMs,proto3" json:"movement_turn_resubmit_min_interval_ms,omitempty"`
 	MovementSubmitIntervalMs          int32                  `protobuf:"varint,49,opt,name=movement_submit_interval_ms,json=movementSubmitIntervalMs,proto3" json:"movement_submit_interval_ms,omitempty"`
 	SnapshotPollIntervalMs            int32                  `protobuf:"varint,50,opt,name=snapshot_poll_interval_ms,json=snapshotPollIntervalMs,proto3" json:"snapshot_poll_interval_ms,omitempty"`
+	StrafeSpeedMultiplier             float64                `protobuf:"fixed64,51,opt,name=strafe_speed_multiplier,json=strafeSpeedMultiplier,proto3" json:"strafe_speed_multiplier,omitempty"`
+	BackpedalSpeedMultiplier          float64                `protobuf:"fixed64,52,opt,name=backpedal_speed_multiplier,json=backpedalSpeedMultiplier,proto3" json:"backpedal_speed_multiplier,omitempty"`
+	StrafeSprintSpeedMultiplier       float64                `protobuf:"fixed64,53,opt,name=strafe_sprint_speed_multiplier,json=strafeSprintSpeedMultiplier,proto3" json:"strafe_sprint_speed_multiplier,omitempty"`
+	BackpedalSprintSpeedMultiplier    float64                `protobuf:"fixed64,54,opt,name=backpedal_sprint_speed_multiplier,json=backpedalSprintSpeedMultiplier,proto3" json:"backpedal_sprint_speed_multiplier,omitempty"`
 	unknownFields                     protoimpl.UnknownFields
 	sizeCache                         protoimpl.SizeCache
 }
@@ -3779,6 +3783,34 @@ func (x *MovementReconciliationProfile) GetMovementSubmitIntervalMs() int32 {
 func (x *MovementReconciliationProfile) GetSnapshotPollIntervalMs() int32 {
 	if x != nil {
 		return x.SnapshotPollIntervalMs
+	}
+	return 0
+}
+
+func (x *MovementReconciliationProfile) GetStrafeSpeedMultiplier() float64 {
+	if x != nil {
+		return x.StrafeSpeedMultiplier
+	}
+	return 0
+}
+
+func (x *MovementReconciliationProfile) GetBackpedalSpeedMultiplier() float64 {
+	if x != nil {
+		return x.BackpedalSpeedMultiplier
+	}
+	return 0
+}
+
+func (x *MovementReconciliationProfile) GetStrafeSprintSpeedMultiplier() float64 {
+	if x != nil {
+		return x.StrafeSprintSpeedMultiplier
+	}
+	return 0
+}
+
+func (x *MovementReconciliationProfile) GetBackpedalSprintSpeedMultiplier() float64 {
+	if x != nil {
+		return x.BackpedalSprintSpeedMultiplier
 	}
 	return 0
 }
@@ -4958,7 +4990,7 @@ const file_proto_apeiron_game_v1_game_proto_rawDesc = "" +
 	"\x10contract_version\x18\x05 \x01(\tR\x0fcontractVersion\x12#\n" +
 	"\rcontract_hash\x18\x06 \x01(\tR\fcontractHash\x12'\n" +
 	"\x0faction_priority\x18\a \x01(\x05R\x0eactionPriority\x12\x18\n" +
-	"\aenabled\x18\b \x01(\bR\aenabled\"\xf9\x15\n" +
+	"\aenabled\x18\b \x01(\bR\aenabled\"\xff\x17\n" +
 	"\x1dMovementReconciliationProfile\x12\x1d\n" +
 	"\n" +
 	"profile_id\x18\x01 \x01(\tR\tprofileId\x12\x1b\n" +
@@ -5013,7 +5045,11 @@ const file_proto_apeiron_game_v1_game_proto_rawDesc = "" +
 	"$movement_turn_resubmit_dot_threshold\x18/ \x01(\x01R movementTurnResubmitDotThreshold\x12Q\n" +
 	"&movement_turn_resubmit_min_interval_ms\x180 \x01(\x05R!movementTurnResubmitMinIntervalMs\x12=\n" +
 	"\x1bmovement_submit_interval_ms\x181 \x01(\x05R\x18movementSubmitIntervalMs\x129\n" +
-	"\x19snapshot_poll_interval_ms\x182 \x01(\x05R\x16snapshotPollIntervalMs\"\x8a\x01\n" +
+	"\x19snapshot_poll_interval_ms\x182 \x01(\x05R\x16snapshotPollIntervalMs\x126\n" +
+	"\x17strafe_speed_multiplier\x183 \x01(\x01R\x15strafeSpeedMultiplier\x12<\n" +
+	"\x1abackpedal_speed_multiplier\x184 \x01(\x01R\x18backpedalSpeedMultiplier\x12C\n" +
+	"\x1estrafe_sprint_speed_multiplier\x185 \x01(\x01R\x1bstrafeSprintSpeedMultiplier\x12I\n" +
+	"!backpedal_sprint_speed_multiplier\x186 \x01(\x01R\x1ebackpedalSprintSpeedMultiplier\"\x8a\x01\n" +
 	"\x0eCombatModeSlot\x12$\n" +
 	"\x0ecombat_mode_id\x18\x01 \x01(\tR\fcombatModeId\x12\x1d\n" +
 	"\n" +

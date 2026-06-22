@@ -19,6 +19,7 @@ type Config struct {
 	World      WorldConfig
 	Navigation NavigationConfig
 	AI         AIConfig
+	Validation ValidationConfig
 }
 
 type AppConfig struct {
@@ -88,6 +89,10 @@ type NavigationConfig struct {
 
 type AIConfig struct {
 	StrictCreatureBehavior bool
+}
+
+type ValidationConfig struct {
+	MovementValidation bool
 }
 
 func LoadConfig() (*Config, error) {
@@ -202,6 +207,13 @@ func LoadConfig() (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	movementValidation, err := getOptionalBool("MOVEMENT_VALIDATION", false)
+	if err != nil {
+		return nil, err
+	}
+	if hasArg("MovementValidation") {
+		movementValidation = true
+	}
 
 	return &Config{
 		App: AppConfig{
@@ -261,11 +273,25 @@ func LoadConfig() (*Config, error) {
 		AI: AIConfig{
 			StrictCreatureBehavior: strictCreatureBehavior,
 		},
+		Validation: ValidationConfig{
+			MovementValidation: movementValidation,
+		},
 	}, nil
 }
 
 func getEnv(key string) string {
 	return os.Getenv(key)
+}
+
+func hasArg(name string) bool {
+	needle := strings.ToLower(strings.TrimLeft(name, "-/"))
+	for _, arg := range os.Args[1:] {
+		normalized := strings.ToLower(strings.TrimLeft(strings.TrimSpace(arg), "-/"))
+		if normalized == needle {
+			return true
+		}
+	}
+	return false
 }
 
 func getInt(key string) (int, error) {

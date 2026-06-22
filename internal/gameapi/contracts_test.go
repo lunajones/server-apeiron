@@ -40,3 +40,19 @@ func TestWolfMaulPublishesSelectedSkillMovementContract(t *testing.T) {
 		t.Fatalf("maul action lock = %d", wolf.creatureAI.GetSkillActionLockMs())
 	}
 }
+
+func TestMovementValidationRuntimeDoesNotSpawnCreature(t *testing.T) {
+	runtime := NewRuntimeWithOptions(RecoveredRuntimeContracts(), RuntimeOptions{MovementValidation: true})
+	player := runtime.ensurePlayerLocked("local_player")
+	if player == nil {
+		t.Fatal("player was not created")
+	}
+	if runtime.spawnedCreatureCountLocked() != 0 {
+		t.Fatalf("spawned creature count = %d, want 0", runtime.spawnedCreatureCountLocked())
+	}
+
+	runtime.updateCreaturePoliciesLocked()
+	if runtime.spawnedCreatureCountLocked() != 0 {
+		t.Fatalf("movement validation runtime spawned creature after policy update: %d", runtime.spawnedCreatureCountLocked())
+	}
+}

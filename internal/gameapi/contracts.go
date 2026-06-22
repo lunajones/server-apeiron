@@ -2,6 +2,7 @@ package gameapi
 
 import (
 	"context"
+	"encoding/json"
 	"math"
 
 	dbv1 "db-apeiron/gen/apeiron/v1"
@@ -77,6 +78,20 @@ type WolfRuntimePolicy struct {
 	LungeArcHeightCM  float64
 	DodgeSkillID      string
 	EvasionChainCount int32
+}
+
+type movementActionContractMetadata struct {
+	AbilityKey             string  `json:"ability_key"`
+	AirborneDurationMS     int32   `json:"airborne_duration_ms"`
+	JumpZVelocity          float64 `json:"jump_z_velocity"`
+	GravityScale           float64 `json:"gravity_scale"`
+	ExpectedApexMS         int32   `json:"expected_apex_ms"`
+	LandingDetectionPolicy string  `json:"landing_detection_policy"`
+	GroundZPolicy          string  `json:"ground_z_policy"`
+	CapsuleBaseOffset      float64 `json:"capsule_base_offset"`
+	AllowsAirControl       bool    `json:"allows_air_control"`
+	AirControlModifier     float64 `json:"air_control_modifier"`
+	YawRateDegPerSec       float64 `json:"yaw_rate_deg_per_sec"`
 }
 
 func LoadRuntimeContractsFromDB(ctx context.Context, skills ContractSource, profiles ProfileContractSource) RuntimeContracts {
@@ -405,15 +420,33 @@ func runtimeContractFromDB(contract *dbv1.MovementActionContract, abilityKey str
 	if category == "" {
 		category = contract.GetReconciliationContractId()
 	}
+	meta := movementActionContractMetadata{}
+	_ = json.Unmarshal([]byte(contract.GetMetadataJson()), &meta)
+	yawRate := meta.YawRateDegPerSec
+	if yawRate <= 0 {
+		yawRate = contract.GetYawDegrees()
+	}
 	return MovementActionRuntimeContract{
 		ID:                       contract.GetId(),
 		AbilityKey:               abilityKey,
 		ActionType:               contract.GetActionType(),
 		DurationMS:               contract.GetDurationMs(),
+		AirborneDurationMS:       meta.AirborneDurationMS,
 		ActiveMS:                 contract.GetActiveMs(),
 		RecoveryMS:               contract.GetRecoveryMs(),
 		DistanceCM:               contract.GetDistanceCm(),
 		BaseSpeedCMS:             contract.GetBaseSpeedCmS(),
+		SpeedCurveSamples:        movementCurvePointsFromDB(contract.GetSpeedCurve()),
+		VerticalCurveSamples:     movementCurvePointsFromDB(contract.GetVerticalCurve()),
+		JumpZVelocity:            meta.JumpZVelocity,
+		GravityScale:             meta.GravityScale,
+		ExpectedApexMS:           meta.ExpectedApexMS,
+		LandingDetectionPolicy:   meta.LandingDetectionPolicy,
+		GroundZPolicy:            meta.GroundZPolicy,
+		CapsuleBaseOffset:        meta.CapsuleBaseOffset,
+		AllowsAirControl:         meta.AllowsAirControl,
+		AirControlModifier:       meta.AirControlModifier,
+		YawRateDegPerSec:         yawRate,
 		ReconciliationContractID: contract.GetReconciliationContractId(),
 		ReconciliationCategory:   category,
 		PhaseWindowPolicy:        contract.GetPhaseWindowPolicy(),
@@ -421,6 +454,23 @@ func runtimeContractFromDB(contract *dbv1.MovementActionContract, abilityKey str
 		RootMotionOwner:          contract.GetRootMotionOwner(),
 		ContactPolicy:            contract.GetContactPolicy(),
 	}
+}
+
+func movementCurvePointsFromDB(samples []*dbv1.MovementCurveSample) []movement.MovementActionCurvePoint {
+	if len(samples) == 0 {
+		return nil
+	}
+	out := make([]movement.MovementActionCurvePoint, 0, len(samples))
+	for _, sample := range samples {
+		if sample == nil {
+			continue
+		}
+		out = append(out, movement.MovementActionCurvePoint{
+			T:     sample.GetT(),
+			Value: sample.GetValue(),
+		})
+	}
+	return out
 }
 
 func recoveredMovementProfile() *gamev1.MovementReconciliationProfile {
@@ -469,12 +519,23 @@ func recoveredMovementProfile() *gamev1.MovementReconciliationProfile {
 		MovementTurnResubmitMinIntervalMs: 33,
 		MovementSubmitIntervalMs:          33,
 		SnapshotPollIntervalMs:            33,
+		StrafeSpeedMultiplier:             0.92,
+		BackpedalSpeedMultiplier:          0.65,
+		StrafeSprintSpeedMultiplier:       0.75,
+		BackpedalSprintSpeedMultiplier:    0.75,
 	}
 }
 
 func distanceFromContract(contract MovementActionRuntimeContract, fallback float64) float64 {
 	if math.Abs(contract.DistanceCM) > 0 {
 		return contract.DistanceCM
+	}
+	return fallback
+}
+
+func positiveOr(value, fallback float64) float64 {
+	if value > 0 {
+		return value
 	}
 	return fallback
 }

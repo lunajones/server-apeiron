@@ -209,6 +209,36 @@ Current source-of-truth order:
 - `server-apeiron`: `go test ./...`
 - `server-apeiron`: `go build ./cmd/game-server`
 
+# 2026-06-22 - Movement validation isolation and grounded skill identity slice
+
+## Finding
+
+The recovered movement validation script was still running against a live creature runtime. That made player rubberband validation ambiguous and caused the strict scanner to abort with `creature_placeholders=[1-9]`.
+
+The latest Unreal logs also showed grounded skill snapshots arriving as generic `action=grounded_skill` while the client tried to find a local movement contract for that generic action. That produced `prediction_blocked_missing_contract skill=grounded_skill` and could reintroduce visible pullback on basic attack, Shield Bash, and Shield Rush even though the real skill contracts existed.
+
+## Implemented
+
+- Added `gameapi.RuntimeOptions{MovementValidation}`.
+- Added `MOVEMENT_VALIDATION=true` and `-MovementValidation` config support.
+- In movement validation mode, `AttachPlayer` no longer spawns the wolf and snapshot ticks skip creature policy updates.
+- `RuntimeStats` now reports the real spawned creature count instead of a literal recovered placeholder count.
+- Added unit coverage proving movement validation runtime does not spawn creatures.
+- Updated Unreal reconciliation parsing to recognize server contract names such as `grounded_skill_action`, `grounded_skill`, and `post_action_handoff`.
+- Updated Unreal grounded skill reconciliation to resolve the effective skill key from `ability_key` when `action` is a generic grounded skill channel.
+
+## Validated
+
+- `server-apeiron`: `go test ./...`
+- `server-apeiron`: `go build ./cmd/game-server`
+- `PlainTestMapEditor`: C++ build passed.
+- `Scripts/test_movement_validation.ps1 -InputPlayback -TimeoutSeconds 240`: passed strict scan.
+- `Scripts/test_movement_validation.ps1 -FocusedInputPlayback -TimeoutSeconds 240`: passed strict scan.
+
+## Guardrail
+
+Do not weaken the rubberband scanner to make validation pass. If `PredictionDrift`, `RubberbandProbe`, command rejection, or missing contract signatures return, fix the authority/prediction contract path and rerun both automated suites.
+
 # 2026-06-22 - Temporal hitbox guard slice
 
 ## Implemented

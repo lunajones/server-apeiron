@@ -35,8 +35,11 @@ func Run(ctx context.Context, cfg *config.Config) error {
 		log.Warn().Str("source", runtimeContracts.Source).Msg("game runtime using recovered fallback contracts")
 	}
 
-	log.Info().Msg("game server bootstrap completed")
-	return gameapi.ServeRuntime(ctx, cfg.Network, gameapi.NewRuntimeWithContracts(runtimeContracts))
+	runtimeOptions := gameapi.RuntimeOptions{
+		MovementValidation: cfg.Validation.MovementValidation,
+	}
+	log.Info().Bool("movement_validation", runtimeOptions.MovementValidation).Msg("game server bootstrap completed")
+	return gameapi.ServeRuntime(ctx, cfg.Network, gameapi.NewRuntimeWithOptions(runtimeContracts, runtimeOptions))
 }
 
 func connectDBApeiron(ctx context.Context, cfg *config.Config) (*dbapeiron.Client, error) {

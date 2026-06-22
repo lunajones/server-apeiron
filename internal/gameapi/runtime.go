@@ -39,6 +39,11 @@ type Runtime struct {
 	acks      map[string][]*gamev1.CommandAck
 	nextID    uint64
 	contracts RuntimeContracts
+	options   RuntimeOptions
+}
+
+type RuntimeOptions struct {
+	MovementValidation bool
 }
 
 type sessionState struct {
@@ -119,6 +124,10 @@ func NewRuntime() *Runtime {
 }
 
 func NewRuntimeWithContracts(contracts RuntimeContracts) *Runtime {
+	return NewRuntimeWithOptions(contracts, RuntimeOptions{})
+}
+
+func NewRuntimeWithOptions(contracts RuntimeContracts, options RuntimeOptions) *Runtime {
 	if contracts.MovementProfile == nil {
 		contracts.MovementProfile = recoveredMovementProfile()
 	}
@@ -144,6 +153,7 @@ func NewRuntimeWithContracts(contracts RuntimeContracts) *Runtime {
 		acks:      make(map[string][]*gamev1.CommandAck),
 		nextID:    1000000,
 		contracts: contracts,
+		options:   options,
 	}
 }
 
@@ -190,7 +200,9 @@ func (r *Runtime) AttachPlayer(ctx context.Context, req *gamev1.AttachPlayerRequ
 	}
 
 	player := r.ensurePlayerLocked(playerID)
-	r.ensureWolfLocked(player)
+	if !r.options.MovementValidation {
+		r.ensureWolfLocked(player)
+	}
 
 	return &gamev1.AttachPlayerResponse{
 		Result:                         &gamev1.Result{Success: true, Code: "ok", Message: "player attached"},
@@ -208,7 +220,9 @@ func (r *Runtime) GetSnapshot(ctx context.Context, req *gamev1.SnapshotRequest) 
 	defer r.mu.Unlock()
 
 	r.tick++
-	r.updateCreaturePoliciesLocked()
+	if !r.options.MovementValidation {
+		r.updateCreaturePoliciesLocked()
+	}
 	out := &gamev1.SnapshotResponse{
 		Tick:        r.serverTickLocked(),
 		Region:      regionRef(),
@@ -279,8 +293,18 @@ func (r *Runtime) RuntimeStats(ctx context.Context, _ *gamev1.Empty) (*gamev1.Ru
 		AverageFrameMs:       0.2,
 		P95FrameMs:           0.5,
 		PhaseStatus:          map[string]string{"runtime": "recovered_in_memory"},
-		SpawnedCreatureCount: 1,
+		SpawnedCreatureCount: uint64(r.spawnedCreatureCountLocked()),
 	}, nil
+}
+
+func (r *Runtime) spawnedCreatureCountLocked() int {
+	count := 0
+	for _, entity := range r.entities {
+		if entity.entityType == "creature" {
+			count++
+		}
+	}
+	return count
 }
 
 func (r *Runtime) ensurePlayerLocked(playerID string) *entityState {
@@ -491,13 +515,11 @@ func (r *Runtime) applyMove(player *entityState, cmd *gamev1.PlayerCommand) {
 		player.locomotion = r.locomotion("grounded", "move_stop", "move", "recovery", player.position, player.position, cmd.GetSequence())
 		return
 	}
-	speed := 470.0
-	if move.GetSprint() {
-		speed = 690.0
-		if math.Abs(dir.x) > 0.20 && dir.y < 0.35 {
-			speed *= 0.75
-		}
+	facingYaw := player.yaw
+	if move.TargetYaw != nil {
+		facingYaw = move.GetTargetYaw()
 	}
+	speed := r.groundedMoveSpeed(move.GetSprint(), move.GetAnalogMagnitude(), dir, facingYaw)
 	step := scale(dir, speed/float64(tickRate))
 	start := player.position
 	player.position = add(player.position, step)
@@ -512,11 +534,58 @@ func (r *Runtime) applyMove(player *entityState, cmd *gamev1.PlayerCommand) {
 	player.locomotion.ActionDistanceTraveled = length(step)
 }
 
+func (r *Runtime) groundedMoveSpeed(sprint bool, analogMagnitude float64, dir vector, facingYaw float64) float64 {
+	profile := r.contracts.MovementProfile
+	if profile == nil {
+		profile = recoveredMovementProfile()
+	}
+	walkSpeed := positiveOr(profile.GetMaxSpeed(), recoveredMovementProfile().GetMaxSpeed())
+	sprintMultiplier := positiveOr(profile.GetSprintSpeedMultiplier(), recoveredMovementProfile().GetSprintSpeedMultiplier())
+	analog := math.Max(0, math.Min(1, analogMagnitude))
+	if analog <= 0 {
+		analog = 1
+	}
+	modeSpeed := walkSpeed
+	if sprint {
+		modeSpeed = walkSpeed * sprintMultiplier
+	}
+	requestedSpeed := modeSpeed * analog
+	if requestedSpeed <= 0 {
+		return 0
+	}
+
+	moveDir := normalize(vector{x: dir.x, y: dir.y})
+	facingDir := normalize(yawVector(facingYaw))
+	if moveDir == (vector{}) || facingDir == (vector{}) {
+		return requestedSpeed
+	}
+	dot := math.Max(-1, math.Min(1, moveDir.x*facingDir.x+moveDir.y*facingDir.y))
+	capMultiplier := 0.0
+	if dot <= -0.35 {
+		capMultiplier = positiveOr(profile.GetBackpedalSpeedMultiplier(), recoveredMovementProfile().GetBackpedalSpeedMultiplier())
+		if sprint {
+			capMultiplier = positiveOr(profile.GetBackpedalSprintSpeedMultiplier(), recoveredMovementProfile().GetBackpedalSprintSpeedMultiplier())
+		}
+	} else if dot < 0.50 {
+		capMultiplier = positiveOr(profile.GetStrafeSpeedMultiplier(), recoveredMovementProfile().GetStrafeSpeedMultiplier())
+		if sprint {
+			capMultiplier = positiveOr(profile.GetStrafeSprintSpeedMultiplier(), recoveredMovementProfile().GetStrafeSprintSpeedMultiplier())
+		}
+	}
+	if capMultiplier <= 0 {
+		return requestedSpeed
+	}
+	return math.Min(requestedSpeed, modeSpeed*capMultiplier*analog)
+}
+
 func (r *Runtime) applyTurn(player *entityState, cmd *gamev1.PlayerCommand) {
 	turn := cmd.GetTurn()
 	player.yaw = turn.GetTargetYaw()
-	player.locomotion = r.locomotion("grounded", "turn", "turn", "active", player.position, player.position, cmd.GetSequence())
+	if player.locomotion == nil {
+		player.locomotion = r.locomotion("grounded", "idle", "move", "recovery", player.position, player.position, cmd.GetSequence())
+	}
 	player.locomotion.AuthoritativeYaw = player.yaw
+	player.locomotion.LastUpdatedTick = r.tick
 }
 
 func (r *Runtime) applyImpulse(player *entityState, cmd *gamev1.PlayerCommand, contract MovementActionRuntimeContract, fallbackDistanceCM float64) {
@@ -528,10 +597,15 @@ func (r *Runtime) applyImpulse(player *entityState, cmd *gamev1.PlayerCommand, c
 		dir = normalize(fromProto(cmd.GetLeap().GetDirection()))
 	}
 	if dir == (vector{}) {
-		dir = yawVector(player.yaw)
+		if cmd.GetLeap() == nil {
+			dir = yawVector(player.yaw)
+		}
 	}
 	start := player.position
 	distanceCM := distanceFromContract(contract, fallbackDistanceCM)
+	if dir == (vector{}) {
+		distanceCM = 0
+	}
 	player.position = add(player.position, scale(dir, distanceCM))
 	player.velocity = scale(dir, distanceCM*float64(tickRate)/10)
 	player.movementState = contract.ActionType
@@ -721,8 +795,19 @@ func locomotionFromContract(contract MovementActionRuntimeContract, phase string
 		Phase:                   phase,
 		ReconciliationMode:      reconciliation,
 		DurationMs:              duration,
+		AirborneDurationMs:      contract.AirborneDurationMS,
 		ActiveMs:                active,
 		RecoveryMs:              recovery,
+		SpeedCurveSamples:       movementCurveSamplesToProto(contract.SpeedCurveSamples),
+		VerticalCurveSamples:    movementCurveSamplesToProto(contract.VerticalCurveSamples),
+		JumpZVelocity:           contract.JumpZVelocity,
+		GravityScale:            contract.GravityScale,
+		ExpectedApexMs:          contract.ExpectedApexMS,
+		LandingDetectionPolicy:  contract.LandingDetectionPolicy,
+		GroundZPolicy:           contract.GroundZPolicy,
+		CapsuleBaseOffset:       contract.CapsuleBaseOffset,
+		AllowsAirControl:        contract.AllowsAirControl,
+		AirControlModifier:      contract.AirControlModifier,
 		ContractVersion:         "movement_action_v1",
 		ContractHash:            contractHash(contract),
 		PhaseWindowPolicy:       phasePolicy,
@@ -737,8 +822,26 @@ func locomotionFromContract(contract MovementActionRuntimeContract, phase string
 		ActionStartedTick:       tick,
 		ActionStartPosition:     toProto(start),
 		ActionProjectedPosition: toProto(projected),
+		ActionDistanceTraveled:  contract.DistanceCM,
+		TargetSpeed:             contract.BaseSpeedCMS,
+		EffectiveSpeed:          contract.BaseSpeedCMS,
+		YawRate:                 contract.YawRateDegPerSec,
 		LastUpdatedTick:         tick,
 	}
+}
+
+func movementCurveSamplesToProto(samples []movement.MovementActionCurvePoint) []*gamev1.MovementCurveSample {
+	if len(samples) == 0 {
+		return nil
+	}
+	out := make([]*gamev1.MovementCurveSample, 0, len(samples))
+	for _, sample := range samples {
+		out = append(out, &gamev1.MovementCurveSample{
+			T:     sample.T,
+			Scale: sample.Value,
+		})
+	}
+	return out
 }
 
 func swordShieldCombatMode(active string, slots []*gamev1.CombatModeSlot) *gamev1.CombatModeState {

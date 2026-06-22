@@ -435,6 +435,10 @@ message MovementReconciliationProfile {
   int32 movement_turn_resubmit_min_interval_ms = 48;
   int32 movement_submit_interval_ms = 49;
   int32 snapshot_poll_interval_ms = 50;
+  double strafe_speed_multiplier = 51;
+  double backpedal_speed_multiplier = 52;
+  double strafe_sprint_speed_multiplier = 53;
+  double backpedal_sprint_speed_multiplier = 54;
 }
 
 message CombatModeSlot {
