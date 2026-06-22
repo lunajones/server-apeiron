@@ -5,11 +5,15 @@ import (
 	"fmt"
 	"math"
 	"net"
+	"strings"
 	"sync"
 	"time"
 
 	gamev1 "server-apeiron/gen/apeiron/game/v1"
+	"server-apeiron/internal/combat/actionruntime"
 	"server-apeiron/internal/config"
+	"server-apeiron/internal/domain/ids"
+	domainmath "server-apeiron/internal/domain/math"
 	"server-apeiron/internal/logging"
 	"server-apeiron/internal/movement"
 
@@ -78,6 +82,7 @@ type entityState struct {
 	lastClientTick uint64
 	locomotion     *gamev1.LocomotionState
 	skillRuntime   *gamev1.SkillRuntimeState
+	actionInstance *actionruntime.Instance
 	combatMode     *gamev1.CombatModeState
 	creatureAI     *gamev1.CreatureAIState
 }
@@ -223,6 +228,7 @@ func (r *Runtime) GetSnapshot(ctx context.Context, req *gamev1.SnapshotRequest) 
 	if !r.options.MovementValidation {
 		r.updateCreaturePoliciesLocked()
 	}
+	r.refreshActionRuntimeStatesLocked(time.Now())
 	out := &gamev1.SnapshotResponse{
 		Tick:        r.serverTickLocked(),
 		Region:      regionRef(),
@@ -444,18 +450,21 @@ func (r *Runtime) updateWolfPolicyLocked(wolf *entityState, player *entityState)
 	}
 
 	selectedRuntime := r.contracts.skillContract(selectedSkill)
-	step := scale(normalize(moveDir), speed/float64(tickRate))
-	wolf.position = add(wolf.position, step)
-	wolf.velocity = scale(normalize(moveDir), speed)
+	motion := movement.ResolveConstantStep(movement.ConstantStepInput{
+		Position:         toDomainVector(wolf.position),
+		Direction:        toDomainVector(moveDir),
+		SpeedCMPerSecond: speed,
+		TickRate:         tickRate,
+	})
+	wolf.position = fromDomainVector(motion.Projected)
+	wolf.velocity = fromDomainVector(motion.Velocity)
 	wolf.yaw = vectorYaw(toPlayer)
 	wolf.movementState = action
 	wolf.skillState = selectedSkill
-	wolf.locomotion = r.locomotion("grounded", action, selectedSkill, "active", start, wolf.position, 0)
-	wolf.locomotion.ReconciliationMode = creatureReconciliation(action)
-	wolf.locomotion.ContractHash = wolf.locomotion.ReconciliationMode
-	wolf.locomotion.TargetSpeed = speed
-	wolf.locomotion.EffectiveSpeed = speed
-	wolf.locomotion.ActionDistanceTraveled = length(step)
+	wolf.locomotion = locomotionFromContractWithOverrides(r.contracts.contractForAbility(selectedSkill), "active", start, wolf.position, r.tick, 0, motion.SpeedCMPerSecond, motion.DistanceCM)
+	wolf.locomotion.MovementMode = "grounded"
+	wolf.locomotion.Action = action
+	wolf.locomotion.AbilityKey = selectedSkill
 	wolf.creatureAI = &gamev1.CreatureAIState{
 		MovementTactic:                        "flank",
 		CombatTactic:                          "harass",
@@ -519,70 +528,53 @@ func (r *Runtime) applyMove(player *entityState, cmd *gamev1.PlayerCommand) {
 	if move.TargetYaw != nil {
 		facingYaw = move.GetTargetYaw()
 	}
-	speed := r.groundedMoveSpeed(move.GetSprint(), move.GetAnalogMagnitude(), dir, facingYaw)
-	step := scale(dir, speed/float64(tickRate))
+	motion := movement.ResolveGroundedMove(movement.GroundedMoveInput{
+		Position:        toDomainVector(player.position),
+		Direction:       toDomainVector(dir),
+		FacingYawDeg:    facingYaw,
+		AnalogMagnitude: move.GetAnalogMagnitude(),
+		Sprint:          move.GetSprint(),
+		TickRate:        tickRate,
+		Profile:         r.movementSpeedProfile(),
+	})
 	start := player.position
-	player.position = add(player.position, step)
-	player.velocity = scale(dir, speed)
+	player.position = fromDomainVector(motion.Projected)
+	player.velocity = fromDomainVector(motion.Velocity)
 	player.movementState = "moving"
 	if move.TargetYaw != nil {
 		player.yaw = move.GetTargetYaw()
 	}
-	player.locomotion = r.locomotion("grounded", "move", "move", "active", start, player.position, cmd.GetSequence())
-	player.locomotion.TargetSpeed = speed
-	player.locomotion.EffectiveSpeed = speed
-	player.locomotion.ActionDistanceTraveled = length(step)
+	player.locomotion = locomotionFromContractWithOverrides(r.contracts.contractForAbility("move"), "active", start, player.position, r.tick, cmd.GetSequence(), motion.SpeedCMPerSecond, motion.DistanceCM)
+	player.locomotion.MovementMode = "grounded"
+	player.locomotion.Action = "move"
+	player.locomotion.AbilityKey = "move"
 }
 
 func (r *Runtime) groundedMoveSpeed(sprint bool, analogMagnitude float64, dir vector, facingYaw float64) float64 {
+	return movement.GroundedMoveSpeed(r.movementSpeedProfile(), sprint, analogMagnitude, toDomainVector(dir), facingYaw)
+}
+
+func (r *Runtime) movementSpeedProfile() movement.SpeedProfile {
 	profile := r.contracts.MovementProfile
 	if profile == nil {
 		profile = recoveredMovementProfile()
 	}
-	walkSpeed := positiveOr(profile.GetMaxSpeed(), recoveredMovementProfile().GetMaxSpeed())
-	sprintMultiplier := positiveOr(profile.GetSprintSpeedMultiplier(), recoveredMovementProfile().GetSprintSpeedMultiplier())
-	analog := math.Max(0, math.Min(1, analogMagnitude))
-	if analog <= 0 {
-		analog = 1
+	recovered := recoveredMovementProfile()
+	return movement.SpeedProfile{
+		MaxSpeed:                       positiveOr(profile.GetMaxSpeed(), recovered.GetMaxSpeed()),
+		SprintSpeedMultiplier:          positiveOr(profile.GetSprintSpeedMultiplier(), recovered.GetSprintSpeedMultiplier()),
+		StrafeSpeedMultiplier:          positiveOr(profile.GetStrafeSpeedMultiplier(), recovered.GetStrafeSpeedMultiplier()),
+		BackpedalSpeedMultiplier:       positiveOr(profile.GetBackpedalSpeedMultiplier(), recovered.GetBackpedalSpeedMultiplier()),
+		StrafeSprintSpeedMultiplier:    positiveOr(profile.GetStrafeSprintSpeedMultiplier(), recovered.GetStrafeSprintSpeedMultiplier()),
+		BackpedalSprintSpeedMultiplier: positiveOr(profile.GetBackpedalSprintSpeedMultiplier(), recovered.GetBackpedalSprintSpeedMultiplier()),
 	}
-	modeSpeed := walkSpeed
-	if sprint {
-		modeSpeed = walkSpeed * sprintMultiplier
-	}
-	requestedSpeed := modeSpeed * analog
-	if requestedSpeed <= 0 {
-		return 0
-	}
-
-	moveDir := normalize(vector{x: dir.x, y: dir.y})
-	facingDir := normalize(yawVector(facingYaw))
-	if moveDir == (vector{}) || facingDir == (vector{}) {
-		return requestedSpeed
-	}
-	dot := math.Max(-1, math.Min(1, moveDir.x*facingDir.x+moveDir.y*facingDir.y))
-	capMultiplier := 0.0
-	if dot <= -0.35 {
-		capMultiplier = positiveOr(profile.GetBackpedalSpeedMultiplier(), recoveredMovementProfile().GetBackpedalSpeedMultiplier())
-		if sprint {
-			capMultiplier = positiveOr(profile.GetBackpedalSprintSpeedMultiplier(), recoveredMovementProfile().GetBackpedalSprintSpeedMultiplier())
-		}
-	} else if dot < 0.50 {
-		capMultiplier = positiveOr(profile.GetStrafeSpeedMultiplier(), recoveredMovementProfile().GetStrafeSpeedMultiplier())
-		if sprint {
-			capMultiplier = positiveOr(profile.GetStrafeSprintSpeedMultiplier(), recoveredMovementProfile().GetStrafeSprintSpeedMultiplier())
-		}
-	}
-	if capMultiplier <= 0 {
-		return requestedSpeed
-	}
-	return math.Min(requestedSpeed, modeSpeed*capMultiplier*analog)
 }
 
 func (r *Runtime) applyTurn(player *entityState, cmd *gamev1.PlayerCommand) {
 	turn := cmd.GetTurn()
 	player.yaw = turn.GetTargetYaw()
 	if player.locomotion == nil {
-		player.locomotion = r.locomotion("grounded", "idle", "move", "recovery", player.position, player.position, cmd.GetSequence())
+		player.locomotion = r.locomotion("grounded", "turn", "turn", "active", player.position, player.position, cmd.GetSequence())
 	}
 	player.locomotion.AuthoritativeYaw = player.yaw
 	player.locomotion.LastUpdatedTick = r.tick
@@ -602,18 +594,17 @@ func (r *Runtime) applyImpulse(player *entityState, cmd *gamev1.PlayerCommand, c
 		}
 	}
 	start := player.position
-	distanceCM := distanceFromContract(contract, fallbackDistanceCM)
-	if dir == (vector{}) {
-		distanceCM = 0
-	}
-	player.position = add(player.position, scale(dir, distanceCM))
-	player.velocity = scale(dir, distanceCM*float64(tickRate)/10)
+	motion := movement.ResolveActionMotion(movement.ActionMotionInput{
+		Position:           toDomainVector(player.position),
+		Direction:          toDomainVector(dir),
+		Contract:           contract,
+		FallbackDistanceCM: fallbackDistanceCM,
+	})
+	player.position = fromDomainVector(motion.Projected)
+	player.velocity = fromDomainVector(motion.Velocity)
 	player.movementState = contract.ActionType
 	player.skillState = contract.AbilityKey
-	player.locomotion = locomotionFromContract(contract, "active", start, player.position, r.tick, cmd.GetSequence())
-	player.locomotion.ActionDistanceTraveled = distanceCM
-	player.locomotion.TargetSpeed = length(player.velocity)
-	player.locomotion.EffectiveSpeed = player.locomotion.TargetSpeed
+	player.locomotion = locomotionFromContractWithOverrides(contract, "active", start, player.position, r.tick, cmd.GetSequence(), motion.SpeedCMPerSecond, motion.DistanceCM)
 }
 
 func (r *Runtime) applySkill(player *entityState, cmd *gamev1.PlayerCommand) {
@@ -627,18 +618,27 @@ func (r *Runtime) applySkill(player *entityState, cmd *gamev1.PlayerCommand) {
 		dir = yawVector(player.yaw)
 	}
 	skillContract := r.contracts.skillContract(skillID)
-	distanceCM := distanceFromContract(skillContract.MovementAction, 0)
 	start := player.position
-	player.position = add(player.position, scale(dir, distanceCM))
-	player.velocity = scale(dir, distanceCM*float64(tickRate)/12)
+	motion := movement.ResolveActionMotion(movement.ActionMotionInput{
+		Position:  toDomainVector(player.position),
+		Direction: toDomainVector(dir),
+		Contract:  skillContract.MovementAction,
+	})
+	player.position = fromDomainVector(motion.Projected)
+	player.velocity = fromDomainVector(motion.Velocity)
 	player.skillState = "active"
 	player.combatState = "committed"
-	player.locomotion = locomotionFromContract(skillContract.MovementAction, "active", start, player.position, r.tick, cmd.GetSequence())
-	player.locomotion.ActionDistanceTraveled = distanceCM
-	player.locomotion.TargetSpeed = length(player.velocity)
-	player.locomotion.EffectiveSpeed = player.locomotion.TargetSpeed
+	player.locomotion = locomotionFromContractWithOverrides(skillContract.MovementAction, "active", start, player.position, r.tick, cmd.GetSequence(), motion.SpeedCMPerSecond, motion.DistanceCM)
 	now := time.Now().UnixMilli()
-	player.skillRuntime = &gamev1.SkillRuntimeState{CurrentSkillId: skillID, State: "active", StartedAtMs: now, LastResolvedAtMs: now}
+	instance := r.newActionInstance(player, cmd, skillID, skillContract, start, time.UnixMilli(now))
+	player.actionInstance = &instance
+	player.skillRuntime = &gamev1.SkillRuntimeState{
+		CurrentSkillId:   skillID,
+		State:            string(instance.PhaseAt(time.UnixMilli(now))),
+		StartedAtMs:      now,
+		CooldownEndMs:    time.UnixMilli(now).Add(durationFromMS(skillContract.CooldownMS)).UnixMilli(),
+		LastResolvedAtMs: now,
+	}
 }
 
 func (r *Runtime) applyDefense(player *entityState, cmd *gamev1.PlayerCommand) {
@@ -661,6 +661,81 @@ func (r *Runtime) applyCombatMode(player *entityState, cmd *gamev1.PlayerCommand
 	player.combatMode = swordShieldCombatMode(mode, r.contracts.CombatModes)
 }
 
+func (r *Runtime) newActionInstance(player *entityState, cmd *gamev1.PlayerCommand, skillID string, contract SkillRuntimeContract, start vector, now time.Time) actionruntime.Instance {
+	timing := actionruntime.Timing{
+		Windup:     durationFromMS(contract.WindupMS),
+		Active:     durationFromMS(contract.ActiveMS),
+		Recovery:   durationFromMS(contract.RecoveryMS),
+		Cooldown:   durationFromMS(contract.CooldownMS),
+		ActionLock: durationFromMS(contract.WindupMS + contract.ActiveMS + contract.RecoveryMS),
+	}
+	actionKind := actionruntime.ActionKindActiveSkill
+	if strings.HasPrefix(skillID, "player_basic_attack_") {
+		actionKind = actionruntime.ActionKindWeaponBasic
+	}
+	return actionruntime.NewInstance(actionruntime.NewInstanceSpec{
+		InstanceID:           actionruntime.NewInstanceID(ids.RuntimeEntityID(player.id), skillID, cmd.GetCommandId(), cmd.GetSequence(), r.tick),
+		EntityID:             ids.RuntimeEntityID(player.id),
+		ActorKind:            actionruntime.ActorKindPlayer,
+		ActionKind:           actionKind,
+		SkillID:              ids.SkillID(skillID),
+		CommandID:            cmd.GetCommandId(),
+		CommandSequence:      cmd.GetSequence(),
+		ServerActionSequence: r.tick,
+		ClientTick:           cmd.GetClientTick(),
+		StartedAt:            now,
+		Timing:               timing,
+		Cooldown:             timing.Cooldown,
+		MovementContract:     movementActionContractForRuntime(contract.MovementAction),
+		HasMovementContract:  contract.MovementAction.ID != "",
+		ActionStartPosition:  toDomainVector(start),
+		MovementLockedUntil:  now.Add(timing.ActionLock),
+		GlobalLockedUntil:    now.Add(timing.Cooldown),
+		RecoveryEndsAt:       now.Add(timing.Windup + timing.Active + timing.Recovery),
+	})
+}
+
+func (r *Runtime) refreshActionRuntimeStatesLocked(now time.Time) {
+	for _, entity := range r.entities {
+		if entity.actionInstance == nil || entity.skillRuntime == nil {
+			continue
+		}
+		phase := entity.actionInstance.PhaseAt(now)
+		entity.skillRuntime.State = string(phase)
+		entity.skillRuntime.LastResolvedAtMs = now.UnixMilli()
+		if phase == actionruntime.PhaseComplete {
+			entity.skillState = "idle"
+			entity.combatState = "ready"
+			continue
+		}
+		entity.skillState = string(phase)
+	}
+}
+
+func movementActionContractForRuntime(contract MovementActionRuntimeContract) movement.MovementActionContract {
+	return movement.MovementActionContract{
+		ID:                    contract.ID,
+		MovementAction:        contract.ActionType,
+		MovementType:          contract.ActionType,
+		ReconciliationMode:    movement.ReconciliationMode(contract),
+		PredictionErrorPolicy: contract.PredictionErrorPolicy,
+		Enabled:               true,
+		DurationMS:            contract.DurationMS,
+		ActiveMS:              contract.ActiveMS,
+		RecoveryMS:            contract.RecoveryMS,
+		HorizontalDistanceCM:  contract.DistanceCM,
+		BaseSpeedCMPerSec:     contract.BaseSpeedCMS,
+		MovementMode:          "grounded",
+	}
+}
+
+func durationFromMS(ms int32) time.Duration {
+	if ms <= 0 {
+		return 0
+	}
+	return time.Duration(ms) * time.Millisecond
+}
+
 func (r *Runtime) ackLocked(cmd *gamev1.PlayerCommand, player *entityState, accepted bool, code string, message string) *gamev1.CommandAck {
 	metadata := map[string]string{
 		"command_type":      commandTypeName(cmd.GetType()),
@@ -671,12 +746,19 @@ func (r *Runtime) ackLocked(cmd *gamev1.PlayerCommand, player *entityState, acce
 		if player != nil && player.skillRuntime != nil && (skillID == "" || skillID == "player_basic_attack") {
 			skillID = player.skillRuntime.GetCurrentSkillId()
 		}
+		contract := r.contracts.contractForAbility(skillID)
 		metadata["skill_id"] = skillID
-		metadata["movement_action_type"] = "grounded_skill"
+		metadata["movement_action_type"] = contract.ActionType
 		metadata["ability_key"] = skillID
-		metadata["contract_hash"] = "grounded_skill_action_reconciliation"
-		metadata["movement_action_contract_hash"] = "grounded_skill_action_reconciliation"
+		metadata["movement_action_contract_id"] = contract.ID
+		metadata["contract_hash"] = contractHash(contract)
+		metadata["movement_action_contract_hash"] = contractHash(contract)
 		metadata["movement_action_contract_sync_state"] = "confirmed"
+		if player != nil && player.actionInstance != nil {
+			metadata["action_instance_id"] = player.actionInstance.InstanceID
+			metadata["action_phase"] = string(player.actionInstance.PhaseAt(time.Now()))
+			metadata["action_kind"] = string(player.actionInstance.ActionKind)
+		}
 	}
 	return &gamev1.CommandAck{
 		Accepted:      accepted,
@@ -756,7 +838,7 @@ func (r *Runtime) locomotion(mode, action, ability, phase string, start, project
 	if ability == "" {
 		contract = r.contracts.contractForAbility(action)
 	}
-	state := locomotionFromContract(contract, phase, start, projected, r.tick, sequence)
+	state := locomotionFromContractWithOverrides(contract, phase, start, projected, r.tick, sequence, 0, 0)
 	state.MovementMode = mode
 	state.Action = action
 	state.AbilityKey = ability
@@ -767,6 +849,18 @@ func (r *Runtime) locomotion(mode, action, ability, phase string, start, project
 // The gameapi runtime publishes what it returns and adds only the verbose wire-only
 // fields below; it must not compute reconciliation/timing/distance/speed on its own.
 var locomotionResolver = movement.NewResolver()
+
+func locomotionFromContractWithOverrides(contract MovementActionRuntimeContract, phase string, start, projected vector, tick uint64, sequence uint64, overrideTargetSpeedCMPerSec, overrideDistanceCM float64) *gamev1.LocomotionState {
+	state := locomotionFromContract(contract, phase, start, projected, tick, sequence)
+	if overrideDistanceCM > 0 {
+		state.ActionDistanceTraveled = overrideDistanceCM
+	}
+	if overrideTargetSpeedCMPerSec > 0 {
+		state.TargetSpeed = overrideTargetSpeedCMPerSec
+		state.EffectiveSpeed = overrideTargetSpeedCMPerSec
+	}
+	return state
+}
 
 func locomotionFromContract(contract MovementActionRuntimeContract, phase string, start, projected vector, tick uint64, sequence uint64) *gamev1.LocomotionState {
 	loco := locomotionResolver.ResolveRuntime(contract, phase)
@@ -897,6 +991,14 @@ func toProto(v vector) *gamev1.Vector3 {
 	return &gamev1.Vector3{X: v.x, Y: v.y, Z: v.z}
 }
 
+func toDomainVector(v vector) domainmath.Vec3 {
+	return domainmath.V3(v.x, v.y, v.z)
+}
+
+func fromDomainVector(v domainmath.Vec3) vector {
+	return vector{x: v.X, y: v.Y, z: v.Z}
+}
+
 func normalize(v vector) vector {
 	l := length(v)
 	if l <= 0.0001 {
@@ -928,17 +1030,4 @@ func yawVector(yaw float64) vector {
 
 func vectorYaw(v vector) float64 {
 	return math.Atan2(v.y, v.x) * 180 / math.Pi
-}
-
-func creatureReconciliation(action string) string {
-	switch action {
-	case "lunge":
-		return "leap_reconciliation"
-	case "maul":
-		return "grounded_skill_action_reconciliation"
-	case "retreat":
-		return "dodge_reconciliation"
-	default:
-		return "grounded_move_reconciliation"
-	}
 }

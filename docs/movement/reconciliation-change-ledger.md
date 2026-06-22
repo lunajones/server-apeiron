@@ -90,3 +90,55 @@ Normal gameplay server must run without movement validation enabled. Movement va
 - Dodge exit to movement.
 - Aggressive `Shift + W/A/D` curves with mouse yaw.
 - Creature lunge/maul/bite using the same action identity and contract publication language.
+
+## 2026-06-22 - Movement Kinematics Back Under Movement Package
+
+### Symptom
+
+Recovery code still had several runtime-local movement formulas:
+
+- grounded move computed speed/projection in `gameapi/runtime.go`;
+- dodge/leap used local distance fallback plus an arbitrary velocity divisor;
+- grounded skills used a separate velocity divisor;
+- wolf movement stepped inline in the creature policy loop.
+
+That shape can reintroduce exactly the old rubberband class: normal movement and skill movement look similar in snapshots but are not produced by the same movement authority.
+
+### Change
+
+- Added `internal/movement/kinematics.go`.
+- `ResolveGroundedMove` owns walk/run/strafe speed caps and one-tick projection.
+- `ResolveActionMotion` owns committed action distance/speed/projection for dodge, leap, basic attacks, Shield Bash, Shield Rush, and creature skills.
+- `ResolveConstantStep` owns simple creature step motion.
+- `gameapi/runtime.go` now applies those motion results instead of computing speed/distance/projection inline.
+- Added unit tests for directional caps, action speed derivation, and creature step movement.
+
+### Effect
+
+The exposed game runtime has fewer local movement producers. Movement package now owns both locomotion policy and the core kinematics used by the current gameapi path.
+
+### Guardrail
+
+Do not add new movement formulas to `gameapi/runtime.go` or combat systems. If a future skill needs different movement, add a movement contract/profile and resolver behavior in `internal/movement`, then publish it through the same `LocomotionState` fields.
+
+## 2026-06-22 - ActionInstance Restored In Game API Runtime
+
+### Symptom
+
+The recovered gameapi cast path created `SkillRuntimeState{State:"active"}` directly and ACK metadata did not carry a real action instance. That made the runtime look active, but not phase-owned.
+
+### Change
+
+- `entityState` now stores `combat/actionruntime.Instance`.
+- `applySkill` creates an action instance for basic attacks and active skills using DB/recovered timing.
+- `GetSnapshot` refreshes action phase and returns `complete/idle/ready` when the instance ends.
+- Cast ACK metadata now includes `action_instance_id`, `action_kind`, `action_phase`, `movement_action_contract_id`, and the real contract hash.
+- Added tests for ACK metadata and snapshot phase completion.
+
+### Effect
+
+The gameapi path now speaks the same action-instance language as the reconstructed combat runtime package, instead of inventing a one-word skill state.
+
+### Guardrail
+
+Future command gating must build on the action instance/channel model. Do not bring back ad hoc "locked" state strings or per-skill cooldown branches in the gameapi runtime.

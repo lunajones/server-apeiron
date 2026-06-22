@@ -225,7 +225,11 @@ Target: movement architecture returns to the post-rubberband AAA direction.
 - Reconstructed `internal/movement.ActionContractRegistry` as the first safe movement-owned contract authority.
 - `internal/gameapi` now delegates action ordering, action family, contract hash, and reconciliation-mode selection to `internal/movement` instead of duplicating those rules locally.
 - Added unit coverage for manifest ordering and movement-vs-skill classification.
-- This starts the architecture restoration, but does not yet restore the full historical post-action handoff, movement command dedupe, automated Unreal scanner, or all specialized reconciliation profiles.
+- Reconstructed `internal/movement.Resolver` as canonical locomotion field producer.
+- Reconstructed `internal/movement` kinematics for grounded move, committed action motion, and creature step motion.
+- `internal/gameapi/runtime.go` now delegates normal move, dodge/leap, grounded skill motion, and wolf constant-step motion to `internal/movement`; it only applies the returned position/velocity and serializes `LocomotionState`.
+- Added tests for movement directional caps, action-speed derivation from duration/base speed, creature step kinematics, aggressive sprint strafe/yaw inversion, repeated `W+Shift+M1`, action instance ACK metadata, and action completion in snapshot.
+- This advances the resolver ownership restoration, but does not yet restore the full historical post-action handoff, movement command dedupe, automated Unreal scanner, or all specialized reconciliation profiles.
 
 Restore or reconstruct:
 
@@ -314,6 +318,7 @@ Restore or reconstruct:
 - Added `wolf_maul_lateral_counter_v1` movement contract and bound `maul` to it.
 - Added `wolf_bite_melee_commit_v1` so bite also participates in action timing/contract publication instead of falling through generic defaults.
 - Updated reconstructed game runtime to load `maul` and publish selected creature skill movement fields from the selected skill contract instead of always using lunge values.
+- Added DB bootstrap guard tests for required player/wolf movement bindings, unimplemented Vanguard empty slots, Shield Rush half-cylinder/front-contact geometry, and wolf Maul counter runtime fragments.
 - Full creature brain remains incomplete: current in-memory wolf policy is still a recovery runtime, not the final policy/state-machine implementation.
 
 Done when:

@@ -16,20 +16,20 @@ Expected architecture:
 - Skill movement should be published through one movement-owned path.
 
 Current recovered code evidence:
-- `internal/movement/resolver.go` is missing.
-- `internal/movement` currently has contracts/types/timeline/registry, but no resolver that owns authoritative locomotion output.
+- `internal/movement/resolver.go` has been reconstructed and now owns the canonical locomotion field set.
+- `internal/movement/kinematics.go` now owns grounded move, committed action motion, and creature constant-step kinematics.
+- `internal/gameapi/runtime.go` now delegates normal move, dodge/leap, grounded skill movement, and wolf step motion to `internal/movement` instead of computing speed/distance/projection inline.
 - `internal/combat/player_skill_combat_system.go` still applies skill movement and calls `syncPendingPlayerSkillState`.
-- `internal/gameapi/runtime.go` also builds locomotion states directly for move/dodge/leap/skills.
+- `internal/gameapi/runtime.go` still serializes resolver output into `LocomotionState`; that is the wire boundary, not a second movement rule owner.
 
 Risk:
-- Multiple paths can still create or mutate locomotion state.
-- Rubberband fixes can regress because movement/action phases are not owned by one runtime.
+- `internal/combat/player_skill_combat_system.go` still needs a full ownership audit so it does not become a second runtime path for migrated player skills.
+- The current gameapi runtime is now safer, but the broader combat package still contains recovered fallback profile paths.
 
 Required reconstruction:
-- Rebuild a movement resolver/runtime package that owns locomotion state publication for normal movement, dodge, leap, turn, and skill movement.
-- Make combat emit intent/timeline only.
-- Delete or demote combat-side locomotion publishing once movement owns it.
-- Add tests for field parity listed above.
+- Continue migrating combat-side skill movement publication to the movement resolver.
+- Delete or demote combat-side locomotion publishing once movement owns the full non-vertical-slice path.
+- Keep and expand tests for field parity listed above.
 
 ### Recovered Runtime Fallback Is Still Production-Reachable
 
@@ -92,8 +92,9 @@ Expected:
 
 Current evidence:
 - `internal/movement/action_contract_registry.go` has reconciliation category/contract lookup.
+- `internal/combat/actionruntime.Instance` is now used by `internal/gameapi/runtime.go` for cast/basic action identity, phase, cooldown endpoint, and ACK metadata.
 - Unreal bridge consumes `action_channel` metadata.
-- No complete server runtime channel occupancy audit has been verified.
+- No complete server runtime channel occupancy/rejection audit has been verified.
 
 Required:
 - Audit command gates and action locks against formal channels.
@@ -174,4 +175,3 @@ Required:
 4. Reconnect basic attack/skill strict profile loading and remove final gameplay fallbacks.
 5. Audit `gameapi/runtime.go` versus combat/domain packages; decide whether it is a temporary vertical-slice runtime or the real server runtime.
 6. Run `go test ./...` in `server-apeiron` and `db-apeiron`, then Unreal build.
-
