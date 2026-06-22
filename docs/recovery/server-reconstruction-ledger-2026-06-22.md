@@ -220,3 +220,31 @@ Current source-of-truth order:
 - The currently running server is using `recovered_runtime_fallback` because `DB_APEIRON_ENDPOINT` is not configured in this shell.
 - Once `db-api` and Postgres are running with seeds applied, restart `game-server` with `DB_APEIRON_ENDPOINT=127.0.0.1:50051` to validate the DB-backed path.
 - This slice restores runtime shape and contract delivery; it does not prove the full historical combat implementation is completely recovered yet.
+
+# 2026-06-22 - Movement contract registry recovery slice
+
+## Recovery Source Audit
+
+`B:\ApeironRecoveredWorkspace_20260622_010210` and both WinFR server passes contain many files with valid historical names but corrupted contents. Examples include `.go` paths under `internal/ai`, `internal/combat`, and `internal/movement` containing VS Code extension grammar/package data plus NUL bytes instead of Go code.
+
+Because of that, missing recovered files must not be copied by path name. Recovery rule from this point:
+
+1. Accept recovered source only when it has no NUL bytes, contains the expected language header, and passes the language parser.
+2. Prefer the current git checkpoint when recovered content is older or smaller than current reconstructed code.
+3. Rebuild missing runtime behavior through small tested slices rather than overwriting project files with WinFR output.
+
+## Implemented
+
+- Added `internal/movement.ActionContractRegistry`.
+- Moved action contract ordering, family classification, contract hash, and reconciliation-mode resolution into `internal/movement`.
+- Updated `internal/gameapi` to consume those movement helpers instead of duplicating contract classification logic locally.
+- Added unit tests for preferred manifest ordering and skill-vs-movement contract classification.
+
+## Validated
+
+- `server-apeiron`: `go test ./...`
+- `server-apeiron`: `go build ./cmd/game-server`
+
+## Why This Matters
+
+The historical rubberbanding work repeatedly failed when movement authority was split across multiple paths. This slice restores a single movement-owned contract classification point so `gameapi` can publish manifests and locomotion snapshots without owning reconciliation semantics itself.

@@ -11,6 +11,7 @@ import (
 	gamev1 "server-apeiron/gen/apeiron/game/v1"
 	"server-apeiron/internal/config"
 	"server-apeiron/internal/logging"
+	"server-apeiron/internal/movement"
 
 	"google.golang.org/grpc"
 )
@@ -688,10 +689,7 @@ func (r *Runtime) locomotion(mode, action, ability, phase string, start, project
 }
 
 func locomotionFromContract(contract MovementActionRuntimeContract, phase string, start, projected vector, tick uint64, sequence uint64) *gamev1.LocomotionState {
-	reconciliation := contract.ReconciliationCategory
-	if reconciliation == "" {
-		reconciliation = contract.ReconciliationContractID
-	}
+	reconciliation := movement.ReconciliationMode(contract)
 	if reconciliation == "" {
 		reconciliation = "grounded_move_reconciliation"
 	}

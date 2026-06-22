@@ -215,9 +215,17 @@ Done when:
 
 ### Phase 4 - Rebuild Movement/Reconciliation Architecture
 
-Status: pending.
+Status: in progress.
 
 Target: movement architecture returns to the post-rubberband AAA direction.
+
+2026-06-22 slice notes:
+
+- Recovered source audit confirmed that the WinFR `internal/movement` files with historical names such as action registry/sync/mux are corrupt and cannot be copied.
+- Reconstructed `internal/movement.ActionContractRegistry` as the first safe movement-owned contract authority.
+- `internal/gameapi` now delegates action ordering, action family, contract hash, and reconciliation-mode selection to `internal/movement` instead of duplicating those rules locally.
+- Added unit coverage for manifest ordering and movement-vs-skill classification.
+- This starts the architecture restoration, but does not yet restore the full historical post-action handoff, movement command dedupe, automated Unreal scanner, or all specialized reconciliation profiles.
 
 Restore or reconstruct:
 

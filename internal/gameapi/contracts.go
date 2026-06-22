@@ -3,10 +3,10 @@ package gameapi
 import (
 	"context"
 	"math"
-	"sort"
 
 	dbv1 "db-apeiron/gen/apeiron/v1"
 	gamev1 "server-apeiron/gen/apeiron/game/v1"
+	"server-apeiron/internal/movement"
 
 	"google.golang.org/grpc"
 )
@@ -34,22 +34,7 @@ type RuntimeContracts struct {
 	CombatModes     []*gamev1.CombatModeSlot
 }
 
-type MovementActionRuntimeContract struct {
-	ID                       string
-	AbilityKey               string
-	ActionType               string
-	DurationMS               int32
-	ActiveMS                 int32
-	RecoveryMS               int32
-	DistanceCM               float64
-	BaseSpeedCMS             float64
-	ReconciliationContractID string
-	ReconciliationCategory   string
-	PhaseWindowPolicy        string
-	PredictionErrorPolicy    string
-	RootMotionOwner          string
-	ContactPolicy            string
-}
+type MovementActionRuntimeContract = movement.RuntimeActionContract
 
 type SkillRuntimeContract struct {
 	SkillID                  string
@@ -286,7 +271,8 @@ func recoveredCombatModeSlots() []*gamev1.CombatModeSlot {
 }
 
 func (c RuntimeContracts) contractForAbility(ability string) MovementActionRuntimeContract {
-	if contract, ok := c.ActionContracts[ability]; ok {
+	registry := movement.NewActionContractRegistry(c.ActionContracts)
+	if contract, ok := registry.Resolve(ability); ok {
 		return contract
 	}
 	return MovementActionRuntimeContract{
@@ -356,39 +342,15 @@ func (c RuntimeContracts) orderedActionKeys() []string {
 		"lunge",
 		"wolf_dodge",
 	}
-	seen := map[string]bool{}
-	keys := make([]string, 0, len(c.ActionContracts))
-	for _, key := range preferred {
-		if _, ok := c.ActionContracts[key]; ok {
-			keys = append(keys, key)
-			seen[key] = true
-		}
-	}
-	var extra []string
-	for key := range c.ActionContracts {
-		if !seen[key] {
-			extra = append(extra, key)
-		}
-	}
-	sort.Strings(extra)
-	return append(keys, extra...)
+	return movement.NewActionContractRegistry(c.ActionContracts).OrderedKeys(preferred)
 }
 
 func actionFamily(contract MovementActionRuntimeContract) string {
-	if contract.RootMotionOwner == "skill" || contract.ActionType == "grounded_skill" {
-		return "skill_movement"
-	}
-	return "movement"
+	return movement.ActionFamily(contract)
 }
 
 func contractHash(contract MovementActionRuntimeContract) string {
-	if contract.ReconciliationContractID != "" {
-		return contract.ReconciliationContractID
-	}
-	if contract.ReconciliationCategory != "" {
-		return contract.ReconciliationCategory
-	}
-	return contract.ID
+	return movement.ContractHash(contract)
 }
 
 func runtimeContractFromDB(contract *dbv1.MovementActionContract, abilityKey string) MovementActionRuntimeContract {
