@@ -160,7 +160,8 @@ Restore or reconstruct:
 - Core API structs formerly in manual `gen/apeiron/v1/types.go` were moved into protobuf definitions in `proto/apeiron/v1/common.proto`.
 - `types.go` now only keeps compatibility helpers such as `Skill.GetComboIndex`.
 - DB `go test ./...` and server `go test ./...` both pass after regeneration.
-- Remaining gap: `CreatureDataService` has generated proto but no handler currently registered; `World/Player/Inventory/Observability` services are still absent.
+- `CreatureDataService` handler was restored and registered after this note, using the template cache and deriving runtime profile IDs from the template.
+- Remaining gap: `World/Player/Inventory/Observability` services are still absent.
 
 Use repository structs and current bootstrap/migrations as the source. Do not invent fields that are not in SQL or recovered runtime facts.
 
