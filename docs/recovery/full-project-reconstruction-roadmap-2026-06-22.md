@@ -303,6 +303,7 @@ Restore or reconstruct:
 
 - Found that `maul` had skill/timing/slot/setup policy in DB but no movement action binding.
 - Added `wolf_maul_lateral_counter_v1` movement contract and bound `maul` to it.
+- Added `wolf_bite_melee_commit_v1` so bite also participates in action timing/contract publication instead of falling through generic defaults.
 - Updated reconstructed game runtime to load `maul` and publish selected creature skill movement fields from the selected skill contract instead of always using lunge values.
 - Full creature brain remains incomplete: current in-memory wolf policy is still a recovery runtime, not the final policy/state-machine implementation.
 

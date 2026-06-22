@@ -259,8 +259,9 @@ The reconstructed DB already had `maul` as a wolf skill, timing, skill slot, and
 
 - Added DB seed `wolf_maul_lateral_counter_v1` as a grounded skill movement contract.
 - Bound `maul` to `wolf_maul_lateral_counter_v1` through `skill_movement_action_binding`.
+- Added `wolf_bite_melee_commit_v1` so bite also has explicit timing/movement contract language even without displacement.
 - Updated `gameapi` DB contract loading to include `maul`.
-- Added recovered runtime fallback contracts for `lunge`, `wolf_dodge`, and `maul`.
+- Added recovered runtime fallback contracts for `bite`, `lunge`, `wolf_dodge`, and `maul`.
 - Updated wolf snapshot publication so selected creature skill timing/movement fields come from the selected skill contract instead of always using lunge values.
 
 ## Validated

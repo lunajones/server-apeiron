@@ -4,7 +4,7 @@ import "testing"
 
 func TestRecoveredRuntimeContractsExposeCreatureSkillContracts(t *testing.T) {
 	contracts := RecoveredRuntimeContracts()
-	for _, skillID := range []string{"lunge", "wolf_dodge", "maul"} {
+	for _, skillID := range []string{"bite", "lunge", "wolf_dodge", "maul"} {
 		skill := contracts.skillContract(skillID)
 		if !skill.Enabled {
 			t.Fatalf("%s contract is not enabled", skillID)
