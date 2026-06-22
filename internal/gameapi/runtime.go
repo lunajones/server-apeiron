@@ -882,8 +882,9 @@ func (r *Runtime) applySkill(player *entityState, cmd *gamev1.PlayerCommand) {
 	player.velocity = fromDomainVector(progress.Velocity)
 	player.skillState = "active"
 	player.combatState = "committed"
-	player.locomotion = locomotionFromContractWithOverrides(skillContract.MovementAction, "active", start, start, r.tick, cmd.GetSequence(), fullMotion.SpeedCMPerSecond, progress.DistanceCM)
+	player.locomotion = locomotionFromContractWithOverrides(skillContract.MovementAction, string(instance.PhaseAt(nowTime)), start, start, r.tick, cmd.GetSequence(), fullMotion.SpeedCMPerSecond, progress.DistanceCM)
 	player.locomotion.ActionDistanceTraveled = progress.DistanceCM
+	applyActionInstanceLocomotionTiming(player.locomotion, &instance, nowTime)
 	now := nowTime.UnixMilli()
 	player.skillRuntime = &gamev1.SkillRuntimeState{
 		CurrentSkillId:   skillID,
@@ -1005,6 +1006,7 @@ func (r *Runtime) advanceActionMotionLocked(entity *entityState, now time.Time) 
 	entity.locomotion.ClientActionSequence = motion.Sequence
 	entity.locomotion.ServerReceivedTick = r.tick
 	entity.locomotion.LastUpdatedTick = r.tick
+	applyActionInstanceLocomotionTiming(entity.locomotion, entity.actionInstance, now)
 
 	if progress.Complete {
 		entity.position = motion.ProjectedPosition
@@ -1187,8 +1189,11 @@ func locomotionFromContract(contract MovementActionRuntimeContract, phase string
 		AbilityKey:              loco.AbilityKey,
 		Phase:                   loco.Phase,
 		ReconciliationMode:      loco.ReconciliationMode,
+		PhaseElapsedMs:          loco.PhaseElapsedMS,
+		PhaseRemainingMs:        loco.PhaseRemainingMS,
 		DurationMs:              loco.DurationMS,
 		AirborneDurationMs:      contract.AirborneDurationMS,
+		StartupMs:               loco.StartupMS,
 		ActiveMs:                loco.ActiveMS,
 		RecoveryMs:              loco.RecoveryMS,
 		SpeedCurveSamples:       movementCurveSamplesToProto(contract.SpeedCurveSamples),
@@ -1221,6 +1226,80 @@ func locomotionFromContract(contract MovementActionRuntimeContract, phase string
 		YawRate:                 contract.YawRateDegPerSec,
 		LastUpdatedTick:         tick,
 	}
+}
+
+func applyActionInstanceLocomotionTiming(state *gamev1.LocomotionState, instance *actionruntime.Instance, now time.Time) {
+	if state == nil || instance == nil || instance.StartedAt.IsZero() {
+		return
+	}
+	windup := nonNegativeDuration(instance.Timing.Windup)
+	active := nonNegativeDuration(instance.Timing.Active)
+	recovery := nonNegativeDuration(instance.Timing.Recovery)
+	total := windup + active + recovery
+	if total <= 0 {
+		return
+	}
+
+	elapsed := now.Sub(instance.StartedAt)
+	if elapsed < 0 {
+		elapsed = 0
+	}
+
+	state.StartupMs = durationMillis(windup)
+	state.ActiveMs = durationMillis(active)
+	state.RecoveryMs = durationMillis(recovery)
+	state.DurationMs = durationMillis(total)
+
+	phase := strings.ToLower(strings.TrimSpace(state.GetPhase()))
+	switch phase {
+	case "windup", "accepted", "startup":
+		state.PhaseElapsedMs = durationMillis(minDuration(elapsed, windup))
+		state.PhaseRemainingMs = durationMillis(clampDuration(windup-elapsed, 0, windup))
+	case "active":
+		activeElapsed := clampDuration(elapsed-windup, 0, active)
+		state.PhaseElapsedMs = durationMillis(activeElapsed)
+		state.PhaseRemainingMs = durationMillis(active - activeElapsed)
+	case "recovery", "complete":
+		recoveryElapsed := clampDuration(elapsed-windup-active, 0, recovery)
+		state.PhaseElapsedMs = durationMillis(recoveryElapsed)
+		state.PhaseRemainingMs = durationMillis(recovery - recoveryElapsed)
+	default:
+		phase, phaseElapsed, phaseRemaining := locomotionResolver.ResolvePhase(elapsed, durationMillis(windup), durationMillis(active), durationMillis(recovery))
+		state.Phase = phase
+		state.PhaseElapsedMs = phaseElapsed
+		state.PhaseRemainingMs = phaseRemaining
+	}
+}
+
+func nonNegativeDuration(d time.Duration) time.Duration {
+	if d < 0 {
+		return 0
+	}
+	return d
+}
+
+func minDuration(a, b time.Duration) time.Duration {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func clampDuration(value, minValue, maxValue time.Duration) time.Duration {
+	if value < minValue {
+		return minValue
+	}
+	if value > maxValue {
+		return maxValue
+	}
+	return value
+}
+
+func durationMillis(d time.Duration) int32 {
+	if d <= 0 {
+		return 0
+	}
+	return int32(math.Round(float64(d) / float64(time.Millisecond)))
 }
 
 func movementCurveSamplesToProto(samples []movement.MovementActionCurvePoint) []*gamev1.MovementCurveSample {

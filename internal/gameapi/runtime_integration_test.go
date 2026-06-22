@@ -726,6 +726,22 @@ func TestRuntimeGroundedSkillMotionProgressesBySnapshotAndOwnsRoot(t *testing.T)
 	if midDistance <= 0 || midDistance >= contract.DistanceCM {
 		t.Fatalf("mid-action distance = %.2f, want between 0 and %.2f", midDistance, contract.DistanceCM)
 	}
+	if player.locomotion == nil {
+		t.Fatal("mid-action locomotion missing")
+	}
+	if player.locomotion.GetPhaseElapsedMs() <= 0 {
+		t.Fatalf("mid-action phase elapsed = %d, want > 0", player.locomotion.GetPhaseElapsedMs())
+	}
+	if player.locomotion.GetPhaseRemainingMs() <= 0 {
+		t.Fatalf("mid-action phase remaining = %d, want > 0", player.locomotion.GetPhaseRemainingMs())
+	}
+	if player.locomotion.GetStartupMs()+player.locomotion.GetActiveMs()+player.locomotion.GetRecoveryMs() != player.locomotion.GetDurationMs() {
+		t.Fatalf("locomotion timing envelope mismatch: startup=%d active=%d recovery=%d duration=%d",
+			player.locomotion.GetStartupMs(),
+			player.locomotion.GetActiveMs(),
+			player.locomotion.GetRecoveryMs(),
+			player.locomotion.GetDurationMs())
+	}
 
 	forceCompleteRuntimeAction(t, runtime, sessionID, player)
 	finalDistance := distance(start, player.position)
