@@ -240,6 +240,43 @@ tinha previsão local hardcoded fora do replay; Rush não tinha previsão local 
 > `SkillGroundedAction`, não sobrescrito pelo combat. A câmera descolando (#5) é um bug separado mas
 > da mesma família (correção visual vazando pra câmera).
 
+#### recuperação 3 — (Niagara/VFX) — 🚫 IGNORADO
+
+Fora de escopo por decisão do usuário ("nada de Niagara/firula"). Não mapeado.
+
+#### recuperação 2 — Boneco preso (leap, 3º hit, ataque pesado) + mode_slots (sáb 20/06)
+
+| # | Mudança | Arquivos originais (chat) | Status |
+| --- | --- | --- | --- |
+| 1 | **Leap/jump preso:** removido o congelamento horizontal no fim do leap enquanto ainda no ar; mantém queda + air control limitado em vez de zerar XY | `ApeironTestPlayerCharacter.cpp:3919` | ✅ `AirControl` presente (4 refs) |
+| 2 | **3º hit do basic preso:** reconciliação grounded volta a aceitar correção autoritativa em recovery/fase terminal depois que a prediction local acaba | `ApeironTestPlayerCharacter.cpp:4420` | ✅ `LandingHandoff`/recovery presentes (7 refs) |
+| 3 | **Ataque pesado/grounded preso:** prediction local do ActionMovement durava a ação inteira (incl. recovery) e zerava velocidade. Agora só startup+active; em recovery já anda, action lock ainda bloqueia skill/dodge nova | `ApeironTestPlayerCharacter.cpp:747`, `.h:316` | ✅ `StartupActive` presente (3 refs) — verificar janela |
+| 4 | **mode_slots:** HUD/input só usa `mode_slots[]` quando combat mode enforced; sem slots → vazio, sem fallback local errado (Bulwark não tenta em Vanguard) | `ApeironTestPlayerCharacter.cpp:1132`, `ApeironCombatHudViewModel.cpp:256` | ✅ `mode_slots` presente (UE 4, server 2) |
+
+> Seed confirma Bulwark = slot1 `player_shield_bash`, slot2 `player_shield_rush`, slot3 vazio
+> (`db:017_weapon_kit_seed.sql`). `weapon_heavy` real ainda **não** está ativo (seed FALSE, sem fluxo
+> hold/release) — heavy autoritativo é fase separada.
+
+#### ★ recuperação 1 — CTRL troca de combat mode + Shield Rush meio-cilindro (sáb 20/06, mais novo numerado)
+
+**O CTRL é outro bug recorrente** (usuário pediu 3x). Causa real: **bridge stale (404)** + Unreal não
+processava o **ACK** de `/submit-switch-combat-mode`.
+
+| # | Mudança | Arquivos originais (chat) | Status |
+| --- | --- | --- | --- |
+| 1 | Unreal processa o ACK do CTRL: `active_combat_mode`, `target_combat_mode`, `combat_mode_phase`, timers, em `ApplyCommandAckResponse` | `ApeironGameServerBridge.cpp:2365` | ⚠️ símbolos presentes (1 ref cada) — **verificar se realmente alterna** |
+| 2 | HUD não usa mais `resolved_combat_mode` de skill **rejeitada** como modo ativo (era o que fazia o F "mudar a barra" sem mudar o modo) | `ApeironCombatHudViewModel.cpp:263` | ⚠️ `resolved_combat_mode` presente (1 ref) — verificar |
+| 3 | Com `combat_mode_enforced=true`, Q/R/F não caem em fallback local: vêm de `mode_slots[]` do modo ativo ou ficam vazios | `ApeironCombatHudCanvasRenderer.cpp:283` | ✅ `combat_mode_enforced`/`mode_slots` presentes |
+| 4 | Fila HTTP **coalesce** move/turn velho e **prioriza** switch_combat_mode/leap/dodge/cast (conserta pulo preso atrás de spam). Handoff de pouso flushado antes de novo pulo/dodge | `ApeironTestPlayerCharacter.cpp:798` | ❌ `coalesce/Prioritize` **0 refs** — sumiu |
+| 5 | **Shield Rush dano a meio cilindro** à frente (não cilindro inteiro): `offset_x=48cm`, `radius=96cm`, mantendo movimento/knockback/carry/front_plow | `db:026_player_shield_rush_seed.sql` | ⚠️ seed `026` sumiu (config em `013/015`) — **verificar 48/96** |
+| 6 | Proteger leap/dodge/turn como baseline intocável | `apeiron-skill-movement-audit/SKILL.md` | ℹ️ regra de processo (skill do Codex) |
+
+> **Design futuro:** o usuário quer um **3º combat mode** (jogar com 2 de N → variedade de build).
+> Primeiro o CTRL tem que funcionar.
+> **Identidade visual (referência canônica):**
+> `C:/Users/elmir/.codex/skills/apeiron-aaa-roadmap-governor/assets/apeiron-game-visual-reference.jpg`
+> — quando o usuário falar "identidade visual do meu game", abrir essa imagem. (HUD visual = 🚫 adiado.)
+
 ---
 
 ## Tabela consolidada de gaps (o que falta re-aplicar)
@@ -258,6 +295,9 @@ Prioridade do que **sumiu** e precisa voltar:
 | Alta | Parry por **direção de defesa** (`SubmitBlock`), não yaw | 13/06 #1 | `systems/defense_system.go`, `controllers/defense_controller.go` |
 | Alta | **Redução de velocidade no block** (0.5x/0.55x/0.75x) autoritativa + seed | 13/06 #3 | resolver de movimento + `bootstrap/019_..._seed.sql` |
 | Alta | **Despawn grace** da creature (não apagar por ausência temporária) | 04/06 #9 | `ApeironGameServerBridge.cpp` |
+| Alta | **CTRL troca de combat mode** — processar ACK (active/target/phase) + bridge fresco; Q/R/F só do modo ativo | chat 1 #1-3 | `ApeironGameServerBridge.cpp` (`ApplyCommandAckResponse`), HUD viewmodel |
+| Alta | **Fila HTTP coalesce/prioriza** (switch_mode/leap/dodge/cast) — conserta pulo preso atrás de spam de movimento | chat 1 #4 | `ApeironTestPlayerCharacter.cpp` (`coalesce` sumiu) |
+| Média | **Shield Rush dano a meio cilindro** (`offset_x=48`, `radius=96`) | chat 1 #5 | `db:bootstrap` (seed 026 sumiu) |
 | Média | Confirmar **arco 180° / back-bypass** no block | 14/06 #1 | onde `FrontalArc` é avaliado |
 | Média | Confirmar **hitbox-decide-hit** (não target lock) no wolf | 14/06 #2 | `gameapi/runtime.go` |
 | Média | **Reconciliação**: smoothing acima da dead-zone, snap só severo | 04/06 #4-5 | `ApeironGameServerBridge.cpp` |
@@ -285,6 +325,7 @@ Apêndar aqui, mantendo a ordem cronológica, conforme forem colados:
 - [x] `recuperação 6` — basic attack combo 3 etapas + roteamento M1 + gate jump/dodge
 - [x] `recuperação 5` — ★ autoridade skill-movement (spec da Fatia 1)
 - [x] `recuperação 4` — ★ Shield Rush/Bash rubberband (= bug atual do usuário; implementação do chat 5)
-- [ ] `recuperação 3`
-- [ ] `recuperação 2`
-- [ ] `recuperação 1`
+- [x] `recuperação 3` — 🚫 Niagara/VFX, ignorado por decisão do usuário
+- [x] `recuperação 2` — boneco preso (leap/3º hit/pesado) + mode_slots (sáb 20/06)
+- [x] `recuperação 1` — ★ CTRL combat mode + Shield Rush meio-cilindro (sáb 20/06)
+- [ ] **chat ATUAL** (o maior, com o momento do delete) — aguardando
