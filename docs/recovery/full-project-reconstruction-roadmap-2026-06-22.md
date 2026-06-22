@@ -154,7 +154,7 @@ Restore or reconstruct:
 - `WorldDataService` - restored 2026-06-22 for region, biome, and spawn-zone reads from the existing world repository/cache.
 - `PlayerDataService` - restored 2026-06-22 for player read by id from the existing player repository.
 - `InventoryDataService` - restored 2026-06-22 for inventory, owner inventory, inventory-with-items, item template, and inventory item reads from the existing inventory repository.
-- `ObservabilityService`
+- `ObservabilityService` - restored 2026-06-22 for DB API readiness backed by Postgres `Ping`.
 
 2026-06-22 slice notes:
 
@@ -165,7 +165,8 @@ Restore or reconstruct:
 - `GetSkillMovementEffect(skill_id)` was restored after chronological chat extraction showed this endpoint was the historical fix for wolf lunge movement. It returns DB `skill_movement_effect` rows by `skill_id` and maps them to `SkillMovementProfile` without inventing missing contract numbers.
 - `WorldDataService` was restored after the map/world chat extraction confirmed the server needs authoritative exported world data, not visual Unreal assets.
 - `PlayerDataService` and `InventoryDataService` were restored as direct repository-backed services because their data is mutable and should not use a broad static cache without explicit invalidation.
-- Remaining gap: `ObservabilityService` is still absent.
+- `ObservabilityService.GetReadiness` was restored and reports `READY` only when the Postgres pool responds to `Ping`.
+- Phase 2 basic service surface is restored. Deeper gameplay contract endpoints remain under Phase 4/5/6/7, not this basic CRUD/static-data surface.
 - Remaining movement gap: this restored legacy endpoint is not the final skill movement contract model; Phase 4/6 still need the named movement action contract and temporal hitbox contract services reconstructed.
 
 Use repository structs and current bootstrap/migrations as the source. Do not invent fields that are not in SQL or recovered runtime facts.
