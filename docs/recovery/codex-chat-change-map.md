@@ -344,7 +344,7 @@ Prioridade do que **sumiu** e precisa voltar:
 
 | Prioridade | Gap | Origem | Onde re-aplicar |
 | --- | --- | --- | --- |
-| **Crítica** | **Ownership do resolver de movimento** — combat só emite intent/timeline; movement publica locomotion (10 campos, com teste de paridade). Eliminar autoridade dupla, não patch campo-a-campo | **chat 5** + 16/06 #3 | `internal/movement` (resolver a reconstruir) — **Fatia 1** |
+| **Crítica** 🔨 | **Ownership do resolver de movimento** — combat só emite intent/timeline; movement publica locomotion (10 campos, com teste de paridade). Eliminar autoridade dupla, não patch campo-a-campo. **EM PROGRESSO:** `4649315` resolver restaurado + `Locomotion`/`Resolver` + teste de paridade; `f6730ff` gameapi (movimento normal) ligado no resolver. **Falta:** migrar caminho de skill do combat. | **chat 5** + 16/06 #3 | `internal/movement/resolver.go` — **Fatia 1** |
 | **Crítica** | **Shield Rush/Bash reconciliáveis** — server publica `SkillGroundedAction` + `command_id` no intent (`skill/context.go`) + `EntrySpeed` de Distance/Duration; client prevê local. **= rubberband atual do R/F** | **chat 4** | server `player_skill_combat_system.go` + `skill/context.go` (sumiu); UE já tem o modo — parte da **Fatia 1** |
 | Alta | **Câmera descola no dodge+hit** — prender no `CameraBoomLocalOffset`, só o mesh suaviza | chat 4 #5 | `ApeironTestPlayerCharacter.cpp` (`CameraVisualCorrectionOffset`) |
 | Alta | **Wolf lunge pós-pouso**: timeline do movimento dentro da action; `landing_lock` como continuação horizontal; skill pendente até o fim do movimento | chat 7 | `db:018_..._seed.sql`, wolf runtime em `gameapi/runtime.go` |
