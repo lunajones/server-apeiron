@@ -126,6 +126,29 @@ corpo; **hitbox por skill decide quem tomou hit**. Cada skill declara política:
 (mordida/agarrão/execução), `any_valid_enemy_in_hitbox` (cone/cleave/salto/área), `max_targets`/`pierce`.
 Cliente nunca escolhe quem levou hit.
 
+### 2026-06-16 (terça) — Shield Bash gap-close, direção das skills de chão, **regressão do rubberband**, cor do Niagara
+
+**Contexto:** sessão de combate + movimento (= `recuperação 8`). Aqui aconteceu a **regressão do
+rubberbanding** que foi o foco do usuário até o delete.
+
+| # | Mudança | Arquivos originais (chat) | Status |
+| --- | --- | --- | --- |
+| 1 | **Shield Bash vira gap-close curto:** passo curto pra frente no início da ação, **por contrato** (sem hardcode). `movement_start_phase=action_start`; passo 75cm / 80ms / speed 940; windup 110ms; hit 110–240ms; stun 1.5s | `db:bootstrap/027_player_shield_bash_seed.sql:61`, `player_skill_combat_system_test.go:428` | ⚠️ seed `027` sumiu (config foi p/ `db:bootstrap/013_player_sword_shield_skill_seed.sql`); `MovementStartPhase` presente (4 arq) — **verificar valores 75/80/940** |
+| 2 | **Skills de movimento coladas ao chão usam direção HORIZONTAL do boneco** (yaw autoritativo da locomoção → fallback `Transform.RotationY` → fallback AimDirection horizontal), **não** o ponto 3D do mouse. Bug: `commitPendingPlayerSkillMovementTarget` usava `TargetPosition` do mouse → encurtava a distância ao mirar no chão perto. Removido o stop-distance quando não há alvo/contato real. Genérico p/ dash/charge (shield rush, shield bash, maul-like) | `player_skill_combat_system.go` (+58), `player_skill_combat_system_test.go` (+35) | ⚠️ `commitPendingPlayerSkillMovementTarget` presente (1 arq) — **verificar** se usa yaw horizontal e não o mouse |
+| 3 | **Regressão do rubberband** (andar/curva/pulo/dodge juntos): client tinha backlog de inputs locais (`pending_after=10/11`) e o reconciler aplicava correções pequenas demais na cápsula. Fix no Unreal: replay de movimento pendente também pode virar **defer/correction debt** usando `ModeDeadZone` + `CorrectionMaxStep` do perfil, **sem hardcode**. Também diagnosticado: restart do server durante PIE causa mismatch de epoch/baseline | `ApeironGameServerBridge.cpp` (+14-5) | ✅ `ModeDeadZone`/`CorrectionMaxStep`/`correction debt`/`defer` presentes (Unreal) — **mas ver nota abaixo** |
+| 4 | **Cor do Niagara** do wolf lunge dust: marrom quente (estava preto fosco). `NS_Wolf_Lunge_GroundDust_WarmGrayBrown_NaturalV1` | `ApeironGroundDustNiagaraBuilderCommandlet.cpp` (+19-17) | ✅ `FLinearColor(0.62, 0.45, 0.27)` no commandlet + assets `NS_..._WarmGrayBrown_*` no Content |
+
+> **Nota crítica sobre o rubberband (#3):** o patch de 16/06 sobreviveu no Unreal, mas foi uma
+> **mitigação client-side** no reconciler. A causa-raiz apontada pelo gap-audit (P0 #1) é
+> **ownership do resolver de movimento no server** — hoje a locomotion é produzida por múltiplos
+> caminhos (`gameapi/runtime.go`, `combat/player_skill_combat_system.go`), e o `internal/movement`
+> não tem resolver. Re-aplicar o patch do reconciler **não** substitui reconstruir o resolver.
+> Isto liga diretamente à **Fatia 1** da reconstrução.
+
+> **Mapa recuperação ↔ data:** `recuperação 10` e `9` = **14/06** (block arco + hitbox);
+> `recuperação 8` = **16/06** (esta seção). Numeração maior = mais antiga; o usuário envia em
+> direção ao `recuperação 1` (mais novo, perto do delete).
+
 ---
 
 ## Tabela consolidada de gaps (o que falta re-aplicar)
@@ -140,6 +163,9 @@ Prioridade do que **sumiu** e precisa voltar:
 | Média | Confirmar **arco 180° / back-bypass** no block do código novo | 14/06 #1 | onde `FrontalArc` é avaliado |
 | Média | Confirmar **hitbox-decide-hit** (não target lock) no wolf atual | 14/06 #2 | `gameapi/runtime.go` |
 | Média | **Reconciliação**: smoothing acima da dead-zone, snap só severo | 04/06 #4-5 | `ApeironGameServerBridge.cpp` |
+| Média | **Rubberband — causa-raiz**: ownership do resolver de movimento no server (patch client de 16/06 é só mitigação) | 16/06 #3 | `internal/movement` (Fatia 1) |
+| Média | Verificar **Shield Bash gap-close** (75/80/940, `movement_start_phase=action_start`) | 16/06 #1 | `db:bootstrap/013_player_sword_shield_skill_seed.sql` |
+| Média | Verificar **direção horizontal das skills de chão** (yaw, não mouse) | 16/06 #2 | `combat/player_skill_combat_system.go` (`commitPendingPlayerSkillMovementTarget`) |
 | Baixa | **HUD painterly** (refazer; a versão metálica foi rejeitada) | 05/06 | `ApeironDebugHud.cpp/.h` |
 | Baixa | Recuperar doc de request sumido | 04/06 | `docs/reviews/unreal-movement-prediction-reconciliation-requests-2026-06-04.md` |
 
@@ -155,6 +181,8 @@ Prioridade do que **sumiu** e precisa voltar:
 
 Apêndar aqui, mantendo a ordem cronológica, conforme forem colados:
 
+- [x] `recuperação 10` + `9` — integrados como **14/06** (block arco frontal + hitbox vs target lock)
+- [x] `recuperação 8` — integrado como **16/06** (shield bash gap-close, direção das skills de chão, rubberband, niagara)
 - [ ] `recuperação 7`
 - [ ] `recuperação 6`
 - [ ] `recuperação 5`
