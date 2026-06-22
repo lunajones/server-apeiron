@@ -57,7 +57,12 @@ type SkillRuntimeContract struct {
 	NormalInputPolicy        string
 	TargetPolicy             string
 	ContactPolicy            string
-	Enabled                  bool
+	// Damage / PostureDamage are authoritative tuning from the DB skill seed (013/009).
+	// Until the DB skill proto exposes base_damage/posture_damage (damage-pipeline brick
+	// 2b), the recovered runtime materializes the canonical seed values here.
+	Damage        float64
+	PostureDamage float64
+	Enabled       bool
 }
 
 type WolfRuntimePolicy struct {
@@ -317,6 +322,28 @@ func RecoveredRuntimeContracts() RuntimeContracts {
 	return contracts
 }
 
+// recoveredPlayerSkillDamage returns the authoritative base/posture damage for a player
+// skill, taken verbatim from db-apeiron bootstrap/013_player_sword_shield_skill_seed.sql.
+// This materializes the canonical seed values in the recovered runtime until the DB skill
+// proto exposes base_damage/posture_damage (damage-pipeline brick 2b), at which point
+// loadSkillRuntimeContract should source them from the DB instead.
+func recoveredPlayerSkillDamage(skillID string) (damage float64, posture float64) {
+	switch skillID {
+	case "player_basic_attack_1":
+		return 8, 10
+	case "player_basic_attack_2":
+		return 7, 9
+	case "player_basic_attack_3":
+		return 6, 18
+	case "player_shield_bash":
+		return 10, 26
+	case "player_shield_rush":
+		return 14, 34
+	default:
+		return 0, 0
+	}
+}
+
 func recoveredSkillContract(skillID string, distance float64, durationMS, activeMS, recoveryMS int32) SkillRuntimeContract {
 	action := MovementActionRuntimeContract{
 		ID:                       skillID + "_contract",
@@ -337,10 +364,13 @@ func recoveredSkillContract(skillID string, distance float64, durationMS, active
 		RootMotionOwner:        "skill",
 		ContactPolicy:          "authoritative_contact",
 	}
+	damage, posture := recoveredPlayerSkillDamage(skillID)
 	return SkillRuntimeContract{
 		SkillID:                  skillID,
 		MovementActionContractID: action.ID,
 		MovementAction:           action,
+		Damage:                   damage,
+		PostureDamage:            posture,
 		ActiveMS:                 activeMS,
 		RecoveryMS:               recoveryMS,
 		MovementLockPolicy:       "skill_root_motion_owner",
