@@ -85,6 +85,12 @@ type entityState struct {
 	actionInstance *actionruntime.Instance
 	combatMode     *gamev1.CombatModeState
 	creatureAI     *gamev1.CreatureAIState
+
+	// actionLockedUntil marks an owned movement action (leap/dodge) the player cannot
+	// interrupt with a skill/basic. Restores the chat 6 #3 rule: no skill while
+	// jumping/dodging. Time-based so it auto-expires with the action.
+	actionLockedUntil time.Time
+	actionLockReason  string
 }
 
 type vector struct {
@@ -255,6 +261,14 @@ func (r *Runtime) SubmitCommand(ctx context.Context, cmd *gamev1.PlayerCommand) 
 
 	player.lastSequence = cmd.GetSequence()
 	player.lastClientTick = cmd.GetClientTick()
+
+	if cmd.GetType() == gamev1.CommandType_COMMAND_TYPE_CAST_SKILL {
+		if reason, locked := r.skillActionLockedLocked(player); locked {
+			ack := r.ackLocked(cmd, player, false, "action_locked", reason)
+			r.queueAckLocked(cmd.GetContext().GetSessionId(), ack)
+			return ack, nil
+		}
+	}
 
 	switch cmd.GetType() {
 	case gamev1.CommandType_COMMAND_TYPE_MOVE:
@@ -605,6 +619,33 @@ func (r *Runtime) applyImpulse(player *entityState, cmd *gamev1.PlayerCommand, c
 	player.movementState = contract.ActionType
 	player.skillState = contract.AbilityKey
 	player.locomotion = locomotionFromContractWithOverrides(contract, "active", start, player.position, r.tick, cmd.GetSequence(), motion.SpeedCMPerSecond, motion.DistanceCM)
+
+	lockMS := contract.DurationMS
+	if lockMS <= 0 {
+		lockMS = contract.ActiveMS + contract.RecoveryMS
+	}
+	if lockMS <= 0 {
+		lockMS = 300
+	}
+	player.actionLockedUntil = time.Now().Add(time.Duration(lockMS) * time.Millisecond)
+	player.actionLockReason = "active_locomotion:" + contract.ActionType
+}
+
+// skillActionLockedLocked reports whether the player is mid-leap/dodge (an owned
+// movement action) and therefore must not start a skill or basic attack. Caller holds
+// r.mu. Restores the chat 6 #3 rule "no skill while jumping/dodging" in the live runtime.
+func (r *Runtime) skillActionLockedLocked(player *entityState) (string, bool) {
+	if player == nil || player.actionLockedUntil.IsZero() {
+		return "", false
+	}
+	if time.Now().Before(player.actionLockedUntil) {
+		reason := player.actionLockReason
+		if reason == "" {
+			reason = "active_action"
+		}
+		return reason, true
+	}
+	return "", false
 }
 
 func (r *Runtime) applySkill(player *entityState, cmd *gamev1.PlayerCommand) {
