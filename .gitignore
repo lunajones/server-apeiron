@@ -1,0 +1,10 @@
+bin/
+.codex/bin/
+logs/
+*.log
+*.out.log
+*.err.log
+coverage.out
+*.test
+.env.local
+.env.*.local
