@@ -180,7 +180,7 @@ Done when:
 
 ### Phase 3 - Rebuild Server DB Clients And App Runtime
 
-Status: pending.
+Status: in progress.
 
 Target: game-server can consume DB services through explicit clients, not stubs.
 
@@ -190,6 +190,12 @@ Restore or reconstruct:
 - App lifecycle and readiness gates.
 - Static data warmup.
 - Runtime region/session/game API surfaces.
+
+2026-06-22 current audit:
+
+- `internal/app.Run` is still a stub returning `nil`.
+- `internal/dbapeiron` has connection helpers, retry helpers, errors, and mappers, but no concrete gRPC clients for the restored DB services yet.
+- This means server tests passing currently proves package coherence, not full historical runtime completeness.
 
 Done when:
 
