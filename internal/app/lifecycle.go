@@ -6,6 +6,7 @@ import (
 
 	"server-apeiron/internal/config"
 	"server-apeiron/internal/dbapeiron"
+	"server-apeiron/internal/gameapi"
 	"server-apeiron/internal/logging"
 )
 
@@ -25,7 +26,7 @@ func Run(ctx context.Context, cfg *config.Config) error {
 	}
 
 	log.Info().Msg("game server bootstrap completed")
-	return nil
+	return gameapi.Serve(ctx, cfg.Network)
 }
 
 func connectDBApeiron(ctx context.Context, cfg *config.Config) (*dbapeiron.Client, error) {

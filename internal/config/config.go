@@ -95,57 +95,57 @@ func LoadConfig() (*Config, error) {
 		return nil, err
 	}
 
-	logPretty, err := getBool("LOG_PRETTY")
+	logPretty, err := getOptionalBool("LOG_PRETTY", true)
 	if err != nil {
 		return nil, err
 	}
 
-	shutdownTimeoutSeconds, err := getInt("SHUTDOWN_TIMEOUT_SECONDS")
+	shutdownTimeoutSeconds, err := getOptionalInt("SHUTDOWN_TIMEOUT_SECONDS", 10)
 	if err != nil {
 		return nil, err
 	}
 
-	tickRate, err := getInt("TICK_RATE")
+	tickRate, err := getOptionalInt("TICK_RATE", 30)
 	if err != nil {
 		return nil, err
 	}
 
-	slowPhaseMS, err := getInt("TICK_SLOW_PHASE_MS")
+	slowPhaseMS, err := getOptionalInt("TICK_SLOW_PHASE_MS", 8)
 	if err != nil {
 		return nil, err
 	}
 
-	slowFrameMS, err := getInt("TICK_SLOW_FRAME_MS")
+	slowFrameMS, err := getOptionalInt("TICK_SLOW_FRAME_MS", 16)
 	if err != nil {
 		return nil, err
 	}
 
-	connectTimeoutSeconds, err := getInt("DB_APEIRON_CONNECT_TIMEOUT_SECONDS")
+	connectTimeoutSeconds, err := getOptionalInt("DB_APEIRON_CONNECT_TIMEOUT_SECONDS", 2)
 	if err != nil {
 		return nil, err
 	}
 
-	requestTimeoutSeconds, err := getInt("DB_APEIRON_REQUEST_TIMEOUT_SECONDS")
+	requestTimeoutSeconds, err := getOptionalInt("DB_APEIRON_REQUEST_TIMEOUT_SECONDS", 2)
 	if err != nil {
 		return nil, err
 	}
 
-	retryAttempts, err := getInt("DB_APEIRON_RETRY_ATTEMPTS")
+	retryAttempts, err := getOptionalInt("DB_APEIRON_RETRY_ATTEMPTS", 1)
 	if err != nil {
 		return nil, err
 	}
 
-	retryBackoffMS, err := getInt("DB_APEIRON_RETRY_BACKOFF_MS")
+	retryBackoffMS, err := getOptionalInt("DB_APEIRON_RETRY_BACKOFF_MS", 200)
 	if err != nil {
 		return nil, err
 	}
 
-	startupRequired, err := getBool("DB_APEIRON_STARTUP_REQUIRED")
+	startupRequired, err := getOptionalBool("DB_APEIRON_STARTUP_REQUIRED", false)
 	if err != nil {
 		return nil, err
 	}
 
-	startupWarmupEnabled, err := getBool("DB_APEIRON_STARTUP_WARMUP_ENABLED")
+	startupWarmupEnabled, err := getOptionalBool("DB_APEIRON_STARTUP_WARMUP_ENABLED", false)
 	if err != nil {
 		return nil, err
 	}
@@ -170,7 +170,7 @@ func LoadConfig() (*Config, error) {
 		return nil, err
 	}
 
-	networkEnabled, err := getOptionalBool("GAME_GRPC_ENABLED", false)
+	networkEnabled, err := getOptionalBool("GAME_GRPC_ENABLED", true)
 	if err != nil {
 		return nil, err
 	}

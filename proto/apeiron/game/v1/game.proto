@@ -1,0 +1,535 @@
+syntax = "proto3";
+
+package apeiron.game.v1;
+
+option go_package = "server-apeiron/gen/apeiron/game/v1;gamev1";
+
+service SessionService {
+  rpc OpenSession(OpenSessionRequest) returns (OpenSessionResponse);
+  rpc AttachPlayer(AttachPlayerRequest) returns (AttachPlayerResponse);
+}
+
+service SnapshotService {
+  rpc GetSnapshot(SnapshotRequest) returns (SnapshotResponse);
+}
+
+service CommandService {
+  rpc SubmitCommand(PlayerCommand) returns (CommandAck);
+}
+
+service ObservabilityService {
+  rpc Health(Empty) returns (HealthResponse);
+  rpc Readiness(Empty) returns (ReadinessResponse);
+  rpc RuntimeStats(Empty) returns (RuntimeStatsResponse);
+}
+
+message Empty {}
+
+message Result {
+  bool success = 1;
+  string code = 2;
+  string message = 3;
+}
+
+message RequestContext {
+  string request_id = 1;
+  string account_id = 2;
+  string session_id = 3;
+}
+
+message ServerTick {
+  uint64 tick = 1;
+  int64 server_time_ms = 2;
+  uint32 tick_rate = 3;
+}
+
+message Vector3 {
+  double x = 1;
+  double y = 2;
+  double z = 3;
+}
+
+message Rotation {
+  double yaw = 1;
+}
+
+message Transform {
+  Vector3 position = 1;
+  Rotation rotation = 2;
+}
+
+message RegionRef {
+  string region_id = 1;
+  string world_id = 2;
+  string zone_id = 3;
+  string biome_id = 4;
+}
+
+message PlayerRef {
+  string player_id = 1;
+}
+
+message EntityRef {
+  uint64 runtime_entity_id = 1;
+  string entity_type = 2;
+  string region_id = 3;
+}
+
+message OpenSessionRequest {
+  RequestContext context = 1;
+  string auth_token = 2;
+  string client_version = 3;
+  string platform = 4;
+}
+
+message OpenSessionResponse {
+  Result result = 1;
+  string session_id = 2;
+  string account_id = 3;
+  ServerTick tick = 4;
+  repeated MovementActionContractManifest movement_action_contracts = 5;
+  repeated LocomotionState movement_action_contract_payloads = 6;
+}
+
+message AttachPlayerRequest {
+  RequestContext context = 1;
+  string player_id = 2;
+  string preferred_region_id = 3;
+}
+
+message AttachPlayerResponse {
+  Result result = 1;
+  PlayerRef player = 2;
+  RegionRef region = 3;
+  ServerTick tick = 4;
+  Transform spawn_transform = 5;
+  repeated MovementActionContractManifest movement_action_contracts = 6;
+  repeated LocomotionState movement_action_contract_payloads = 7;
+}
+
+message SnapshotRequest {
+  RequestContext context = 1;
+  uint64 baseline_tick = 2;
+  bool include_full_state = 3;
+}
+
+message SnapshotResponse {
+  ServerTick tick = 1;
+  RegionRef region = 2;
+  repeated SnapshotEntity entities = 3;
+  repeated SnapshotEvent events = 4;
+  repeated CommandAck command_acks = 5;
+}
+
+message SnapshotEntity {
+  EntityRef ref = 1;
+  string template_id = 2;
+  string archetype = 3;
+  string visual_id = 4;
+  Transform transform = 5;
+  Vector3 velocity = 6;
+  double health = 7;
+  double max_health = 8;
+  double stamina = 9;
+  double max_stamina = 10;
+  double posture = 11;
+  double max_posture = 12;
+  string movement_state = 13;
+  string combat_state = 14;
+  string skill_state = 15;
+  SkillRuntimeState skill_runtime_state = 16;
+  string status_state = 17;
+  EntityRef target = 18;
+  string aggro_state = 19;
+  double aggression = 20;
+  uint64 last_processed_command_sequence = 21;
+  uint64 last_processed_client_tick = 22;
+  MovementCorrection movement_correction = 23;
+  LocomotionState locomotion = 24;
+  MovementReconciliationProfile movement_reconciliation = 25;
+  CreatureAIState creature_ai_state = 26;
+  CombatModeState combat_mode_state = 27;
+}
+
+message SnapshotEvent {
+  string event_id = 1;
+  SnapshotEventType type = 2;
+  string reason = 3;
+  uint64 tick = 4;
+  EntityRef source = 5;
+  EntityRef target = 6;
+  map<string, string> metadata = 7;
+}
+
+enum SnapshotEventType {
+  SNAPSHOT_EVENT_TYPE_UNSPECIFIED = 0;
+  ENTITY_EVENT_TYPE_STATE_CHANGED = 1;
+  ENTITY_EVENT_TYPE_DAMAGE_APPLIED = 2;
+  ENTITY_EVENT_TYPE_HITBOX_DEBUG = 3;
+}
+
+enum CommandType {
+  COMMAND_TYPE_UNSPECIFIED = 0;
+  COMMAND_TYPE_MOVE = 1;
+  COMMAND_TYPE_DODGE = 2;
+  COMMAND_TYPE_LEAP = 3;
+  COMMAND_TYPE_TURN = 4;
+  COMMAND_TYPE_CAST_SKILL = 5;
+  COMMAND_TYPE_BLOCK_START = 6;
+  COMMAND_TYPE_BLOCK_STOP = 7;
+  COMMAND_TYPE_PARRY = 8;
+  COMMAND_TYPE_SWITCH_COMBAT_MODE = 9;
+  COMMAND_TYPE_USE_CONSUMABLE = 10;
+  COMMAND_TYPE_INTERACT = 11;
+}
+
+message PlayerCommand {
+  RequestContext context = 1;
+  string command_id = 2;
+  uint64 sequence = 3;
+  CommandType type = 4;
+  uint64 client_tick = 5;
+  uint64 client_action_sequence = 6;
+  uint64 client_predicted_action_start_tick = 7;
+  string contract_hash = 8;
+  oneof payload {
+    MoveCommand move = 20;
+    DodgeCommand dodge = 21;
+    LeapCommand leap = 22;
+    TurnCommand turn = 23;
+    CastSkillCommand cast_skill = 24;
+    DefenseCommand defense = 25;
+    SwitchCombatModeCommand switch_combat_mode = 26;
+    UseConsumableCommand use_consumable = 27;
+    InteractCommand interact = 28;
+  }
+}
+
+message MoveCommand {
+  Vector3 direction = 1;
+  Vector3 desired_position = 2;
+  double analog_magnitude = 3;
+  bool sprint = 4;
+  string handoff_action = 5;
+  uint64 handoff_sequence = 6;
+  uint64 handoff_client_tick = 7;
+  Vector3 handoff_position = 8;
+  Vector3 handoff_velocity = 9;
+  optional double target_yaw = 10;
+  optional double current_yaw = 11;
+  optional string yaw_input_space = 12;
+}
+
+message DodgeCommand {
+  Vector3 direction = 1;
+}
+
+message LeapCommand {
+  Vector3 direction = 1;
+  double charge = 2;
+}
+
+message TurnCommand {
+  Vector3 facing = 1;
+  double target_yaw = 2;
+  double current_yaw = 3;
+  string input_space = 4;
+}
+
+message CastSkillCommand {
+  string skill_id = 1;
+  uint32 action_slot = 2;
+  string combat_mode_id = 3;
+  Vector3 target_position = 4;
+  Vector3 aim_direction = 5;
+}
+
+message DefenseCommand {
+  bool blocking = 1;
+  bool parry = 2;
+  Vector3 facing = 3;
+}
+
+message SwitchCombatModeCommand {
+  string target_combat_mode_id = 1;
+  string weapon_combination_id = 2;
+}
+
+message UseConsumableCommand {
+  uint32 hotbar_slot = 1;
+  string item_instance_id = 2;
+  string item_template_id = 3;
+}
+
+message InteractCommand {
+  EntityRef target = 1;
+  string interaction_type = 2;
+}
+
+message CommandAck {
+  bool accepted = 1;
+  string command_id = 2;
+  uint64 sequence = 3;
+  string rejection_code = 4;
+  string message = 5;
+  uint64 server_tick = 6;
+  map<string, string> metadata = 7;
+}
+
+message SkillRuntimeState {
+  string current_skill_id = 1;
+  string state = 2;
+  int64 started_at_ms = 3;
+  int64 cooldown_end_ms = 4;
+  int64 last_resolved_at_ms = 5;
+}
+
+message MovementCorrection {
+  bool corrected = 1;
+  string reason = 2;
+  double distance = 3;
+  Vector3 server_position = 4;
+  Vector3 client_position = 5;
+  uint64 tick = 6;
+  uint64 sequence = 7;
+  uint64 client_tick = 8;
+  string policy = 9;
+}
+
+message MovementCurveSample {
+  double t = 1;
+  double scale = 2;
+}
+
+message LocomotionState {
+  string movement_mode = 1;
+  string action = 2;
+  string ability_key = 3;
+  string phase = 4;
+  string reconciliation_mode = 5;
+  int32 phase_elapsed_ms = 6;
+  int32 phase_remaining_ms = 7;
+  int32 duration_ms = 8;
+  int32 airborne_duration_ms = 9;
+  int32 startup_ms = 10;
+  int32 active_ms = 11;
+  int32 recovery_ms = 12;
+  string speed_curve_id = 13;
+  repeated MovementCurveSample speed_curve_samples = 14;
+  repeated MovementCurveSample vertical_curve_samples = 15;
+  double jump_z_velocity = 16;
+  double gravity_scale = 17;
+  int32 expected_apex_ms = 18;
+  uint64 server_landing_tick = 19;
+  string landing_detection_policy = 20;
+  string ground_z_policy = 21;
+  double capsule_base_offset = 22;
+  double vertical_position_offset = 23;
+  double vertical_velocity = 24;
+  string landing_policy = 25;
+  string grounded_handoff_policy = 26;
+  string contract_version = 27;
+  string contract_hash = 28;
+  string phase_window_policy = 29;
+  string prediction_error_policy = 30;
+  string action_contract_id = 31;
+  string action_family = 32;
+  string movement_type = 33;
+  int32 action_priority = 34;
+  string contract_sync_state = 35;
+  uint64 client_command_tick = 36;
+  uint64 client_action_sequence = 37;
+  uint64 client_predicted_action_tick = 38;
+  uint64 server_received_tick = 39;
+  string timeline_classification = 40;
+  uint64 server_action_started_tick = 41;
+  double authoritative_yaw = 42;
+  double yaw_rate = 43;
+  string rotation_phase = 44;
+  double correction_debt_x = 45;
+  double correction_debt_y = 46;
+  double correction_debt_z = 47;
+  double correction_debt_yaw = 48;
+  string handoff_state = 49;
+  uint64 handoff_started_tick = 50;
+  uint64 handoff_expires_tick = 51;
+  uint64 server_action_end_tick = 52;
+  uint64 grounded_confirmed_tick = 53;
+  bool allows_air_control = 54;
+  double air_control_modifier = 55;
+  Vector3 entry_direction = 56;
+  Vector3 action_start_position = 57;
+  uint64 action_started_tick = 58;
+  double action_distance_traveled = 59;
+  Vector3 action_projected_position = 60;
+  double entry_speed = 61;
+  double target_speed = 62;
+  double phase_speed_scale = 63;
+  double effective_speed = 64;
+  bool landing_handoff_active = 65;
+  int32 landing_handoff_duration = 66;
+  Vector3 landing_exit_direction = 67;
+  double landing_exit_speed = 68;
+  uint64 last_updated_tick = 69;
+}
+
+message MovementActionContractManifest {
+  string contract_id = 1;
+  string ability_key = 2;
+  string movement_type = 3;
+  string action_family = 4;
+  string contract_version = 5;
+  string contract_hash = 6;
+  int32 action_priority = 7;
+  bool enabled = 8;
+}
+
+message MovementReconciliationProfile {
+  string profile_id = 1;
+  double max_speed = 2;
+  double sprint_speed_multiplier = 3;
+  double acceleration = 4;
+  double deceleration = 5;
+  double ground_friction = 6;
+  double air_acceleration = 7;
+  double jump_height = 8;
+  int32 jump_duration_ms = 9;
+  double rotation_rate_yaw = 10;
+  double gravity_scale = 11;
+  double braking_friction_factor = 12;
+  double max_slope_deg = 13;
+  double step_height = 14;
+  double base_deadzone = 15;
+  double grounded_speed_deadzone_factor = 16;
+  double grounded_speed_deadzone_min = 17;
+  double grounded_speed_deadzone_max = 18;
+  double grounded_transition_deadzone_min = 19;
+  double move_sustain_deadzone = 20;
+  double move_sustain_transition_deadzone = 21;
+  double airborne_deadzone = 22;
+  double leap_recent_deadzone = 23;
+  double leap_airborne_snapshot_deadzone = 24;
+  double leap_landing_deadzone_factor = 25;
+  double leap_landing_deadzone_min = 26;
+  double leap_landing_deadzone_max = 27;
+  double leap_landing_clamp_ignore_deadzone = 28;
+  double leap_landing_soft_snap_deadzone = 29;
+  double dodge_recent_deadzone = 30;
+  double dodge_active_deadzone = 31;
+  double dodge_exit_deadzone_factor = 32;
+  double dodge_exit_deadzone_min = 33;
+  double dodge_exit_deadzone_max = 34;
+  double post_action_grounded_deadzone = 35;
+  double correction_max_step = 36;
+  double hard_snap_distance = 37;
+  double severe_desync_distance = 38;
+  int32 visual_smoothing_ms = 39;
+  double visual_smoothing_max_distance = 40;
+  int32 remote_visual_interpolation_ms = 41;
+  int32 remote_visual_max_extrapolation_ms = 42;
+  double remote_visual_hard_snap_distance = 43;
+  int32 dodge_carry_handoff_ms = 44;
+  int32 leap_landing_correction_grace_ms = 45;
+  int32 leap_grounded_carry_handoff_ms = 46;
+  double movement_turn_resubmit_dot_threshold = 47;
+  int32 movement_turn_resubmit_min_interval_ms = 48;
+  int32 movement_submit_interval_ms = 49;
+  int32 snapshot_poll_interval_ms = 50;
+}
+
+message CombatModeSlot {
+  string combat_mode_id = 1;
+  uint32 slot_index = 2;
+  string skill_id = 3;
+  bool enabled = 4;
+}
+
+message CombatModeState {
+  string weapon_combination_id = 1;
+  string active_combat_mode = 2;
+  string target_combat_mode = 3;
+  string phase = 4;
+  int32 switch_remaining_ms = 5;
+  int32 switch_duration_ms = 6;
+  string action_instance_id = 7;
+  repeated CombatModeSlot mode_slots = 8;
+  bool combat_mode_enforced = 9;
+}
+
+message CreatureAIState {
+  string movement_tactic = 1;
+  string combat_tactic = 2;
+  string commitment = 3;
+  string capability_id = 4;
+  string contract_id = 5;
+  string contract_hash = 6;
+  string orbit_side = 7;
+  string cover_id = 8;
+  string pack_slot = 9;
+  string last_reason = 10;
+  Vector3 tactical_destination = 11;
+  string cover_state = 12;
+  string encounter_id = 13;
+  string encounter_role = 14;
+  string protected_unit_id = 15;
+  string territory_state = 16;
+  string leash_state = 17;
+  string migration_state = 18;
+  string migration_reason = 19;
+  string motivation_state = 20;
+  string behavior_family = 21;
+  string combat_role = 22;
+  double decision_score = 23;
+  double desired_range_cm = 24;
+  double actual_range_cm = 25;
+  string path_state = 26;
+  string los_state = 27;
+  string crowd_state = 28;
+  string ai_lod_state = 29;
+  double target_score = 30;
+  double cover_score = 31;
+  string selected_skill_id = 32;
+  string profile_source = 33;
+  double skill_movement_arc_height_cm = 34;
+  string skill_movement_arc_curve = 35;
+  int32 skill_movement_takeoff_ms = 36;
+  int32 skill_movement_landing_lock_ms = 37;
+  int32 skill_windup_ms = 38;
+  int32 skill_active_start_ms = 39;
+  int32 skill_active_end_ms = 40;
+  int32 skill_recovery_ms = 41;
+  int32 skill_action_lock_ms = 42;
+  string skill_movement_type = 43;
+  int32 skill_movement_start_ms = 44;
+  int32 skill_movement_duration_ms = 45;
+  double skill_movement_distance_cm = 46;
+  double skill_movement_desired_landing_distance_cm = 47;
+  double skill_movement_min_landing_distance_cm = 48;
+  double skill_movement_stop_at_contact_ratio = 49;
+}
+
+message HealthResponse {
+  bool healthy = 1;
+  string status = 2;
+}
+
+message ReadinessResponse {
+  bool ready = 1;
+  repeated string blockers = 2;
+}
+
+message RuntimeStatsResponse {
+  ServerTick tick = 1;
+  uint32 active_regions = 2;
+  uint32 active_sessions = 3;
+  uint32 active_entities = 4;
+  double average_frame_ms = 5;
+  double p95_frame_ms = 6;
+  map<string, string> phase_status = 7;
+  uint64 spawned_creature_count = 8;
+  uint64 despawned_creature_count = 9;
+  uint64 ai_target_acquired_count = 10;
+  uint64 movement_intent_applied_count = 11;
+  uint64 attack_attempted_count = 12;
+  uint64 attack_applied_count = 13;
+}
