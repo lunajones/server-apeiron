@@ -348,6 +348,35 @@ Done when:
 - DB current service layer is thinner than its repositories and seeds.
 - Git remotes exist locally, but pushes require GitHub authentication.
 
+## 2026-06-22 Continuation Checkpoint
+
+### Completed Since Last Checkpoint
+
+- Recreated `docs/movement/reconciliation-change-ledger.md` from reliable recovered facts and current automated validation.
+- Revalidated server and DB builds/tests.
+- Revalidated Unreal movement automation:
+  - `Scripts/test_movement_validation.ps1 -InputPlayback -TimeoutSeconds 240`
+  - `Scripts/test_movement_validation.ps1 -FocusedInputPlayback -TimeoutSeconds 240`
+- Fixed DB migration ordering hygiene by renaming `migrations/20_spawn_zone.sql` to `migrations/020_spawn_zone.sql`.
+- Added `internal/database/migration_files_test.go` to enforce sortable three-digit migration prefixes.
+- Added DB `.gitignore` coverage for `*.exe~` build leftovers.
+
+### Local Commits
+
+- `server-apeiron`: `cf8ebec restore reconciliation change ledger`
+- `db-apeiron`: `cf97af3 enforce sortable migration filenames`
+- `db-apeiron`: `987f702 guard migration filename ordering`
+
+### Service State
+
+- `db-api` starts successfully.
+- `game-server` starts successfully against `DB_APEIRON_ENDPOINT=127.0.0.1:50051`.
+- Normal gameplay mode is restored after validation mode runs.
+
+### Push Status
+
+Git remotes are configured, but this machine does not currently have `gh` installed and HTTPS push previously timed out waiting for credentials. The commits are local until GitHub authentication is configured.
+
 ## Non-Negotiable Safety Rules
 
 - No broad delete or cleanup. Quarantine instead.
