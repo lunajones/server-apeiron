@@ -19,6 +19,10 @@ recuperação reconstruiu *depois* do delete). Para cada mudança registramos:
 > criado *depois* do delete. Não há nenhuma linha do jogo pré-delete no histórico git. Este doc é a
 > fonte de verdade do "o que existia antes", não o `git log`.
 
+> 🚫 **Fora de escopo — Niagara/VFX:** decisão do usuário (22/06): *"tudo que for de Niagara, não
+> vamos fazer — perda de tempo, quero o funcional de volta, não firula"*. Mudanças de VFX/Niagara
+> ficam registradas como histórico, mas **não entram na lista de gaps a re-aplicar**.
+
 ## Como usar / precedência de fontes
 
 1. Relato direto do usuário no chat + valor testado em runtime.
@@ -136,7 +140,7 @@ rubberbanding** que foi o foco do usuário até o delete.
 | 1 | **Shield Bash vira gap-close curto:** passo curto pra frente no início da ação, **por contrato** (sem hardcode). `movement_start_phase=action_start`; passo 75cm / 80ms / speed 940; windup 110ms; hit 110–240ms; stun 1.5s | `db:bootstrap/027_player_shield_bash_seed.sql:61`, `player_skill_combat_system_test.go:428` | ⚠️ seed `027` sumiu (config foi p/ `db:bootstrap/013_player_sword_shield_skill_seed.sql`); `MovementStartPhase` presente (4 arq) — **verificar valores 75/80/940** |
 | 2 | **Skills de movimento coladas ao chão usam direção HORIZONTAL do boneco** (yaw autoritativo da locomoção → fallback `Transform.RotationY` → fallback AimDirection horizontal), **não** o ponto 3D do mouse. Bug: `commitPendingPlayerSkillMovementTarget` usava `TargetPosition` do mouse → encurtava a distância ao mirar no chão perto. Removido o stop-distance quando não há alvo/contato real. Genérico p/ dash/charge (shield rush, shield bash, maul-like) | `player_skill_combat_system.go` (+58), `player_skill_combat_system_test.go` (+35) | ⚠️ `commitPendingPlayerSkillMovementTarget` presente (1 arq) — **verificar** se usa yaw horizontal e não o mouse |
 | 3 | **Regressão do rubberband** (andar/curva/pulo/dodge juntos): client tinha backlog de inputs locais (`pending_after=10/11`) e o reconciler aplicava correções pequenas demais na cápsula. Fix no Unreal: replay de movimento pendente também pode virar **defer/correction debt** usando `ModeDeadZone` + `CorrectionMaxStep` do perfil, **sem hardcode**. Também diagnosticado: restart do server durante PIE causa mismatch de epoch/baseline | `ApeironGameServerBridge.cpp` (+14-5) | ✅ `ModeDeadZone`/`CorrectionMaxStep`/`correction debt`/`defer` presentes (Unreal) — **mas ver nota abaixo** |
-| 4 | **Cor do Niagara** do wolf lunge dust: marrom quente (estava preto fosco). `NS_Wolf_Lunge_GroundDust_WarmGrayBrown_NaturalV1` | `ApeironGroundDustNiagaraBuilderCommandlet.cpp` (+19-17) | ✅ `FLinearColor(0.62, 0.45, 0.27)` no commandlet + assets `NS_..._WarmGrayBrown_*` no Content |
+| 4 | **Cor do Niagara** do wolf lunge dust: marrom quente (estava preto fosco). `NS_Wolf_Lunge_GroundDust_WarmGrayBrown_NaturalV1` | `ApeironGroundDustNiagaraBuilderCommandlet.cpp` (+19-17) | 🚫 **FORA DE ESCOPO** (decisão do usuário: nada de Niagara/VFX). Já presente, mas não é gap nem prioridade |
 
 > **Nota crítica sobre o rubberband (#3):** o patch de 16/06 sobreviveu no Unreal, mas foi uma
 > **mitigação client-side** no reconciler. A causa-raiz apontada pelo gap-audit (P0 #1) é
@@ -149,6 +153,65 @@ rubberbanding** que foi o foco do usuário até o delete.
 > `recuperação 8` = **16/06** (esta seção). Numeração maior = mais antiga; o usuário envia em
 > direção ao `recuperação 1` (mais novo, perto do delete).
 
+### recuperação 7 → 5 (semana do delete: terça-noite → quinta)
+
+> Datas aproximadas — nesse trecho o usuário rodava **chats paralelos** na mesma semana
+> (~16–18/06). A ordem autoritativa é o número da recuperação (7 mais antigo → 5 mais novo).
+
+#### recuperação 7 — Wolf lunge com andada PÓS-pouso (continuação natural)
+
+**Pedido:** o lunge devia dar uma andada **depois** do salto, continuando em linha como parte do
+movimento (pulo natural), não só a andada antes.
+
+| # | Mudança | Arquivos originais (chat) | Status |
+| --- | --- | --- | --- |
+| 1 | Contrato do `wolf_lunge_leap` estava **fora da timeline** da action (movimento começava 1840ms, takeoff 2000ms, mas a action acabava ~1080ms → server encerrava a skill antes da parte pós-salto). Reajustado p/ caber: movimento 480ms, takeoff 640ms, deslocamento total 520ms, `landing_lock_ms=140` como **continuação horizontal no chão após o arco** | `db:015_skill_movement_effect_seed.sql:89` | ⚠️ seed `015` renumerado → `db:018_legacy_skill_movement_effect_seed.sql` — **verificar valores** |
+| 2 | Server mantém a skill **pendente até o fim do movimento**, não só até o fim da hitbox | `creature_combat_system.go:427`, `creature_combat_system_test.go:377` | ❌ `creature_combat_system.go` sumiu — re-aplicar no wolf runtime (`gameapi/runtime.go`) |
+| 3 | Unreal não limpa o estado visual antes da janela completa de movimento | `ApeironCreaturePlaceholder.cpp:458` | ⚠️ verificar no cliente |
+
+#### recuperação 6 — Basic Attack como combo de 3 etapas server-authoritative
+
+**Decisão de design:** M1 continua mandando só `player_basic_attack` (input simples); o **server**
+resolve a etapa do combo (`_1/_2/_3`) pela janela de combo + estado. Cada etapa = skill real
+separada (anim key, windup/active/recovery, hitbox, dano/posture, stamina, step-in, cancel window,
+hitstop) — facilita animação depois.
+
+| # | Mudança | Arquivos originais (chat) | Status |
+| --- | --- | --- | --- |
+| 1 | `player_basic_attack_1/2/3` com `combo_group=old_china_basic_attack`, `combo_index`; cada etapa com hitbox/timing/dano/poise/impact/step-in. Step-in: 1=120cm, 2=145cm, 3=175cm. Entram no path de **movimento imediato/preditivo** do player | `player_skill_combat_system.go`, `db:019_old_china_player_vertical_slice_seed.sql`, `db:024_combat_defense_contract_seed.sql` | ⚠️ `player_basic_attack` presente (5 arq) mas `combo_group/index` fracos (1 arq); seed `019_old_china` (320 linhas) **sumiu/renumerado** — verificar etapas |
+| 2 | **Bug do dano:** o bridge mandava `player_quick_slash` no left-click, **não** `player_basic_attack` → todo o combo bypassado. Corrigido o roteamento do M1 | `Tools/ApeironGrpcBridge/main.go`, `app/dependencies.go`, `gameapi/services.go` | ❌ **verificar roteamento do M1 hoje** (regressão provável) |
+| 3 | **Trava autoritativa:** `BASIC_ATTACK`/`CAST_SKILL` retornam `action_locked` se o player estiver em dodge/leap/knockback/`movement_mode=airborne` (sem skill durante pulo/dodge) | `dependencies.go:546`, `combat_command_gate_test.go:167` | ⚠️ `action_locked`/`airborne` presentes, mas **test `combat_command_gate_test.go` sumiu** — re-aplicar gate + teste |
+
+#### ★ recuperação 5 — Autoridade skill-movement (A SPEC DA FATIA 1 / raiz do rubberband)
+
+Chat mais importante para a reconstrução. Define a arquitetura correta e **por que** o rubberband no
+fim das skills acontece.
+
+**Arquitetura correta:**
+- **Combat é dono da skill:** início, timing, alvo, direção, hitbox, cooldown, lock, pending state.
+- **Movement resolver é dono da locomotion e a publica:** `Action`, `MovementMode`, `Phase`,
+  `ReconciliationMode`, `TargetSpeed`, `EffectiveSpeed`, `PhaseSpeedScale`, `ActionDistanceTraveled`,
+  `ActionProjectedPosition`, `ActionStartPosition`.
+
+**O que estava quebrado (e continua):** o combat faz as duas coisas —
+1. entrega `movement.Intent` ao resolver (`player_skill_combat_system.go:933`),
+2. o resolver escreve `Movement.Locomotion` (`resolver.go:261`),
+3. **mas o combat sobrescreve o mesmo estado na mão** (`player_skill_combat_system.go:2566`).
+A boa lógica de montagem estava em `resolver.go:1103` (`locomotionStateForResolve`).
+`CommitMovementResult` resolvia a posição pelo movement e depois **sobrescrevia o snapshot** com
+outro cálculo (`player_skill_combat_system.go:1004`).
+
+**Regra:** a correção certa **elimina a duplicidade de autoridade**, não compara campo-a-campo.
+Combat fornece intenção; movement publica o estado final. Teste obrigatório = paridade nos 10 campos.
+
+**Status no código atual:**
+- ❌ `internal/movement/resolver.go` **não existe** (resolver inteiro sumiu).
+- ❌ `locomotionStateForResolve`, `LocomotionStateComponent`, `PhaseSpeedScale` — **sumiram** (0 ocorrências).
+- ⚠️ locomotion ainda montada em **3 lugares**: `combat/player_skill_combat_system.go` (3403 linhas),
+  `gameapi/contracts.go`, `gameapi/runtime.go` → **autoridade dupla/tripla persiste**.
+- **Fatia 1** = reconstruir `internal/movement` como **único produtor** de locomotion (os 10 campos),
+  e fazer o combat emitir só intent/timeline.
+
 ---
 
 ## Tabela consolidada de gaps (o que falta re-aplicar)
@@ -157,17 +220,22 @@ Prioridade do que **sumiu** e precisa voltar:
 
 | Prioridade | Gap | Origem | Onde re-aplicar |
 | --- | --- | --- | --- |
+| **Crítica** | **Ownership do resolver de movimento** — combat só emite intent/timeline; movement publica locomotion (10 campos, com teste de paridade). Eliminar autoridade dupla, não patch campo-a-campo | **chat 5** + 16/06 #3 | `internal/movement` (resolver a reconstruir) — **Fatia 1** |
+| Alta | **Wolf lunge pós-pouso**: timeline do movimento dentro da action; `landing_lock` como continuação horizontal; skill pendente até o fim do movimento | chat 7 | `db:018_..._seed.sql`, wolf runtime em `gameapi/runtime.go` |
+| Alta | **Basic Attack combo 3 etapas** server-authoritative (`_1/_2/_3`, combo_group/index, step-in) + seed `old_china` (320 linhas sumiu) | chat 6 #1 | `combat/player_skill_combat_system.go`, `db:bootstrap` |
+| Alta | **Roteamento do M1**: left-click tem que sair como `player_basic_attack` (não `player_quick_slash`) | chat 6 #2 | `Tools/ApeironGrpcBridge/main.go`, `app/dependencies.go`, `gameapi/services.go` |
+| Alta | **Gate de skill em jump/dodge**: basic/cast = `action_locked` se dodge/leap/knockback/airborne (+ teste) | chat 6 #3 | `app/dependencies.go` (`combat_command_gate_test.go` sumiu) |
 | Alta | Parry por **direção de defesa** (`SubmitBlock`), não yaw | 13/06 #1 | `systems/defense_system.go`, `controllers/defense_controller.go` |
-| Alta | **Redução de velocidade no block** (0.5x/0.55x/0.75x) autoritativa + seed | 13/06 #3 | resolver de movimento (a reconstruir) + `bootstrap/019_..._seed.sql` |
+| Alta | **Redução de velocidade no block** (0.5x/0.55x/0.75x) autoritativa + seed | 13/06 #3 | resolver de movimento + `bootstrap/019_..._seed.sql` |
 | Alta | **Despawn grace** da creature (não apagar por ausência temporária) | 04/06 #9 | `ApeironGameServerBridge.cpp` |
-| Média | Confirmar **arco 180° / back-bypass** no block do código novo | 14/06 #1 | onde `FrontalArc` é avaliado |
-| Média | Confirmar **hitbox-decide-hit** (não target lock) no wolf atual | 14/06 #2 | `gameapi/runtime.go` |
+| Média | Confirmar **arco 180° / back-bypass** no block | 14/06 #1 | onde `FrontalArc` é avaliado |
+| Média | Confirmar **hitbox-decide-hit** (não target lock) no wolf | 14/06 #2 | `gameapi/runtime.go` |
 | Média | **Reconciliação**: smoothing acima da dead-zone, snap só severo | 04/06 #4-5 | `ApeironGameServerBridge.cpp` |
-| Média | **Rubberband — causa-raiz**: ownership do resolver de movimento no server (patch client de 16/06 é só mitigação) | 16/06 #3 | `internal/movement` (Fatia 1) |
-| Média | Verificar **Shield Bash gap-close** (75/80/940, `movement_start_phase=action_start`) | 16/06 #1 | `db:bootstrap/013_player_sword_shield_skill_seed.sql` |
-| Média | Verificar **direção horizontal das skills de chão** (yaw, não mouse) | 16/06 #2 | `combat/player_skill_combat_system.go` (`commitPendingPlayerSkillMovementTarget`) |
-| Baixa | **HUD painterly** (refazer; a versão metálica foi rejeitada) | 05/06 | `ApeironDebugHud.cpp/.h` |
+| Média | Verificar **Shield Bash gap-close** (75/80/940) | 16/06 #1 | `db:bootstrap/013_player_sword_shield_skill_seed.sql` |
+| Média | Verificar **direção horizontal das skills de chão** (yaw, não mouse) | 16/06 #2 | `combat/player_skill_combat_system.go` |
+| Baixa | **HUD painterly** (refazer; versão metálica rejeitada) | 05/06 | `ApeironDebugHud.cpp/.h` |
 | Baixa | Recuperar doc de request sumido | 04/06 | `docs/reviews/unreal-movement-prediction-reconciliation-requests-2026-06-04.md` |
+| 🚫 | **Niagara/VFX** — fora de escopo (decisão do usuário) | 16/06 #4 | — |
 
 ## Fontes / docs relacionados (limpos)
 
@@ -183,9 +251,9 @@ Apêndar aqui, mantendo a ordem cronológica, conforme forem colados:
 
 - [x] `recuperação 10` + `9` — integrados como **14/06** (block arco frontal + hitbox vs target lock)
 - [x] `recuperação 8` — integrado como **16/06** (shield bash gap-close, direção das skills de chão, rubberband, niagara)
-- [ ] `recuperação 7`
-- [ ] `recuperação 6`
-- [ ] `recuperação 5`
+- [x] `recuperação 7` — wolf lunge pós-pouso (continuação natural)
+- [x] `recuperação 6` — basic attack combo 3 etapas + roteamento M1 + gate jump/dodge
+- [x] `recuperação 5` — ★ autoridade skill-movement (spec da Fatia 1)
 - [ ] `recuperação 4`
 - [ ] `recuperação 3`
 - [ ] `recuperação 2`
