@@ -369,13 +369,14 @@ Prioridade do que **sumiu** e precisa voltar:
 ## Pipeline de dano/defesa — plano em tijolos (próximo slice grande)
 
 O runtime vivo (gameapi) ainda **não resolve dano**. Reconstrução em tijolos:
-1. ✅ `0c285b9` **block direcional** (`gameapi/defense.go:resolveDirectionalBlock`, arco 180°) — pronto, puro, testado.
-2. ⏳ **Dano do DB** — carregar damage/posture por skill (player + creature) das contracts do DB pro gameapi (sem hardcode; o gap-audit proíbe fallback de dano).
-3. ⏳ **Resolução de hit** — quando skill/ataque ativa, achar alvo (range + direção do ataque; depois geometria real do `internal/hitbox`), aplicar dano; usar o tijolo 1 pro block; HP→0 = morte/respawn.
+1. ✅ `0c285b9` **block direcional** (`gameapi/defense.go:resolveDirectionalBlock`, arco 180°) — puro, testado.
+2a. ✅ `4fcb17f` **dano no contrato** — `SkillRuntimeContract.Damage/PostureDamage` + player skills populados do seed 013 (shield_rush 14/34, bash 10/26, basic 8/10·7/9·6/18). Materializado no fallback recuperado.
+2b. ⏳ **DB-authoritative damage (cross-project, BLOQUEIA o 3 "certo"):** o proto/serviço de skill do DB **não expõe** `base_damage`/`posture_damage` — `loadSkillRuntimeContract` não consegue puxar do DB. Estender `db-apeiron`: proto skill + repository (já tem as colunas no seed) + service + handler, **regerar gen**, e mapear em `loadSkillRuntimeContract`. Idem `min_range`/`max_range`/`cone_angle` (o tijolo 3 precisa de range/cone — mesma situação do dano). Wolf bite/lunge/maul também.
+3. ⏳ **Resolução de hit** — quando skill ativa, achar alvo por **range + cone vindos do DB** (depois geometria real do `internal/hitbox`), aplicar `Damage` ao HP usando o tijolo 1 pro block; HP→0 = morte/respawn. **Depende do 2b** (range/cone) pra não inventar valor.
 4. ⏳ **Parry** (chat "continuar dia 10"): janela frontal, zera dano, interrompe atacante.
 5. ⏳ **Impact response** por alvo (flesh/bone/stone) no evento de dano.
 
-Tijolos 2-5 precisam de integração DB↔gameapi↔hitbox — slice grande, melhor com contexto limpo.
+**Limite/boundary:** tijolos 1 e 2a feitos no server. O **2b é o gargalo** — integração DB↔proto↔gameapi (regen de proto, cross-project db+server). É o slice grande; melhor com contexto limpo. Sem o 2b, o 3 só seria possível inventando range/cone (proibido pelo gap-audit).
 
 ## Anexo: meta-sessão de recuperação (provenance do HEAD atual)
 
