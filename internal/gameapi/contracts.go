@@ -26,8 +26,11 @@ type ProfileContractSource interface {
 	GetMovementActionContract(context.Context, *dbv1.IdRequest, ...grpc.CallOption) (*dbv1.MovementActionContractResponse, error)
 	GetMovementReconciliationContract(context.Context, *dbv1.IdRequest, ...grpc.CallOption) (*dbv1.MovementReconciliationContractResponse, error)
 	GetCreatureBehaviorRuntimeContract(context.Context, *dbv1.IdRequest, ...grpc.CallOption) (*dbv1.CreatureBehaviorRuntimeContractResponse, error)
+	GetCreatureTargetOpportunityPolicy(context.Context, *dbv1.IdRequest, ...grpc.CallOption) (*dbv1.CreatureTargetOpportunityPolicyResponse, error)
+	GetCreatureOrbitPolicy(context.Context, *dbv1.IdRequest, ...grpc.CallOption) (*dbv1.CreatureOrbitPolicyResponse, error)
 	GetCreatureEvasionPolicies(context.Context, *dbv1.IdRequest, ...grpc.CallOption) (*dbv1.CreatureEvasionPoliciesResponse, error)
 	GetCreatureSkillSetupPolicies(context.Context, *dbv1.IdRequest, ...grpc.CallOption) (*dbv1.CreatureSkillSetupPoliciesResponse, error)
+	GetCreatureSkillBehaviorBindings(context.Context, *dbv1.IdRequest, ...grpc.CallOption) (*dbv1.CreatureSkillBehaviorBindingsResponse, error)
 }
 
 type RuntimeContracts struct {
@@ -74,26 +77,65 @@ type SkillRuntimeContract struct {
 }
 
 type WolfRuntimePolicy struct {
-	ContractID        string
-	ContractHash      string
-	CapabilityID      string
-	DesiredRangeCM    float64
-	ChaseRangeCM      float64
-	LungeRangeCM      float64
-	RetreatRangeCM    float64
-	OrbitSpeedCMS     float64
-	ChaseSpeedCMS     float64
-	LungeSpeedCMS     float64
-	MaulSpeedCMS      float64
-	RetreatSpeedCMS   float64
-	LungeWindupMS     int32
-	LungeActiveEndMS  int32
-	LungeRecoveryMS   int32
-	LungeDistanceCM   float64
-	LungeDurationMS   int32
-	LungeArcHeightCM  float64
-	DodgeSkillID      string
-	EvasionChainCount int32
+	ContractID                     string
+	ContractHash                   string
+	CapabilityID                   string
+	DesiredRangeCM                 float64
+	ChaseRangeCM                   float64
+	LungeRangeCM                   float64
+	RetreatRangeCM                 float64
+	OrbitSpeedCMS                  float64
+	ChaseSpeedCMS                  float64
+	LungeSpeedCMS                  float64
+	MaulSpeedCMS                   float64
+	RetreatSpeedCMS                float64
+	LungeWindupMS                  int32
+	LungeActiveEndMS               int32
+	LungeRecoveryMS                int32
+	LungeDistanceCM                float64
+	LungeDurationMS                int32
+	LungeArcHeightCM               float64
+	DodgeSkillID                   string
+	EvasionChainCount              int32
+	TargetOpportunityPolicyID      string
+	CommitAngleMaxDeg              float64
+	MinCommitDistanceCM            float64
+	MaxCommitDistanceCM            float64
+	ApproachMinDistanceCM          float64
+	ApproachMaxDistanceCM          float64
+	BiteRangeCM                    float64
+	LungeMinRangeCM                float64
+	LungeMaxRangeCM                float64
+	MaulPressureThreshold          float64
+	TargetMemoryMS                 int32
+	NoReadySkillMemoryPolicy       string
+	CandidateCooldownVisibility    bool
+	AllowBacksideCommit            bool
+	OrbitPolicyID                  string
+	OrbitLocomotionMode            string
+	OrbitSpeedScale                float64
+	MinOrbitDurationMS             int32
+	SideSwitchCooldownMS           int32
+	AllowSideSwitchWhenTargetFaces bool
+	PreferLongSideCommit           bool
+	SideFlipChanceMultiplier       float64
+	LockSideDuringSetup            bool
+	SkillBehaviorBindings          []CreatureSkillBehaviorRuntimeBinding
+}
+
+type CreatureSkillBehaviorRuntimeBinding struct {
+	ID                  string
+	SkillID             string
+	TacticalState       string
+	DecisionPhase       string
+	SetupPolicyID       string
+	MinRangeCM          float64
+	MaxRangeCM          float64
+	Priority            int32
+	UsageWeight         float64
+	CooldownGroup       string
+	RequiresLineOfSight bool
+	Enabled             bool
 }
 
 type movementActionContractMetadata struct {
@@ -164,6 +206,8 @@ func LoadRuntimeContractsFromDB(ctx context.Context, skills ContractSource, prof
 		contracts.ActionContracts[skillID] = loaded.MovementAction
 	}
 
+	loadWolfBrainRuntimeContracts(ctx, profiles, &contracts)
+
 	if setupResp, err := profiles.GetCreatureSkillSetupPolicies(ctx, &dbv1.IdRequest{Id: contracts.WolfPolicy.ContractID}); err == nil && setupResp.GetFound() {
 		for _, setup := range setupResp.GetPolicies() {
 			if setup.GetSkillId() != "lunge" || !setup.GetIsEnabled() {
@@ -195,6 +239,128 @@ func LoadRuntimeContractsFromDB(ctx context.Context, skills ContractSource, prof
 		contracts.LoadIssues = append(contracts.LoadIssues, "missing weapon combat mode slots weaponkit_sword_shield")
 	}
 	return contracts
+}
+
+func loadWolfBrainRuntimeContracts(ctx context.Context, profiles ProfileContractSource, contracts *RuntimeContracts) {
+	if contracts == nil || profiles == nil || contracts.WolfPolicy.ContractID == "" {
+		return
+	}
+
+	resp, err := profiles.GetCreatureBehaviorRuntimeContract(ctx, &dbv1.IdRequest{Id: contracts.WolfPolicy.ContractID})
+	if err != nil || !resp.GetFound() {
+		contracts.LoadIssues = append(contracts.LoadIssues, "missing creature behavior runtime "+contracts.WolfPolicy.ContractID)
+		return
+	}
+	behavior := resp.GetContract()
+	if behavior == nil {
+		contracts.LoadIssues = append(contracts.LoadIssues, "empty creature behavior runtime "+contracts.WolfPolicy.ContractID)
+		return
+	}
+	contracts.WolfPolicy.ContractID = behavior.GetId()
+	contracts.WolfPolicy.ContractHash = behavior.GetId()
+
+	targetPolicy := behavior.GetTargetOpportunityPolicy()
+	targetPolicyID := behavior.GetTargetOpportunityPolicyId()
+	if targetPolicy == nil && targetPolicyID != "" {
+		if targetResp, err := profiles.GetCreatureTargetOpportunityPolicy(ctx, &dbv1.IdRequest{Id: targetPolicyID}); err == nil && targetResp.GetFound() {
+			targetPolicy = targetResp.GetPolicy()
+		}
+	}
+	if targetPolicy != nil {
+		applyWolfTargetOpportunityPolicy(&contracts.WolfPolicy, targetPolicy)
+	} else if targetPolicyID != "" {
+		contracts.LoadIssues = append(contracts.LoadIssues, "missing creature target opportunity policy "+targetPolicyID)
+	}
+
+	orbitPolicy := behavior.GetOrbitPolicy()
+	orbitPolicyID := behavior.GetOrbitPolicyId()
+	if orbitPolicy == nil && orbitPolicyID != "" {
+		if orbitResp, err := profiles.GetCreatureOrbitPolicy(ctx, &dbv1.IdRequest{Id: orbitPolicyID}); err == nil && orbitResp.GetFound() {
+			orbitPolicy = orbitResp.GetPolicy()
+		}
+	}
+	if orbitPolicy != nil {
+		applyWolfOrbitPolicy(&contracts.WolfPolicy, orbitPolicy)
+	} else if orbitPolicyID != "" {
+		contracts.LoadIssues = append(contracts.LoadIssues, "missing creature orbit policy "+orbitPolicyID)
+	}
+
+	if bindingResp, err := profiles.GetCreatureSkillBehaviorBindings(ctx, &dbv1.IdRequest{Id: contracts.WolfPolicy.ContractID}); err == nil && bindingResp.GetFound() {
+		contracts.WolfPolicy.SkillBehaviorBindings = creatureSkillBehaviorBindingsFromDB(bindingResp.GetBindings())
+		if len(contracts.WolfPolicy.SkillBehaviorBindings) == 0 {
+			contracts.LoadIssues = append(contracts.LoadIssues, "empty creature skill behavior bindings "+contracts.WolfPolicy.ContractID)
+		}
+	} else {
+		contracts.LoadIssues = append(contracts.LoadIssues, "missing creature skill behavior bindings "+contracts.WolfPolicy.ContractID)
+	}
+}
+
+func applyWolfTargetOpportunityPolicy(policy *WolfRuntimePolicy, target *dbv1.CreatureTargetOpportunityPolicy) {
+	if policy == nil || target == nil {
+		return
+	}
+	policy.TargetOpportunityPolicyID = target.GetId()
+	policy.CommitAngleMaxDeg = target.GetCommitAngleMaxDeg()
+	policy.MinCommitDistanceCM = target.GetMinCommitDistanceCm()
+	policy.MaxCommitDistanceCM = target.GetMaxCommitDistanceCm()
+	policy.ApproachMinDistanceCM = target.GetApproachMinDistanceCm()
+	policy.ApproachMaxDistanceCM = target.GetApproachMaxDistanceCm()
+	policy.BiteRangeCM = target.GetBiteRangeCm()
+	policy.LungeMinRangeCM = target.GetLungeMinRangeCm()
+	policy.LungeMaxRangeCM = target.GetLungeMaxRangeCm()
+	policy.MaulPressureThreshold = target.GetMaulPressureThreshold()
+	policy.TargetMemoryMS = target.GetTargetMemoryMs()
+	policy.NoReadySkillMemoryPolicy = target.GetNoReadySkillMemoryPolicy()
+	policy.CandidateCooldownVisibility = target.GetCandidateCooldownVisibility()
+	policy.AllowBacksideCommit = target.GetAllowBacksideCommit()
+	if policy.LungeMinRangeCM > 0 {
+		policy.LungeRangeCM = policy.LungeMinRangeCM
+	}
+	if policy.ApproachMaxDistanceCM > 0 {
+		policy.ChaseRangeCM = policy.ApproachMaxDistanceCM
+	}
+	if policy.BiteRangeCM > 0 {
+		policy.RetreatRangeCM = math.Min(policy.RetreatRangeCM, policy.BiteRangeCM)
+	}
+}
+
+func applyWolfOrbitPolicy(policy *WolfRuntimePolicy, orbit *dbv1.CreatureOrbitPolicy) {
+	if policy == nil || orbit == nil {
+		return
+	}
+	policy.OrbitPolicyID = orbit.GetId()
+	policy.OrbitLocomotionMode = orbit.GetOrbitLocomotionMode()
+	policy.OrbitSpeedScale = orbit.GetOrbitSpeedScale()
+	policy.MinOrbitDurationMS = orbit.GetMinOrbitDurationMs()
+	policy.SideSwitchCooldownMS = orbit.GetSideSwitchCooldownMs()
+	policy.AllowSideSwitchWhenTargetFaces = orbit.GetAllowSideSwitchWhenTargetFaces()
+	policy.PreferLongSideCommit = orbit.GetPreferLongSideCommit()
+	policy.SideFlipChanceMultiplier = orbit.GetSideFlipChanceMultiplier()
+	policy.LockSideDuringSetup = orbit.GetLockSideDuringSetup()
+}
+
+func creatureSkillBehaviorBindingsFromDB(bindings []*dbv1.CreatureSkillBehaviorBinding) []CreatureSkillBehaviorRuntimeBinding {
+	runtimeBindings := make([]CreatureSkillBehaviorRuntimeBinding, 0, len(bindings))
+	for _, binding := range bindings {
+		if binding == nil || !binding.GetIsEnabled() || binding.GetSkillId() == "" {
+			continue
+		}
+		runtimeBindings = append(runtimeBindings, CreatureSkillBehaviorRuntimeBinding{
+			ID:                  binding.GetId(),
+			SkillID:             binding.GetSkillId(),
+			TacticalState:       binding.GetTacticalState(),
+			DecisionPhase:       binding.GetDecisionPhase(),
+			SetupPolicyID:       binding.GetSetupPolicyId(),
+			MinRangeCM:          binding.GetMinRangeCm(),
+			MaxRangeCM:          binding.GetMaxRangeCm(),
+			Priority:            binding.GetPriority(),
+			UsageWeight:         binding.GetUsageWeight(),
+			CooldownGroup:       binding.GetCooldownGroup(),
+			RequiresLineOfSight: binding.GetRequiresLineOfSight(),
+			Enabled:             binding.GetIsEnabled(),
+		})
+	}
+	return runtimeBindings
 }
 
 func (c RuntimeContracts) ValidateRequiredCoverage(strictLoadedSource bool) error {
@@ -236,6 +402,17 @@ func (c RuntimeContracts) ValidateRequiredCoverage(strictLoadedSource bool) erro
 	}
 	if c.WolfPolicy.ContractID == "" || c.WolfPolicy.DodgeSkillID == "" {
 		missing = append(missing, "wolf runtime policy")
+	}
+	if strictLoadedSource {
+		if c.WolfPolicy.TargetOpportunityPolicyID == "" {
+			missing = append(missing, "wolf target opportunity policy")
+		}
+		if c.WolfPolicy.OrbitPolicyID == "" {
+			missing = append(missing, "wolf orbit policy")
+		}
+		if len(c.WolfPolicy.SkillBehaviorBindings) == 0 {
+			missing = append(missing, "wolf skill behavior bindings")
+		}
 	}
 	if len(c.CombatModes) == 0 {
 		missing = append(missing, "sword shield combat mode slots")
@@ -305,26 +482,49 @@ func RecoveredRuntimeContracts() RuntimeContracts {
 		ActionContracts: map[string]MovementActionRuntimeContract{},
 		SkillContracts:  map[string]SkillRuntimeContract{},
 		WolfPolicy: WolfRuntimePolicy{
-			ContractID:        "contract_wolf_pack_harasser_v1",
-			ContractHash:      "contract_wolf_pack_harasser_v1",
-			CapabilityID:      "wolf_pack_harasser",
-			DesiredRangeCM:    420,
-			ChaseRangeCM:      760,
-			LungeRangeCM:      220,
-			RetreatRangeCM:    130,
-			OrbitSpeedCMS:     360,
-			ChaseSpeedCMS:     620,
-			LungeSpeedCMS:     760,
-			MaulSpeedCMS:      420,
-			RetreatSpeedCMS:   520,
-			LungeWindupMS:     3600,
-			LungeActiveEndMS:  4030,
-			LungeRecoveryMS:   500,
-			LungeDistanceCM:   620,
-			LungeDurationMS:   980,
-			LungeArcHeightCM:  120,
-			DodgeSkillID:      "wolf_dodge",
-			EvasionChainCount: 4,
+			ContractID:                     "contract_wolf_pack_harasser_v1",
+			ContractHash:                   "contract_wolf_pack_harasser_v1",
+			CapabilityID:                   "wolf_pack_harasser",
+			DesiredRangeCM:                 420,
+			ChaseRangeCM:                   760,
+			LungeRangeCM:                   220,
+			RetreatRangeCM:                 130,
+			OrbitSpeedCMS:                  360,
+			ChaseSpeedCMS:                  620,
+			LungeSpeedCMS:                  760,
+			MaulSpeedCMS:                   420,
+			RetreatSpeedCMS:                520,
+			LungeWindupMS:                  3600,
+			LungeActiveEndMS:               4030,
+			LungeRecoveryMS:                500,
+			LungeDistanceCM:                620,
+			LungeDurationMS:                980,
+			LungeArcHeightCM:               120,
+			DodgeSkillID:                   "wolf_dodge",
+			EvasionChainCount:              4,
+			TargetOpportunityPolicyID:      "opportunity_wolf_harasser_v1",
+			CommitAngleMaxDeg:              180,
+			MinCommitDistanceCM:            120,
+			MaxCommitDistanceCM:            760,
+			ApproachMinDistanceCM:          260,
+			ApproachMaxDistanceCM:          760,
+			BiteRangeCM:                    260,
+			LungeMinRangeCM:                180,
+			LungeMaxRangeCM:                760,
+			MaulPressureThreshold:          0.72,
+			TargetMemoryMS:                 1200,
+			NoReadySkillMemoryPolicy:       "observe_only",
+			CandidateCooldownVisibility:    true,
+			AllowBacksideCommit:            true,
+			OrbitPolicyID:                  "orbit_wolf_harasser_combat_walk_v1",
+			OrbitLocomotionMode:            "combat_walk",
+			OrbitSpeedScale:                0.55,
+			MinOrbitDurationMS:             700,
+			SideSwitchCooldownMS:           900,
+			AllowSideSwitchWhenTargetFaces: true,
+			PreferLongSideCommit:           true,
+			SideFlipChanceMultiplier:       0.35,
+			LockSideDuringSetup:            true,
 		},
 		CombatModes: recoveredCombatModeSlots(),
 	}

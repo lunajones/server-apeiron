@@ -79,6 +79,24 @@ func TestLoadRuntimeContractsFromDBUsesRequiredSkillBindings(t *testing.T) {
 	if hasCombatModeSlot(contracts.CombatModes, "mode_sword_shield_vanguard", 1, "player_basic_attack_1") {
 		t.Fatalf("Vanguard must not expose M1 until sword-forward skills are implemented")
 	}
+	if contracts.WolfPolicy.TargetOpportunityPolicyID != "opportunity_wolf_harasser_v1" {
+		t.Fatalf("wolf opportunity policy = %q", contracts.WolfPolicy.TargetOpportunityPolicyID)
+	}
+	if contracts.WolfPolicy.OrbitPolicyID != "orbit_wolf_harasser_combat_walk_v1" {
+		t.Fatalf("wolf orbit policy = %q", contracts.WolfPolicy.OrbitPolicyID)
+	}
+	if contracts.WolfPolicy.OrbitLocomotionMode != "combat_walk" {
+		t.Fatalf("wolf orbit locomotion mode = %q", contracts.WolfPolicy.OrbitLocomotionMode)
+	}
+	if contracts.WolfPolicy.LungeMinRangeCM != 180 || contracts.WolfPolicy.LungeMaxRangeCM != 700 {
+		t.Fatalf("wolf lunge range = %.0f..%.0f", contracts.WolfPolicy.LungeMinRangeCM, contracts.WolfPolicy.LungeMaxRangeCM)
+	}
+	if !hasCreatureSkillBehaviorBinding(contracts.WolfPolicy.SkillBehaviorBindings, "lunge", "circle", "reposition") {
+		t.Fatalf("wolf lunge circle/reposition binding missing: %#v", contracts.WolfPolicy.SkillBehaviorBindings)
+	}
+	if !hasCreatureSkillBehaviorBinding(contracts.WolfPolicy.SkillBehaviorBindings, "maul", "pressure", "counter") {
+		t.Fatalf("wolf maul pressure/counter binding missing: %#v", contracts.WolfPolicy.SkillBehaviorBindings)
+	}
 }
 
 func TestLoadRuntimeContractsFromDBRejectsMissingRequiredBinding(t *testing.T) {
@@ -258,8 +276,65 @@ func (fakeRuntimeContractSource) GetMovementReconciliationContract(context.Conte
 	return &dbv1.MovementReconciliationContractResponse{Found: false}, nil
 }
 
-func (fakeRuntimeContractSource) GetCreatureBehaviorRuntimeContract(context.Context, *dbv1.IdRequest, ...grpc.CallOption) (*dbv1.CreatureBehaviorRuntimeContractResponse, error) {
-	return &dbv1.CreatureBehaviorRuntimeContractResponse{Found: false}, nil
+func (fakeRuntimeContractSource) GetCreatureBehaviorRuntimeContract(_ context.Context, req *dbv1.IdRequest, _ ...grpc.CallOption) (*dbv1.CreatureBehaviorRuntimeContractResponse, error) {
+	if req.GetId() != "contract_wolf_pack_harasser_v1" {
+		return &dbv1.CreatureBehaviorRuntimeContractResponse{Found: false}, nil
+	}
+	return &dbv1.CreatureBehaviorRuntimeContractResponse{
+		Found: true,
+		Contract: &dbv1.CreatureBehaviorRuntimeContract{
+			Id:                        req.GetId(),
+			CreatureTemplateId:        "steppe_wolf",
+			TargetOpportunityPolicyId: "opportunity_wolf_harasser_v1",
+			OrbitPolicyId:             "orbit_wolf_harasser_combat_walk_v1",
+		},
+	}, nil
+}
+
+func (fakeRuntimeContractSource) GetCreatureTargetOpportunityPolicy(_ context.Context, req *dbv1.IdRequest, _ ...grpc.CallOption) (*dbv1.CreatureTargetOpportunityPolicyResponse, error) {
+	if req.GetId() != "opportunity_wolf_harasser_v1" {
+		return &dbv1.CreatureTargetOpportunityPolicyResponse{Found: false}, nil
+	}
+	return &dbv1.CreatureTargetOpportunityPolicyResponse{
+		Found: true,
+		Policy: &dbv1.CreatureTargetOpportunityPolicy{
+			Id:                          req.GetId(),
+			CommitAngleMaxDeg:           180,
+			MinCommitDistanceCm:         120,
+			MaxCommitDistanceCm:         760,
+			ApproachMinDistanceCm:       260,
+			ApproachMaxDistanceCm:       760,
+			BiteRangeCm:                 230,
+			LungeMinRangeCm:             180,
+			LungeMaxRangeCm:             700,
+			MaulPressureThreshold:       0.72,
+			TargetMemoryMs:              1200,
+			NoReadySkillMemoryPolicy:    "observe_only",
+			CandidateCooldownVisibility: true,
+			AllowBacksideCommit:         true,
+		},
+	}, nil
+}
+
+func (fakeRuntimeContractSource) GetCreatureOrbitPolicy(_ context.Context, req *dbv1.IdRequest, _ ...grpc.CallOption) (*dbv1.CreatureOrbitPolicyResponse, error) {
+	if req.GetId() != "orbit_wolf_harasser_combat_walk_v1" {
+		return &dbv1.CreatureOrbitPolicyResponse{Found: false}, nil
+	}
+	return &dbv1.CreatureOrbitPolicyResponse{
+		Found: true,
+		Policy: &dbv1.CreatureOrbitPolicy{
+			Id:                             req.GetId(),
+			BehaviorContractId:             "contract_wolf_pack_harasser_v1",
+			OrbitLocomotionMode:            "combat_walk",
+			OrbitSpeedScale:                0.55,
+			MinOrbitDurationMs:             700,
+			SideSwitchCooldownMs:           900,
+			AllowSideSwitchWhenTargetFaces: true,
+			PreferLongSideCommit:           true,
+			SideFlipChanceMultiplier:       0.35,
+			LockSideDuringSetup:            true,
+		},
+	}, nil
 }
 
 func (fakeRuntimeContractSource) GetCreatureEvasionPolicies(context.Context, *dbv1.IdRequest, ...grpc.CallOption) (*dbv1.CreatureEvasionPoliciesResponse, error) {
@@ -268,6 +343,21 @@ func (fakeRuntimeContractSource) GetCreatureEvasionPolicies(context.Context, *db
 
 func (fakeRuntimeContractSource) GetCreatureSkillSetupPolicies(context.Context, *dbv1.IdRequest, ...grpc.CallOption) (*dbv1.CreatureSkillSetupPoliciesResponse, error) {
 	return &dbv1.CreatureSkillSetupPoliciesResponse{Found: false}, nil
+}
+
+func (fakeRuntimeContractSource) GetCreatureSkillBehaviorBindings(_ context.Context, req *dbv1.IdRequest, _ ...grpc.CallOption) (*dbv1.CreatureSkillBehaviorBindingsResponse, error) {
+	if req.GetId() != "contract_wolf_pack_harasser_v1" {
+		return &dbv1.CreatureSkillBehaviorBindingsResponse{Found: false}, nil
+	}
+	return &dbv1.CreatureSkillBehaviorBindingsResponse{
+		Found: true,
+		Bindings: []*dbv1.CreatureSkillBehaviorBinding{
+			{Id: "bind_bite_approach", BehaviorContractId: req.GetId(), SkillId: "bite", TacticalState: "approach", DecisionPhase: "acquire", MinRangeCm: 0, MaxRangeCm: 260, Priority: 60, UsageWeight: 0.9, CooldownGroup: "wolf_bite", RequiresLineOfSight: true, IsEnabled: true},
+			{Id: "bind_lunge_circle", BehaviorContractId: req.GetId(), SkillId: "lunge", TacticalState: "circle", DecisionPhase: "reposition", SetupPolicyId: "setup_wolf_lunge_orbit_windup_v1", MinRangeCm: 180, MaxRangeCm: 700, Priority: 90, UsageWeight: 1.1, CooldownGroup: "wolf_lunge", RequiresLineOfSight: true, IsEnabled: true},
+			{Id: "bind_maul_pressure", BehaviorContractId: req.GetId(), SkillId: "maul", TacticalState: "pressure", DecisionPhase: "counter", MinRangeCm: 0, MaxRangeCm: 260, Priority: 100, UsageWeight: 0.7, CooldownGroup: "wolf_maul", RequiresLineOfSight: true, IsEnabled: true},
+			{Id: "bind_dodge_pressure", BehaviorContractId: req.GetId(), SkillId: "wolf_dodge", TacticalState: "pressure", DecisionPhase: "evade", MinRangeCm: 0, MaxRangeCm: 420, Priority: 110, UsageWeight: 1.2, CooldownGroup: "wolf_dodge", RequiresLineOfSight: false, IsEnabled: true},
+		},
+	}, nil
 }
 
 func fakeMovementActionContract(id string, abilityKey string, actionType string, reconciliation string) *dbv1.MovementActionContract {
@@ -299,6 +389,15 @@ func fakeMovementActionContract(id string, abilityKey string, actionType string,
 func hasCombatModeSlot(slots []*gamev1.CombatModeSlot, combatModeID string, slotIndex uint32, skillID string) bool {
 	for _, slot := range slots {
 		if slot.GetCombatModeId() == combatModeID && slot.GetSlotIndex() == slotIndex && slot.GetSkillId() == skillID && slot.GetEnabled() {
+			return true
+		}
+	}
+	return false
+}
+
+func hasCreatureSkillBehaviorBinding(bindings []CreatureSkillBehaviorRuntimeBinding, skillID string, tacticalState string, decisionPhase string) bool {
+	for _, binding := range bindings {
+		if binding.SkillID == skillID && binding.TacticalState == tacticalState && binding.DecisionPhase == decisionPhase && binding.Enabled {
 			return true
 		}
 	}

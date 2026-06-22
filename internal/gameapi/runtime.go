@@ -457,6 +457,9 @@ func (r *Runtime) updateWolfPolicyLocked(wolf *entityState, player *entityState)
 	start := wolf.position
 
 	policy := r.contracts.WolfPolicy
+	lungeMinRangeCM := positiveOr(policy.LungeMinRangeCM, policy.LungeRangeCM)
+	lungeMaxRangeCM := positiveOr(policy.LungeMaxRangeCM, policy.ChaseRangeCM)
+	maulRangeCM := positiveOr(policy.BiteRangeCM, policy.RetreatRangeCM)
 	nowTime := time.Now()
 	phaseTick := r.tick % 240
 	action := "orbit"
@@ -476,12 +479,12 @@ func (r *Runtime) updateWolfPolicyLocked(wolf *entityState, player *entityState)
 			selectedSkill = "lunge"
 			speed = policy.ChaseSpeedCMS
 			moveDir = toPlayer
-		case phaseTick >= 72 && phaseTick < 92 && rangeCM > policy.LungeRangeCM:
+		case phaseTick >= 72 && phaseTick < 92 && rangeCM >= lungeMinRangeCM && rangeCM <= lungeMaxRangeCM:
 			action = "lunge"
 			selectedSkill = "lunge"
 			speed = policy.LungeSpeedCMS
 			moveDir = toPlayer
-		case phaseTick >= 150 && phaseTick < 166 && rangeCM < 260:
+		case phaseTick >= 150 && phaseTick < 166 && rangeCM < maulRangeCM:
 			action = "maul"
 			selectedSkill = "maul"
 			speed = policy.MaulSpeedCMS
@@ -532,7 +535,7 @@ func (r *Runtime) updateWolfPolicyLocked(wolf *entityState, player *entityState)
 		PathState:                             "direct",
 		LosState:                              "clear",
 		SelectedSkillId:                       selectedSkill,
-		ProfileSource:                         "db_contract_recovery_pending",
+		ProfileSource:                         r.contracts.Source,
 		SkillMovementArcHeightCm:              policy.LungeArcHeightCM,
 		SkillMovementArcCurve:                 "low_fast",
 		SkillMovementTakeoffMs:                140,
@@ -546,8 +549,8 @@ func (r *Runtime) updateWolfPolicyLocked(wolf *entityState, player *entityState)
 		SkillMovementStartMs:                  selectedRuntime.WindupMS,
 		SkillMovementDurationMs:               selectedRuntime.MovementAction.DurationMS,
 		SkillMovementDistanceCm:               selectedRuntime.MovementAction.DistanceCM,
-		SkillMovementDesiredLandingDistanceCm: 760,
-		SkillMovementMinLandingDistanceCm:     180,
+		SkillMovementDesiredLandingDistanceCm: lungeMaxRangeCM,
+		SkillMovementMinLandingDistanceCm:     lungeMinRangeCM,
 		SkillMovementStopAtContactRatio:       1,
 	}
 	now := nowTime.UnixMilli()
