@@ -357,7 +357,7 @@ Prioridade do que **sumiu** e precisa voltar:
 | Alta | **CTRL troca de combat mode** — processar ACK (active/target/phase) + bridge fresco; Q/R/F só do modo ativo | chat 1 #1-3 | `ApeironGameServerBridge.cpp` (`ApplyCommandAckResponse`), HUD viewmodel |
 | Alta | **Fila HTTP coalesce/prioriza** (switch_mode/leap/dodge/cast) — conserta pulo preso atrás de spam de movimento | chat 1 #4 | `ApeironTestPlayerCharacter.cpp` (`coalesce` sumiu) |
 | Média | **Shield Rush dano a meio cilindro** (`offset_x=48`, `radius=96`) | chat 1 #5 | `db:bootstrap` (seed 026 sumiu) |
-| Média | Confirmar **arco 180° / back-bypass** no block | 14/06 #1 | onde `FrontalArc` é avaliado |
+| 🔨 Média | **Arco 180° / back-bypass** no block — **tijolo 1 feito `0c285b9`** (`resolveDirectionalBlock` puro + testes); falta wiring no runtime (depende do pipeline de dano abaixo) | 14/06 #1 | `gameapi/defense.go` |
 | Média | Confirmar **hitbox-decide-hit** (não target lock) no wolf | 14/06 #2 | `gameapi/runtime.go` |
 | Média | **Reconciliação**: smoothing acima da dead-zone, snap só severo | 04/06 #4-5 | `ApeironGameServerBridge.cpp` |
 | Média | Verificar **Shield Bash gap-close** (75/80/940) | 16/06 #1 | `db:bootstrap/013_player_sword_shield_skill_seed.sql` |
@@ -365,6 +365,17 @@ Prioridade do que **sumiu** e precisa voltar:
 | Baixa | **HUD painterly** (refazer; versão metálica rejeitada) | 05/06 | `ApeironDebugHud.cpp/.h` |
 | Baixa | Recuperar doc de request sumido | 04/06 | `docs/reviews/unreal-movement-prediction-reconciliation-requests-2026-06-04.md` |
 | 🚫 | **Niagara/VFX** — fora de escopo (decisão do usuário) | 16/06 #4 | — |
+
+## Pipeline de dano/defesa — plano em tijolos (próximo slice grande)
+
+O runtime vivo (gameapi) ainda **não resolve dano**. Reconstrução em tijolos:
+1. ✅ `0c285b9` **block direcional** (`gameapi/defense.go:resolveDirectionalBlock`, arco 180°) — pronto, puro, testado.
+2. ⏳ **Dano do DB** — carregar damage/posture por skill (player + creature) das contracts do DB pro gameapi (sem hardcode; o gap-audit proíbe fallback de dano).
+3. ⏳ **Resolução de hit** — quando skill/ataque ativa, achar alvo (range + direção do ataque; depois geometria real do `internal/hitbox`), aplicar dano; usar o tijolo 1 pro block; HP→0 = morte/respawn.
+4. ⏳ **Parry** (chat "continuar dia 10"): janela frontal, zera dano, interrompe atacante.
+5. ⏳ **Impact response** por alvo (flesh/bone/stone) no evento de dano.
+
+Tijolos 2-5 precisam de integração DB↔gameapi↔hitbox — slice grande, melhor com contexto limpo.
 
 ## Anexo: meta-sessão de recuperação (provenance do HEAD atual)
 
