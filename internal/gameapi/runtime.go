@@ -551,6 +551,9 @@ func (r *Runtime) applyMove(player *entityState, cmd *gamev1.PlayerCommand) {
 		TickRate:        tickRate,
 		Profile:         r.movementSpeedProfile(),
 	})
+	if player.combatState == "blocking" {
+		motion = capBlockMotion(motion, r.movementSpeedProfile())
+	}
 	start := player.position
 	player.position = fromDomainVector(motion.Projected)
 	player.velocity = fromDomainVector(motion.Velocity)
@@ -562,6 +565,28 @@ func (r *Runtime) applyMove(player *entityState, cmd *gamev1.PlayerCommand) {
 	player.locomotion.MovementMode = "grounded"
 	player.locomotion.Action = "move"
 	player.locomotion.AbilityKey = "move"
+}
+
+// blockSpeedWalkFraction caps movement while blocking: the player moves at most at half
+// the walk speed (chat-13 rule "block reduz pra metade da velocidade de walk", applied
+// even when sprinting).
+const blockSpeedWalkFraction = 0.5
+
+func capBlockMotion(motion movement.MotionResult, profile movement.SpeedProfile) movement.MotionResult {
+	if motion.Stopped || motion.SpeedCMPerSecond <= 0 || profile.MaxSpeed <= 0 {
+		return motion
+	}
+	capSpeed := profile.MaxSpeed * blockSpeedWalkFraction
+	if motion.SpeedCMPerSecond <= capSpeed {
+		return motion
+	}
+	ratio := capSpeed / motion.SpeedCMPerSecond
+	capped := motion
+	capped.SpeedCMPerSecond = capSpeed
+	capped.DistanceCM = motion.DistanceCM * ratio
+	capped.Velocity = motion.Direction.Scale(capSpeed)
+	capped.Projected = motion.Start.Add(motion.Direction.Scale(capped.DistanceCM))
+	return capped
 }
 
 func (r *Runtime) groundedMoveSpeed(sprint bool, analogMagnitude float64, dir vector, facingYaw float64) float64 {
