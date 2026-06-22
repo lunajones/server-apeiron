@@ -104,3 +104,42 @@ func TestResolveFullyPopulates(t *testing.T) {
 		t.Fatal("phase must be computed from elapsed when not provided")
 	}
 }
+
+// TestResolveRuntimeMatchesHistoricalDefaults locks ResolveRuntime to the exact policy
+// that gameapi.locomotionFromContract used inline before delegation, so wiring the
+// runtime onto the resolver does not change published normal-movement locomotion.
+func TestResolveRuntimeMatchesHistoricalDefaults(t *testing.T) {
+	r := NewResolver()
+
+	empty := r.ResolveRuntime(RuntimeActionContract{}, "active")
+	if empty.ReconciliationMode != "grounded_move_reconciliation" {
+		t.Fatalf("reconciliation default = %q", empty.ReconciliationMode)
+	}
+	if empty.DurationMS != 180 || empty.ActiveMS != 120 || empty.RecoveryMS != 60 {
+		t.Fatalf("timing defaults = %d/%d/%d", empty.DurationMS, empty.ActiveMS, empty.RecoveryMS)
+	}
+	if empty.PhaseWindowPolicy != "server_authoritative" {
+		t.Fatalf("phase window default = %q", empty.PhaseWindowPolicy)
+	}
+	if empty.PredictionErrorPolicy != "bounded_smooth_correction" {
+		t.Fatalf("prediction default = %q", empty.PredictionErrorPolicy)
+	}
+	if empty.MovementMode != "grounded" {
+		t.Fatalf("movement mode default = %q", empty.MovementMode)
+	}
+
+	dodge := r.ResolveRuntime(RuntimeActionContract{
+		ID: "dodge_contract", ActionType: "dodge", AbilityKey: "dodge",
+		DurationMS: 320, ActiveMS: 260, RecoveryMS: 60, DistanceCM: 260,
+		BaseSpeedCMS: 812, ReconciliationCategory: "dodge_reconciliation",
+	}, "active")
+	if dodge.ReconciliationMode != "dodge_reconciliation" {
+		t.Fatalf("reconciliation = %q", dodge.ReconciliationMode)
+	}
+	if dodge.ActionDistanceTraveled != 260 || dodge.TargetSpeed != 812 || dodge.EffectiveSpeed != 812 {
+		t.Fatalf("distance/speed = %v/%v/%v", dodge.ActionDistanceTraveled, dodge.TargetSpeed, dodge.EffectiveSpeed)
+	}
+	if dodge.Action != "dodge" || dodge.AbilityKey != "dodge" || dodge.ActionContractID != "dodge_contract" {
+		t.Fatalf("identity fields wrong: %q/%q/%q", dodge.Action, dodge.AbilityKey, dodge.ActionContractID)
+	}
+}

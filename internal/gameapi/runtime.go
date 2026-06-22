@@ -763,41 +763,23 @@ func (r *Runtime) locomotion(mode, action, ability, phase string, start, project
 	return state
 }
 
+// locomotionResolver is the single locomotion-policy authority (internal/movement).
+// The gameapi runtime publishes what it returns and adds only the verbose wire-only
+// fields below; it must not compute reconciliation/timing/distance/speed on its own.
+var locomotionResolver = movement.NewResolver()
+
 func locomotionFromContract(contract MovementActionRuntimeContract, phase string, start, projected vector, tick uint64, sequence uint64) *gamev1.LocomotionState {
-	reconciliation := movement.ReconciliationMode(contract)
-	if reconciliation == "" {
-		reconciliation = "grounded_move_reconciliation"
-	}
-	duration := contract.DurationMS
-	if duration == 0 {
-		duration = 180
-	}
-	active := contract.ActiveMS
-	if active == 0 {
-		active = 120
-	}
-	recovery := contract.RecoveryMS
-	if recovery == 0 {
-		recovery = 60
-	}
-	phasePolicy := contract.PhaseWindowPolicy
-	if phasePolicy == "" {
-		phasePolicy = "server_authoritative"
-	}
-	predictionPolicy := contract.PredictionErrorPolicy
-	if predictionPolicy == "" {
-		predictionPolicy = "bounded_smooth_correction"
-	}
+	loco := locomotionResolver.ResolveRuntime(contract, phase)
 	return &gamev1.LocomotionState{
-		MovementMode:            "grounded",
-		Action:                  contract.ActionType,
-		AbilityKey:              contract.AbilityKey,
-		Phase:                   phase,
-		ReconciliationMode:      reconciliation,
-		DurationMs:              duration,
+		MovementMode:            loco.MovementMode,
+		Action:                  loco.Action,
+		AbilityKey:              loco.AbilityKey,
+		Phase:                   loco.Phase,
+		ReconciliationMode:      loco.ReconciliationMode,
+		DurationMs:              loco.DurationMS,
 		AirborneDurationMs:      contract.AirborneDurationMS,
-		ActiveMs:                active,
-		RecoveryMs:              recovery,
+		ActiveMs:                loco.ActiveMS,
+		RecoveryMs:              loco.RecoveryMS,
 		SpeedCurveSamples:       movementCurveSamplesToProto(contract.SpeedCurveSamples),
 		VerticalCurveSamples:    movementCurveSamplesToProto(contract.VerticalCurveSamples),
 		JumpZVelocity:           contract.JumpZVelocity,
@@ -810,11 +792,11 @@ func locomotionFromContract(contract MovementActionRuntimeContract, phase string
 		AirControlModifier:      contract.AirControlModifier,
 		ContractVersion:         "movement_action_v1",
 		ContractHash:            contractHash(contract),
-		PhaseWindowPolicy:       phasePolicy,
-		PredictionErrorPolicy:   predictionPolicy,
-		ActionContractId:        contract.ID,
+		PhaseWindowPolicy:       loco.PhaseWindowPolicy,
+		PredictionErrorPolicy:   loco.PredictionErrorPolicy,
+		ActionContractId:        loco.ActionContractID,
 		ActionFamily:            actionFamily(contract),
-		MovementType:            contract.ActionType,
+		MovementType:            loco.MovementType,
 		ContractSyncState:       "confirmed",
 		ClientActionSequence:    sequence,
 		ServerReceivedTick:      tick,
@@ -822,9 +804,9 @@ func locomotionFromContract(contract MovementActionRuntimeContract, phase string
 		ActionStartedTick:       tick,
 		ActionStartPosition:     toProto(start),
 		ActionProjectedPosition: toProto(projected),
-		ActionDistanceTraveled:  contract.DistanceCM,
-		TargetSpeed:             contract.BaseSpeedCMS,
-		EffectiveSpeed:          contract.BaseSpeedCMS,
+		ActionDistanceTraveled:  loco.ActionDistanceTraveled,
+		TargetSpeed:             loco.TargetSpeed,
+		EffectiveSpeed:          loco.EffectiveSpeed,
 		YawRate:                 contract.YawRateDegPerSec,
 		LastUpdatedTick:         tick,
 	}

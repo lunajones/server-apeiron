@@ -118,6 +118,40 @@ func (r *Resolver) Resolve(in LocomotionInput) Locomotion {
 	}
 }
 
+// ResolveRuntime produces the canonical Locomotion from a RuntimeActionContract — the
+// contract shape the gameapi runtime already loads and publishes. It mirrors the
+// historical locomotionFromContract policy exactly (same defaults, same ReconciliationMode
+// source) so the gameapi runtime can delegate to the resolver without changing the
+// published locomotion for normal movement.
+//
+// This is the single place the reconciliation-relevant policy is decided; the gameapi
+// runtime stays responsible only for the verbose wire-only fields (curves, jump physics,
+// ticks, hash) on top of what the resolver returns.
+func (r *Resolver) ResolveRuntime(contract RuntimeActionContract, phase string) Locomotion {
+	reconciliation := ReconciliationMode(contract)
+	if reconciliation == "" {
+		reconciliation = defaultReconciliationMode
+	}
+	return Locomotion{
+		MovementMode:           defaultLocomotionMovementModeValue,
+		Action:                 contract.ActionType,
+		AbilityKey:             contract.AbilityKey,
+		Phase:                  phase,
+		ReconciliationMode:     reconciliation,
+		DurationMS:             orDefaultInt32(contract.DurationMS, defaultLocomotionDurationMS),
+		ActiveMS:               orDefaultInt32(contract.ActiveMS, defaultLocomotionActiveMS),
+		RecoveryMS:             orDefaultInt32(contract.RecoveryMS, defaultLocomotionRecoveryMS),
+		TargetSpeed:            contract.BaseSpeedCMS,
+		EffectiveSpeed:         contract.BaseSpeedCMS,
+		PhaseSpeedScale:        1,
+		ActionDistanceTraveled: contract.DistanceCM,
+		PhaseWindowPolicy:      orDefaultString(contract.PhaseWindowPolicy, defaultPhaseWindowPolicy),
+		PredictionErrorPolicy:  orDefaultString(contract.PredictionErrorPolicy, defaultLocomotionPredictionPolicy),
+		ActionContractID:       contract.ID,
+		MovementType:           contract.ActionType,
+	}
+}
+
 // ResolvePhase is the single authority for action phase windows. Ported from the combat
 // skill phase math (pendingPlayerSkillLocomotionPhase) so skill movement and normal
 // movement compute phase/elapsed/remaining the same way — the divergence here was a
