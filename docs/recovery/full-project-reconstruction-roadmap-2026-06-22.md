@@ -283,6 +283,9 @@ Restore or reconstruct:
 
 - Audited recovered `internal/hitbox` runtime and confirmed temporal sweep code exists.
 - Added direct unit coverage for forward `capsule_strip` timeline sweep, including normalized time progression, damage group metadata, sample range, and forward capsule advancement.
+- Restored DB-to-proto loading of temporal hitbox motion profiles in `db-apeiron`: `GetSkillHitboxProfiles` now includes `motion_profile`, damage group, sweep shape, interpolation, and samples instead of returning a bare `temporal_sweep` profile.
+- Added temporal hitbox seeds for wolf `bite` and `maul`. `bite` is upgraded in the general temporal seed because the skill already exists there; `maul` is seeded in the wolf behavior seed after the `maul` skill row exists, avoiding FK/order hacks.
+- Added handler coverage proving temporal hitbox motion profiles survive the DB gRPC mapping layer.
 - Remaining gap: prove every DB temporal profile used by current player/wolf skills loads through DB API into combat runtime, not only the low-level shape builder.
 
 Done when:
