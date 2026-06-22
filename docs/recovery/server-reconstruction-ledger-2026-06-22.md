@@ -208,6 +208,22 @@ Current source-of-truth order:
 - `db-apeiron`: `go build ./cmd/db-api`
 - `server-apeiron`: `go test ./...`
 - `server-apeiron`: `go build ./cmd/game-server`
+
+# 2026-06-22 - Temporal hitbox guard slice
+
+## Implemented
+
+- Added direct unit coverage for `hitbox.ShapeFromMotionProfile` using a forward `capsule_strip` timeline sweep.
+- The test verifies normalized time progression, motion profile ID, damage group ID, forward capsule advancement, and radius interpolation.
+
+## Why This Matters
+
+This protects the recovered "hit follows the swing over time" system from silently regressing back to static full-shape activation for temporal melee profiles.
+
+## Validated
+
+- `server-apeiron`: `go test ./...`
+- `server-apeiron`: `go build ./cmd/game-server`
 - Live `game-server` on `127.0.0.1:50052`:
   - `ObservabilityService/Health`
   - `SessionService/OpenSession`

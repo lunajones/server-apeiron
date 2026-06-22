@@ -268,7 +268,7 @@ Done when:
 
 ### Phase 6 - Rebuild Temporal Hitbox Runtime
 
-Status: pending.
+Status: in progress.
 
 Target: melee damage follows the attack over time.
 
@@ -278,6 +278,12 @@ Restore or reconstruct:
 - One-hit-per-swing group rules.
 - Runtime/debug events for progressive hitbox visualization.
 - DB seeds for basic attacks, shield bash/rush, wolf lunge/maul/bite as current design requires.
+
+2026-06-22 slice notes:
+
+- Audited recovered `internal/hitbox` runtime and confirmed temporal sweep code exists.
+- Added direct unit coverage for forward `capsule_strip` timeline sweep, including normalized time progression, damage group metadata, sample range, and forward capsule advancement.
+- Remaining gap: prove every DB temporal profile used by current player/wolf skills loads through DB API into combat runtime, not only the low-level shape builder.
 
 Done when:
 
