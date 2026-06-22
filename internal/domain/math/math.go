@@ -28,6 +28,10 @@ func (v Vec3) Scale(scale float64) Vec3 {
 	return Vec3{X: v.X * scale, Y: v.Y * scale, Z: v.Z * scale}
 }
 
+func (v Vec3) Mul(scale float64) Vec3 {
+	return v.Scale(scale)
+}
+
 func (v Vec3) Dot(other Vec3) float64 {
 	return v.X*other.X + v.Y*other.Y + v.Z*other.Z
 }
@@ -42,6 +46,10 @@ func (v Vec3) Normalize() Vec3 {
 		return Vec3{}
 	}
 	return v.Scale(1 / length)
+}
+
+func (v Vec3) IsZero() bool {
+	return stdmath.Abs(v.X) <= Epsilon && stdmath.Abs(v.Y) <= Epsilon && stdmath.Abs(v.Z) <= Epsilon
 }
 
 func (v Vec3) Distance(other Vec3) float64 {
@@ -112,6 +120,21 @@ func (a AABB) ContainsPoint(point Position) bool {
 	return point.X >= a.Min.X && point.X <= a.Max.X &&
 		point.Y >= a.Min.Y && point.Y <= a.Max.Y &&
 		point.Z >= a.Min.Z && point.Z <= a.Max.Z
+}
+
+func (a AABB) Center() Position {
+	return V3((a.Min.X+a.Max.X)*0.5, (a.Min.Y+a.Max.Y)*0.5, (a.Min.Z+a.Max.Z)*0.5)
+}
+
+func (a AABB) Size() Vec3 {
+	return V3(a.Max.X-a.Min.X, a.Max.Y-a.Min.Y, a.Max.Z-a.Min.Z)
+}
+
+func (a AABB) ClosestPoint(point Position) Position {
+	x := stdmath.Max(a.Min.X, stdmath.Min(point.X, a.Max.X))
+	y := stdmath.Max(a.Min.Y, stdmath.Min(point.Y, a.Max.Y))
+	z := stdmath.Max(a.Min.Z, stdmath.Min(point.Z, a.Max.Z))
+	return V3(x, y, z)
 }
 
 type Sphere struct {

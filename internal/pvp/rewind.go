@@ -3,8 +3,11 @@ package pvp
 import (
 	"sync"
 
+	"server-apeiron/internal/domain/entity"
 	"server-apeiron/internal/domain/ids"
 	domainmath "server-apeiron/internal/domain/math"
+	"server-apeiron/internal/domain/world"
+	"server-apeiron/internal/hitbox"
 )
 
 type RewindSample struct {
@@ -84,3 +87,23 @@ func (h *RewindHistory) Resolve(query RewindQuery) RewindResult {
 	}
 	return RewindResult{Found: false, Clamped: clamped, EffectiveTick: effectiveTick}
 }
+
+type Validator struct{}
+
+func NewValidator() *Validator {
+	return &Validator{}
+}
+
+func (v *Validator) ValidateHit(source entity.Entity, target entity.Entity, hit hitbox.HitResult, nowTick uint64) bool {
+	return source != nil && target != nil && source.RuntimeID() != target.RuntimeID()
+}
+
+type SafeZoneValidator struct {
+	Zones []world.SafeZoneDefinition
+}
+
+func NewSafeZoneValidator() *SafeZoneValidator {
+	return &SafeZoneValidator{}
+}
+
+func (v SafeZoneValidator) Apply(entity.Entity) {}

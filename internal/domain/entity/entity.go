@@ -16,6 +16,8 @@ const (
 
 type Entity interface {
 	RuntimeID() ids.RuntimeEntityID
+	Ref() Ref
+	RegionID() ids.RegionID
 	EntityType() EntityType
 	Position() domainmath.Position
 	Facing() domainmath.Vec3
@@ -25,21 +27,58 @@ type Entity interface {
 	Components() *Components
 }
 
+type Ref struct {
+	RuntimeID ids.RuntimeEntityID
+	Type      EntityType
+}
+
 type Components struct {
-	Skills   SkillComponent
-	Movement MovementComponent
-	Combat   CombatComponent
+	Skills    SkillComponent
+	Movement  MovementComponent
+	Combat    CombatComponent
+	Transform TransformComponent
+	Status    StatusComponent
 }
 
 type SkillComponent struct {
-	CurrentSkillID ids.SkillID
+	CurrentSkillID   ids.SkillID
+	State            string
+	StartedAtMS      int64
+	CooldownEndMS    int64
+	LastResolvedAtMS int64
 }
 
 type MovementComponent struct {
-	Velocity domainmath.Vec3
+	Velocity                domainmath.Vec3
+	MovementLocked          bool
+	Locomotion              LocomotionComponent
+	LastProcessedSequence   uint64
+	LastProcessedClientTick uint64
+}
+
+type LocomotionComponent struct {
+	AuthoritativeYaw float64
 }
 
 type CombatComponent struct {
 	ControlImmuneUntil time.Time
 	ActionLockedUntil  time.Time
+}
+
+type TransformComponent struct {
+	Position  domainmath.Position
+	Facing    domainmath.Vec3
+	RotationY float64
+	Radius    float64
+}
+
+type StatusComponent struct {
+	Effects     map[string]time.Time
+	Stunned     bool
+	Staggered   bool
+	Silenced    bool
+	Rooted      bool
+	KnockedDown bool
+	Attached    bool
+	CCEndMS     int64
 }
