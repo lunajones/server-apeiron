@@ -6,6 +6,7 @@ import (
 
 	apeironv1 "db-apeiron/gen/apeiron/v1"
 	"server-apeiron/internal/combat/actionruntime"
+	domainentity "server-apeiron/internal/domain/entity"
 	"server-apeiron/internal/domain/ids"
 	domainmath "server-apeiron/internal/domain/math"
 	"server-apeiron/internal/movement"
@@ -170,7 +171,20 @@ func combatOutcomeReason(result DamageResult) string {
 }
 
 func impactResponseProfileForEntity(target any) string {
-	return "default"
+	entity, ok := target.(interface {
+		EntityType() domainentity.EntityType
+	})
+	if !ok || entity == nil {
+		return "default"
+	}
+	switch entity.EntityType() {
+	case domainentity.EntityTypePlayer:
+		return "flesh_blood_red"
+	case domainentity.EntityTypeCreature:
+		return "creature_flesh_blood_red"
+	default:
+		return "default"
+	}
 }
 
 func statusEffectFromSkillControlEffect(control *apeironv1.SkillControlEffect) *apeironv1.StatusEffect {

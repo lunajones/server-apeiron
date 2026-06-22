@@ -2,6 +2,7 @@ package hitbox
 
 import (
 	"errors"
+	"sort"
 	"time"
 
 	apeironv1 "db-apeiron/gen/apeiron/v1"
@@ -55,6 +56,7 @@ type HitResult struct {
 	HitboxIndex            int
 	TargetID               ids.RuntimeEntityID
 	ImpactPoint            domainmath.Position
+	ForwardDistance        float64
 	DamageGroupID          string
 	MotionProfileID        string
 	MotionTStart           float64
@@ -109,6 +111,7 @@ func (r *Runtime) Evaluate(ctx EvaluationContext) ([]HitResult, error) {
 		if !ok || shape == nil {
 			continue
 		}
+		profileHits := make([]HitResult, 0)
 		objects := ctx.Spatial.QueryAABB(spatial.AABBQuery{
 			Bounds: shape.Bounds(),
 			Filter: spatial.QueryFilter{
@@ -125,12 +128,14 @@ func (r *Runtime) Evaluate(ctx EvaluationContext) ([]HitResult, error) {
 			}
 			debug := ActiveHitboxDebug{}
 			fillDebugShape(&debug, shape, basis)
-			hits = append(hits, HitResult{
+			localImpact := basis.Local(impact, ctx.Origin)
+			profileHits = append(profileHits, HitResult{
 				SkillID:                ids.SkillID(ctx.Skill.GetId()),
 				HitboxID:               profile.GetId(),
 				HitboxIndex:            index,
 				TargetID:               object.EntityID,
 				ImpactPoint:            impact,
+				ForwardDistance:        localImpact.X,
 				DamageGroupID:          metadata.DamageGroupID,
 				MotionProfileID:        metadata.MotionProfileID,
 				MotionTStart:           metadata.TStart,
@@ -155,8 +160,41 @@ func (r *Runtime) Evaluate(ctx EvaluationContext) ([]HitResult, error) {
 				HitboxDebugMaxAngleDeg: debug.HitboxDebugMaxAngleDeg,
 			})
 		}
+		sortHitsByAttackProgress(profileHits)
+		if maxTargets := profile.GetMaxTargets(); maxTargets > 0 && len(profileHits) > int(maxTargets) {
+			profileHits = profileHits[:int(maxTargets)]
+		}
+		hits = append(hits, profileHits...)
+	}
+	sortHitsByAttackProgress(hits)
+	if ctx.Skill != nil {
+		if maxTargets := ctx.Skill.GetMaxTargets(); maxTargets > 0 && len(hits) > int(maxTargets) {
+			hits = hits[:int(maxTargets)]
+		}
 	}
 	return hits, nil
+}
+
+func sortHitsByAttackProgress(hits []HitResult) {
+	sort.SliceStable(hits, func(i, j int) bool {
+		a := hits[i]
+		b := hits[j]
+		aForward := a.ForwardDistance >= 0
+		bForward := b.ForwardDistance >= 0
+		if aForward != bForward {
+			return aForward
+		}
+		if a.ForwardDistance != b.ForwardDistance {
+			return a.ForwardDistance < b.ForwardDistance
+		}
+		if a.HitQualitySpatialScore != b.HitQualitySpatialScore {
+			return a.HitQualitySpatialScore > b.HitQualitySpatialScore
+		}
+		if a.HitboxIndex != b.HitboxIndex {
+			return a.HitboxIndex < b.HitboxIndex
+		}
+		return a.TargetID < b.TargetID
+	})
 }
 
 type ActiveHitboxDebug struct {

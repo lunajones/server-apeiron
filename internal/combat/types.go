@@ -2,6 +2,8 @@ package combat
 
 import (
 	"context"
+	"math"
+	"strings"
 	"time"
 
 	apeironv1 "db-apeiron/gen/apeiron/v1"
@@ -32,6 +34,7 @@ type AttackProfile struct {
 	Area           any
 	SourceCore     *apeironv1.CombatCoreProfile
 	TargetCore     *apeironv1.CombatCoreProfile
+	Defense        *apeironv1.CombatDefenseContract
 	Timing         *apeironv1.SkillTimingProfile
 	Movement       *apeironv1.SkillMovementProfile
 	Cooldown       time.Duration
@@ -218,6 +221,7 @@ type DamageContext struct {
 	ControlEffects []ControlEffectConfig
 	SourceCore     *apeironv1.CombatCoreProfile
 	TargetCore     *apeironv1.CombatCoreProfile
+	Defense        *apeironv1.CombatDefenseContract
 	Now            time.Time
 	Tick           uint64
 	CurrentTick    uint64
@@ -259,6 +263,9 @@ func (p *ImpactResolutionPipeline) Apply(ctx context.Context, damage DamageConte
 	if damage.SourceCore != nil {
 		baseDamage *= firstPositiveCombat(damage.SourceCore.GetDamageDealtMultiplier(), 1)
 	}
+	if damage.TargetCore != nil {
+		baseDamage *= firstPositiveCombat(damage.TargetCore.GetDamageTakenMultiplier(), 1)
+	}
 	result := DamageResult{
 		Object:      damage.Target,
 		FinalDamage: baseDamage,
@@ -271,6 +278,55 @@ func (p *ImpactResolutionPipeline) Apply(ctx context.Context, damage DamageConte
 			result.PostureDamage = result.PoiseDamage * firstPositiveCombat(damage.TargetCore.GetPostureDamageMultiplier(), 1)
 		} else {
 			result.PostureDamage = result.PoiseDamage
+		}
+	}
+	if defensiveState := currentDefensiveState(damage.Target, damage.Now); defensiveState != "" {
+		if defensiveState == "iframe" || defensiveState == "evade" || defensiveState == "dodge" {
+			result.Evaded = true
+			result.FinalDamage = 0
+			result.PoiseDamage = 0
+			result.PostureDamage = 0
+			result.Reason = "evaded"
+			_ = ctx
+			return result, nil
+		}
+		if damage.Skill.GetIsParryable() && (defensiveState == "parry" || defensiveState == "parry_active") {
+			result.Parried = true
+			result.FinalDamage = 0
+			result.PoiseDamage = 0
+			result.PostureDamage = 0
+			result.Reason = "parried"
+			if p != nil && p.Defense != nil {
+				p.Defense.markRiposteVulnerable(damage.Source.RuntimeID(), damage.Now, damage.Defense)
+			}
+			_ = ctx
+			return result, nil
+		}
+		if damage.Skill.GetIsBlockable() && defensiveState == "blocking" && damage.TargetCore.GetCanBlock() && hitInsideDefenseArc(damage.Source, damage.Target, damage.Defense) {
+			result.Blocked = true
+			result.Reason = "blocked"
+			reduction := clamp(damage.TargetCore.GetBlockDamageReduction(), 0, 1)
+			result.FinalDamage *= 1 - reduction
+			if damage.Impact != nil {
+				result.PostureDamage = result.PoiseDamage * firstPositiveCombat(damage.Impact.GetGuardDamageMultiplier(), 1)
+				if damage.TargetCore != nil {
+					result.PostureDamage *= firstPositiveCombat(damage.TargetCore.GetPostureDamageMultiplier(), 1)
+				}
+			}
+			if damage.Defense != nil && !damage.Defense.GetPostureDamageOnBlock() {
+				result.PostureDamage = 0
+			}
+			if damage.Defense != nil && damage.Defense.GetStaminaDamageOnlyOnBlock() {
+				result.HitArc = damage.Defense.GetId()
+			}
+		}
+	}
+	if p != nil && p.Status != nil {
+		for _, control := range damage.ControlEffects {
+			effect := statusEffectFromSkillControlEffect(control)
+			if effect != nil && p.Status.ApplyControl(damage.Source, damage.Target, effect, control, damage.Now) {
+				result.StatusApplied = append(result.StatusApplied, effect.GetId())
+			}
 		}
 	}
 	_ = ctx
@@ -321,4 +377,78 @@ func firstPositiveCombat(values ...float64) float64 {
 		}
 	}
 	return 0
+}
+
+func (d *DefenseRuntime) markRiposteVulnerable(entityID ids.RuntimeEntityID, now time.Time, contract *apeironv1.CombatDefenseContract) {
+	if d == nil || !entityID.Valid() || contract == nil {
+		return
+	}
+	if d.states == nil {
+		d.states = make(map[ids.RuntimeEntityID]DefenseState)
+	}
+	window := time.Duration(contract.GetParryWindowMs()) * time.Millisecond
+	if window <= 0 {
+		window = time.Duration(contract.GetPerfectBlockWindowMs()) * time.Millisecond
+	}
+	if window <= 0 {
+		return
+	}
+	state := d.states[entityID]
+	state.RiposteVulnerableUntil = now.Add(window)
+	d.states[entityID] = state
+}
+
+func currentDefensiveState(entity domainentity.Entity, now time.Time) string {
+	if entity == nil || entity.Components() == nil {
+		return ""
+	}
+	components := entity.Components()
+	if components.Combat.ControlImmuneUntil.After(now) {
+		return "iframe"
+	}
+	if components.Status.Effects != nil {
+		for effectID, until := range components.Status.Effects {
+			if !until.After(now) {
+				continue
+			}
+			normalized := strings.ToLower(strings.TrimSpace(effectID))
+			if normalized == "iframe" || normalized == "evade" || normalized == "dodge_iframe" || strings.Contains(normalized, "iframe") {
+				return "iframe"
+			}
+		}
+	}
+	state := strings.ToLower(strings.TrimSpace(components.Skills.State))
+	switch state {
+	case "blocking", "block", "guard":
+		return "blocking"
+	case "parry", "parry_active", "perfect_block":
+		return "parry"
+	case "iframe", "evade", "dodge":
+		return "iframe"
+	default:
+		return ""
+	}
+}
+
+func hitInsideDefenseArc(source domainentity.Entity, target domainentity.Entity, contract *apeironv1.CombatDefenseContract) bool {
+	if source == nil || target == nil || contract == nil {
+		return false
+	}
+	arc := contract.GetFrontalArcDeg()
+	if arc <= 0 {
+		return false
+	}
+	if arc >= 360 {
+		return true
+	}
+	targetFacing := target.Facing().Normalize()
+	if targetFacing.IsZero() {
+		targetFacing = yawToDirection(target.Components().Movement.Locomotion.AuthoritativeYaw)
+	}
+	toSource := source.Position().Sub(target.Position()).Normalize()
+	if targetFacing.IsZero() || toSource.IsZero() {
+		return false
+	}
+	minDot := math.Cos((arc * 0.5) * math.Pi / 180)
+	return targetFacing.Dot(toSource) >= minDot
 }
