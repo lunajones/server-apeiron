@@ -350,7 +350,7 @@ Prioridade do que **sumiu** e precisa voltar:
 | Alta | **Wolf lunge pós-pouso**: timeline do movimento dentro da action; `landing_lock` como continuação horizontal; skill pendente até o fim do movimento | chat 7 | `db:018_..._seed.sql`, wolf runtime em `gameapi/runtime.go` |
 | Alta | **Basic Attack combo 3 etapas** server-authoritative (`_1/_2/_3`, combo_group/index, step-in) + seed `old_china` (320 linhas sumiu) | chat 6 #1 | `combat/player_skill_combat_system.go`, `db:bootstrap` |
 | Alta | **Roteamento do M1**: left-click tem que sair como `player_basic_attack` (não `player_quick_slash`) | chat 6 #2 | `Tools/ApeironGrpcBridge/main.go`, `app/dependencies.go`, `gameapi/services.go` |
-| Alta | **Gate de skill em jump/dodge**: basic/cast = `action_locked` se dodge/leap/knockback/airborne (+ teste) | chat 6 #3 | `app/dependencies.go` (`combat_command_gate_test.go` sumiu) |
+| ✅ Alta | **Gate de skill em jump/dodge**: basic/cast = `action_locked` se em leap/dodge. **FEITO `c5c99e8`** no runtime vivo (gameapi): leap/dodge setam lock temporal, `SubmitCommand` rejeita CAST_SKILL durante o lock; basic coberto (passa por CAST_SKILL); combo não afetado. + teste. | chat 6 #3 | `gameapi/runtime.go` |
 | Alta | Parry por **direção de defesa** (`SubmitBlock`), não yaw | 13/06 #1 | `systems/defense_system.go`, `controllers/defense_controller.go` |
 | Alta | **Redução de velocidade no block** (0.5x/0.55x/0.75x) autoritativa + seed | 13/06 #3 | resolver de movimento + `bootstrap/019_..._seed.sql` |
 | Alta | **Despawn grace** da creature (não apagar por ausência temporária) | 04/06 #9 | `ApeironGameServerBridge.cpp` |
