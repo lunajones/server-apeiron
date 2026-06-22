@@ -25,8 +25,18 @@ func Run(ctx context.Context, cfg *config.Config) error {
 		}()
 	}
 
+	runtimeContracts := gameapi.RecoveredRuntimeContracts()
+	if dbClient != nil {
+		loadCtx, cancel := context.WithTimeout(ctx, cfg.DBApeiron.RequestTimeout)
+		runtimeContracts = gameapi.LoadRuntimeContractsFromDB(loadCtx, dbClient.Skills, dbClient.Profiles)
+		cancel()
+		log.Info().Str("source", runtimeContracts.Source).Msg("game runtime contracts loaded")
+	} else {
+		log.Warn().Str("source", runtimeContracts.Source).Msg("game runtime using recovered fallback contracts")
+	}
+
 	log.Info().Msg("game server bootstrap completed")
-	return gameapi.Serve(ctx, cfg.Network)
+	return gameapi.ServeRuntime(ctx, cfg.Network, gameapi.NewRuntimeWithContracts(runtimeContracts))
 }
 
 func connectDBApeiron(ctx context.Context, cfg *config.Config) (*dbapeiron.Client, error) {

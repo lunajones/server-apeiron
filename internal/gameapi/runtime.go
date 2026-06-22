@@ -29,14 +29,15 @@ type Runtime struct {
 	gamev1.UnimplementedCommandServiceServer
 	gamev1.UnimplementedObservabilityServiceServer
 
-	mu       sync.Mutex
-	started  time.Time
-	tick     uint64
-	sessions map[string]*sessionState
-	players  map[string]*entityState
-	entities map[uint64]*entityState
-	acks     map[string][]*gamev1.CommandAck
-	nextID   uint64
+	mu        sync.Mutex
+	started   time.Time
+	tick      uint64
+	sessions  map[string]*sessionState
+	players   map[string]*entityState
+	entities  map[uint64]*entityState
+	acks      map[string][]*gamev1.CommandAck
+	nextID    uint64
+	contracts RuntimeContracts
 }
 
 type sessionState struct {
@@ -82,6 +83,10 @@ type vector struct {
 }
 
 func Serve(ctx context.Context, cfg config.NetworkConfig) error {
+	return ServeRuntime(ctx, cfg, NewRuntime())
+}
+
+func ServeRuntime(ctx context.Context, cfg config.NetworkConfig, runtime *Runtime) error {
 	addr := fmt.Sprintf("%s:%d", cfg.GRPCHost, cfg.GRPCPort)
 	lis, err := net.Listen("tcp", addr)
 	if err != nil {
@@ -89,7 +94,6 @@ func Serve(ctx context.Context, cfg config.NetworkConfig) error {
 	}
 	defer lis.Close()
 
-	runtime := NewRuntime()
 	server := grpc.NewServer()
 	gamev1.RegisterSessionServiceServer(server, runtime)
 	gamev1.RegisterSnapshotServiceServer(server, runtime)
@@ -110,13 +114,35 @@ func Serve(ctx context.Context, cfg config.NetworkConfig) error {
 }
 
 func NewRuntime() *Runtime {
+	return NewRuntimeWithContracts(RecoveredRuntimeContracts())
+}
+
+func NewRuntimeWithContracts(contracts RuntimeContracts) *Runtime {
+	if contracts.MovementProfile == nil {
+		contracts.MovementProfile = recoveredMovementProfile()
+	}
+	if contracts.ActionContracts == nil {
+		recovered := RecoveredRuntimeContracts()
+		contracts.ActionContracts = recovered.ActionContracts
+	}
+	if contracts.SkillContracts == nil {
+		recovered := RecoveredRuntimeContracts()
+		contracts.SkillContracts = recovered.SkillContracts
+	}
+	if contracts.WolfPolicy.ContractID == "" {
+		contracts.WolfPolicy = RecoveredRuntimeContracts().WolfPolicy
+	}
+	if len(contracts.CombatModes) == 0 {
+		contracts.CombatModes = recoveredCombatModeSlots()
+	}
 	return &Runtime{
-		started:  time.Now(),
-		sessions: make(map[string]*sessionState),
-		players:  make(map[string]*entityState),
-		entities: make(map[uint64]*entityState),
-		acks:     make(map[string][]*gamev1.CommandAck),
-		nextID:   1000000,
+		started:   time.Now(),
+		sessions:  make(map[string]*sessionState),
+		players:   make(map[string]*entityState),
+		entities:  make(map[uint64]*entityState),
+		acks:      make(map[string][]*gamev1.CommandAck),
+		nextID:    1000000,
+		contracts: contracts,
 	}
 }
 
@@ -139,8 +165,8 @@ func (r *Runtime) OpenSession(ctx context.Context, req *gamev1.OpenSessionReques
 		SessionId:                      sessionID,
 		AccountId:                      accountID,
 		Tick:                           r.serverTickLocked(),
-		MovementActionContracts:        movementContractManifest(),
-		MovementActionContractPayloads: movementContractPayloads(),
+		MovementActionContracts:        r.contracts.movementContractManifest(),
+		MovementActionContractPayloads: r.contracts.movementContractPayloads(),
 	}, nil
 }
 
@@ -171,8 +197,8 @@ func (r *Runtime) AttachPlayer(ctx context.Context, req *gamev1.AttachPlayerRequ
 		Region:                         regionRef(),
 		Tick:                           r.serverTickLocked(),
 		SpawnTransform:                 transform(player.position, player.yaw),
-		MovementActionContracts:        movementContractManifest(),
-		MovementActionContractPayloads: movementContractPayloads(),
+		MovementActionContracts:        r.contracts.movementContractManifest(),
+		MovementActionContractPayloads: r.contracts.movementContractPayloads(),
 	}, nil
 }
 
@@ -189,7 +215,7 @@ func (r *Runtime) GetSnapshot(ctx context.Context, req *gamev1.SnapshotRequest) 
 		CommandAcks: r.drainAcksLocked(req.GetContext().GetSessionId()),
 	}
 	for _, entity := range r.entities {
-		out.Entities = append(out.Entities, entity.snapshot())
+		out.Entities = append(out.Entities, entity.snapshot(r.contracts))
 	}
 	return out, nil
 }
@@ -201,7 +227,7 @@ func (r *Runtime) SubmitCommand(ctx context.Context, cmd *gamev1.PlayerCommand) 
 	r.tick++
 	player := r.playerForCommandLocked(cmd)
 	if player == nil {
-		ack := r.ackLocked(cmd, false, "player_not_attached", "player is not attached")
+		ack := r.ackLocked(cmd, nil, false, "player_not_attached", "player is not attached")
 		r.queueAckLocked(cmd.GetContext().GetSessionId(), ack)
 		return ack, nil
 	}
@@ -215,9 +241,9 @@ func (r *Runtime) SubmitCommand(ctx context.Context, cmd *gamev1.PlayerCommand) 
 	case gamev1.CommandType_COMMAND_TYPE_TURN:
 		r.applyTurn(player, cmd)
 	case gamev1.CommandType_COMMAND_TYPE_DODGE:
-		r.applyImpulse(player, cmd, "dodge", 260, "dodge_reconciliation")
+		r.applyImpulse(player, cmd, r.contracts.contractForAbility("dodge"), 260)
 	case gamev1.CommandType_COMMAND_TYPE_LEAP:
-		r.applyImpulse(player, cmd, "leap", 280, "leap_reconciliation")
+		r.applyImpulse(player, cmd, r.contracts.contractForAbility("jump"), 280)
 	case gamev1.CommandType_COMMAND_TYPE_CAST_SKILL:
 		r.applySkill(player, cmd)
 	case gamev1.CommandType_COMMAND_TYPE_BLOCK_START, gamev1.CommandType_COMMAND_TYPE_BLOCK_STOP, gamev1.CommandType_COMMAND_TYPE_PARRY:
@@ -225,10 +251,10 @@ func (r *Runtime) SubmitCommand(ctx context.Context, cmd *gamev1.PlayerCommand) 
 	case gamev1.CommandType_COMMAND_TYPE_SWITCH_COMBAT_MODE:
 		r.applyCombatMode(player, cmd)
 	default:
-		player.locomotion = locomotion("grounded", "idle", "", "idle", "grounded_move_reconciliation", player.position, player.position, r.tick, 0)
+		player.locomotion = r.locomotion("grounded", "idle", "", "idle", player.position, player.position, 0)
 	}
 
-	ack := r.ackLocked(cmd, true, "", "accepted")
+	ack := r.ackLocked(cmd, player, true, "", "accepted")
 	r.queueAckLocked(cmd.GetContext().GetSessionId(), ack)
 	return ack, nil
 }
@@ -279,8 +305,8 @@ func (r *Runtime) ensurePlayerLocked(playerID string) *entityState {
 		combatState:   "ready",
 		skillState:    "idle",
 	}
-	entity.locomotion = locomotion("grounded", "idle", "", "idle", "grounded_move_reconciliation", entity.position, entity.position, r.tick, 0)
-	entity.combatMode = swordShieldCombatMode("mode_sword_shield_bulwark")
+	entity.locomotion = r.locomotion("grounded", "idle", "", "idle", entity.position, entity.position, 0)
+	entity.combatMode = swordShieldCombatMode("mode_sword_shield_bulwark", r.contracts.CombatModes)
 	r.players[playerID] = entity
 	r.entities[entity.id] = entity
 	return entity
@@ -313,24 +339,24 @@ func (r *Runtime) ensureWolfLocked(player *entityState) *entityState {
 		aggroState:    "engaged",
 		aggression:    0.75,
 	}
-	wolf.locomotion = locomotion("grounded", "orbit", "run", "active", "grounded_move_reconciliation", wolf.position, wolf.position, r.tick, 0)
+	wolf.locomotion = r.locomotion("grounded", "orbit", "run", "active", wolf.position, wolf.position, 0)
 	wolf.creatureAI = &gamev1.CreatureAIState{
 		MovementTactic:          "flank",
 		CombatTactic:            "harass",
 		Commitment:              "probing",
-		CapabilityId:            "wolf_pack_harasser",
-		ContractId:              "contract_wolf_pack_harasser_v1",
-		ContractHash:            "contract_wolf_pack_harasser_v1",
+		CapabilityId:            r.contracts.WolfPolicy.CapabilityID,
+		ContractId:              r.contracts.WolfPolicy.ContractID,
+		ContractHash:            r.contracts.WolfPolicy.ContractHash,
 		OrbitSide:               "left",
 		LastReason:              "recovered_runtime_seed",
 		BehaviorFamily:          "beast_harasser",
 		CombatRole:              "duelist",
-		DesiredRangeCm:          420,
+		DesiredRangeCm:          r.contracts.WolfPolicy.DesiredRangeCM,
 		ActualRangeCm:           distance(wolf.position, player.position),
 		SelectedSkillId:         "bite",
 		ProfileSource:           "db_contract_recovery_pending",
 		SkillMovementType:       "leap",
-		SkillMovementDistanceCm: 918,
+		SkillMovementDistanceCm: r.contracts.WolfPolicy.LungeDistanceCM,
 	}
 	r.entities[wolf.id] = wolf
 	return wolf
@@ -362,32 +388,33 @@ func (r *Runtime) updateWolfPolicyLocked(wolf *entityState, player *entityState)
 	rangeCM := distance(wolf.position, player.position)
 	start := wolf.position
 
+	policy := r.contracts.WolfPolicy
 	phaseTick := r.tick % 240
 	action := "orbit"
 	selectedSkill := "bite"
-	speed := 360.0
+	speed := policy.OrbitSpeedCMS
 	moveDir := right
 
 	switch {
-	case rangeCM > 760:
+	case rangeCM > policy.ChaseRangeCM:
 		action = "chase"
 		selectedSkill = "lunge"
-		speed = 620
+		speed = policy.ChaseSpeedCMS
 		moveDir = toPlayer
-	case phaseTick >= 72 && phaseTick < 92 && rangeCM > 220:
+	case phaseTick >= 72 && phaseTick < 92 && rangeCM > policy.LungeRangeCM:
 		action = "lunge"
 		selectedSkill = "lunge"
-		speed = 760
+		speed = policy.LungeSpeedCMS
 		moveDir = toPlayer
 	case phaseTick >= 150 && phaseTick < 166 && rangeCM < 260:
 		action = "maul"
 		selectedSkill = "maul"
-		speed = 420
+		speed = policy.MaulSpeedCMS
 		moveDir = right
-	case rangeCM < 130:
+	case rangeCM < policy.RetreatRangeCM:
 		action = "retreat"
-		selectedSkill = "wolf_dodge"
-		speed = 520
+		selectedSkill = policy.DodgeSkillID
+		speed = policy.RetreatSpeedCMS
 		moveDir = scale(toPlayer, -1)
 	}
 
@@ -397,7 +424,9 @@ func (r *Runtime) updateWolfPolicyLocked(wolf *entityState, player *entityState)
 	wolf.yaw = vectorYaw(toPlayer)
 	wolf.movementState = action
 	wolf.skillState = selectedSkill
-	wolf.locomotion = locomotion("grounded", action, selectedSkill, "active", creatureReconciliation(action), start, wolf.position, r.tick, 0)
+	wolf.locomotion = r.locomotion("grounded", action, selectedSkill, "active", start, wolf.position, 0)
+	wolf.locomotion.ReconciliationMode = creatureReconciliation(action)
+	wolf.locomotion.ContractHash = wolf.locomotion.ReconciliationMode
 	wolf.locomotion.TargetSpeed = speed
 	wolf.locomotion.EffectiveSpeed = speed
 	wolf.locomotion.ActionDistanceTraveled = length(step)
@@ -405,34 +434,34 @@ func (r *Runtime) updateWolfPolicyLocked(wolf *entityState, player *entityState)
 		MovementTactic:                        "flank",
 		CombatTactic:                          "harass",
 		Commitment:                            "probing",
-		CapabilityId:                          "wolf_pack_harasser",
-		ContractId:                            "contract_wolf_pack_harasser_v1",
-		ContractHash:                          "contract_wolf_pack_harasser_v1",
+		CapabilityId:                          policy.CapabilityID,
+		ContractId:                            policy.ContractID,
+		ContractHash:                          policy.ContractHash,
 		OrbitSide:                             "left",
 		LastReason:                            "recovered_runtime_policy",
 		TacticalDestination:                   toProto(add(wolf.position, scale(moveDir, 180))),
 		BehaviorFamily:                        "beast_harasser",
 		CombatRole:                            "duelist",
 		DecisionScore:                         0.72,
-		DesiredRangeCm:                        420,
+		DesiredRangeCm:                        policy.DesiredRangeCM,
 		ActualRangeCm:                         rangeCM,
 		PathState:                             "direct",
 		LosState:                              "clear",
 		SelectedSkillId:                       selectedSkill,
 		ProfileSource:                         "db_contract_recovery_pending",
-		SkillMovementArcHeightCm:              120,
+		SkillMovementArcHeightCm:              policy.LungeArcHeightCM,
 		SkillMovementArcCurve:                 "low_fast",
 		SkillMovementTakeoffMs:                140,
 		SkillMovementLandingLockMs:            120,
-		SkillWindupMs:                         3600,
-		SkillActiveStartMs:                    3600,
-		SkillActiveEndMs:                      4030,
-		SkillRecoveryMs:                       500,
-		SkillActionLockMs:                     4530,
+		SkillWindupMs:                         policy.LungeWindupMS,
+		SkillActiveStartMs:                    policy.LungeWindupMS,
+		SkillActiveEndMs:                      policy.LungeActiveEndMS,
+		SkillRecoveryMs:                       policy.LungeRecoveryMS,
+		SkillActionLockMs:                     policy.LungeActiveEndMS + policy.LungeRecoveryMS,
 		SkillMovementType:                     "leap",
 		SkillMovementStartMs:                  3600,
-		SkillMovementDurationMs:               980,
-		SkillMovementDistanceCm:               620,
+		SkillMovementDurationMs:               policy.LungeDurationMS,
+		SkillMovementDistanceCm:               policy.LungeDistanceCM,
 		SkillMovementDesiredLandingDistanceCm: 760,
 		SkillMovementMinLandingDistanceCm:     180,
 		SkillMovementStopAtContactRatio:       1,
@@ -457,7 +486,7 @@ func (r *Runtime) applyMove(player *entityState, cmd *gamev1.PlayerCommand) {
 	if dir == (vector{}) {
 		player.velocity = vector{}
 		player.movementState = "idle"
-		player.locomotion = locomotion("grounded", "move_stop", "move", "recovery", "grounded_move_reconciliation", player.position, player.position, r.tick, cmd.GetSequence())
+		player.locomotion = r.locomotion("grounded", "move_stop", "move", "recovery", player.position, player.position, cmd.GetSequence())
 		return
 	}
 	speed := 470.0
@@ -475,7 +504,7 @@ func (r *Runtime) applyMove(player *entityState, cmd *gamev1.PlayerCommand) {
 	if move.TargetYaw != nil {
 		player.yaw = move.GetTargetYaw()
 	}
-	player.locomotion = locomotion("grounded", "move", "move", "active", "grounded_move_reconciliation", start, player.position, r.tick, cmd.GetSequence())
+	player.locomotion = r.locomotion("grounded", "move", "move", "active", start, player.position, cmd.GetSequence())
 	player.locomotion.TargetSpeed = speed
 	player.locomotion.EffectiveSpeed = speed
 	player.locomotion.ActionDistanceTraveled = length(step)
@@ -484,11 +513,11 @@ func (r *Runtime) applyMove(player *entityState, cmd *gamev1.PlayerCommand) {
 func (r *Runtime) applyTurn(player *entityState, cmd *gamev1.PlayerCommand) {
 	turn := cmd.GetTurn()
 	player.yaw = turn.GetTargetYaw()
-	player.locomotion = locomotion("grounded", "turn", "turn", "active", "turn_reconciliation", player.position, player.position, r.tick, cmd.GetSequence())
+	player.locomotion = r.locomotion("grounded", "turn", "turn", "active", player.position, player.position, cmd.GetSequence())
 	player.locomotion.AuthoritativeYaw = player.yaw
 }
 
-func (r *Runtime) applyImpulse(player *entityState, cmd *gamev1.PlayerCommand, action string, distanceCM float64, reconciliation string) {
+func (r *Runtime) applyImpulse(player *entityState, cmd *gamev1.PlayerCommand, contract MovementActionRuntimeContract, fallbackDistanceCM float64) {
 	dir := vector{x: 1}
 	if cmd.GetDodge() != nil {
 		dir = normalize(fromProto(cmd.GetDodge().GetDirection()))
@@ -500,11 +529,12 @@ func (r *Runtime) applyImpulse(player *entityState, cmd *gamev1.PlayerCommand, a
 		dir = yawVector(player.yaw)
 	}
 	start := player.position
+	distanceCM := distanceFromContract(contract, fallbackDistanceCM)
 	player.position = add(player.position, scale(dir, distanceCM))
 	player.velocity = scale(dir, distanceCM*float64(tickRate)/10)
-	player.movementState = action
-	player.skillState = action
-	player.locomotion = locomotion("grounded", action, action, "active", reconciliation, start, player.position, r.tick, cmd.GetSequence())
+	player.movementState = contract.ActionType
+	player.skillState = contract.AbilityKey
+	player.locomotion = locomotionFromContract(contract, "active", start, player.position, r.tick, cmd.GetSequence())
 	player.locomotion.ActionDistanceTraveled = distanceCM
 	player.locomotion.TargetSpeed = length(player.velocity)
 	player.locomotion.EffectiveSpeed = player.locomotion.TargetSpeed
@@ -520,13 +550,14 @@ func (r *Runtime) applySkill(player *entityState, cmd *gamev1.PlayerCommand) {
 	if dir == (vector{}) {
 		dir = yawVector(player.yaw)
 	}
-	distanceCM := skillDistance(skillID)
+	skillContract := r.contracts.skillContract(skillID)
+	distanceCM := distanceFromContract(skillContract.MovementAction, 0)
 	start := player.position
 	player.position = add(player.position, scale(dir, distanceCM))
 	player.velocity = scale(dir, distanceCM*float64(tickRate)/12)
 	player.skillState = "active"
 	player.combatState = "committed"
-	player.locomotion = locomotion("grounded", skillID, skillID, "active", "grounded_skill_action_reconciliation", start, player.position, r.tick, cmd.GetSequence())
+	player.locomotion = locomotionFromContract(skillContract.MovementAction, "active", start, player.position, r.tick, cmd.GetSequence())
 	player.locomotion.ActionDistanceTraveled = distanceCM
 	player.locomotion.TargetSpeed = length(player.velocity)
 	player.locomotion.EffectiveSpeed = player.locomotion.TargetSpeed
@@ -543,7 +574,7 @@ func (r *Runtime) applyDefense(player *entityState, cmd *gamev1.PlayerCommand) {
 	} else {
 		player.combatState = "blocking"
 	}
-	player.locomotion = locomotion("grounded", "defense", "block", "active", "grounded_move_reconciliation", player.position, player.position, r.tick, cmd.GetSequence())
+	player.locomotion = r.locomotion("grounded", "defense", "block", "active", player.position, player.position, cmd.GetSequence())
 }
 
 func (r *Runtime) applyCombatMode(player *entityState, cmd *gamev1.PlayerCommand) {
@@ -551,18 +582,22 @@ func (r *Runtime) applyCombatMode(player *entityState, cmd *gamev1.PlayerCommand
 	if mode == "" {
 		mode = "mode_sword_shield_bulwark"
 	}
-	player.combatMode = swordShieldCombatMode(mode)
+	player.combatMode = swordShieldCombatMode(mode, r.contracts.CombatModes)
 }
 
-func (r *Runtime) ackLocked(cmd *gamev1.PlayerCommand, accepted bool, code string, message string) *gamev1.CommandAck {
+func (r *Runtime) ackLocked(cmd *gamev1.PlayerCommand, player *entityState, accepted bool, code string, message string) *gamev1.CommandAck {
 	metadata := map[string]string{
 		"command_type":      commandTypeName(cmd.GetType()),
 		"movement_protocol": "recovered_game_v1",
 	}
 	if cmd.GetCastSkill() != nil {
-		metadata["skill_id"] = cmd.GetCastSkill().GetSkillId()
+		skillID := cmd.GetCastSkill().GetSkillId()
+		if player != nil && player.skillRuntime != nil && (skillID == "" || skillID == "player_basic_attack") {
+			skillID = player.skillRuntime.GetCurrentSkillId()
+		}
+		metadata["skill_id"] = skillID
 		metadata["movement_action_type"] = "grounded_skill"
-		metadata["ability_key"] = cmd.GetCastSkill().GetSkillId()
+		metadata["ability_key"] = skillID
 		metadata["contract_hash"] = "grounded_skill_action_reconciliation"
 		metadata["movement_action_contract_hash"] = "grounded_skill_action_reconciliation"
 		metadata["movement_action_contract_sync_state"] = "confirmed"
@@ -611,7 +646,7 @@ func (r *Runtime) serverTickLocked() *gamev1.ServerTick {
 	return &gamev1.ServerTick{Tick: r.tick, ServerTimeMs: time.Now().UnixMilli(), TickRate: tickRate}
 }
 
-func (e *entityState) snapshot() *gamev1.SnapshotEntity {
+func (e *entityState) snapshot(contracts RuntimeContracts) *gamev1.SnapshotEntity {
 	return &gamev1.SnapshotEntity{
 		Ref:                          &gamev1.EntityRef{RuntimeEntityId: e.id, EntityType: e.entityType, RegionId: e.regionID},
 		TemplateId:                   e.templateID,
@@ -634,107 +669,68 @@ func (e *entityState) snapshot() *gamev1.SnapshotEntity {
 		LastProcessedCommandSequence: e.lastSequence,
 		LastProcessedClientTick:      e.lastClientTick,
 		Locomotion:                   e.locomotion,
-		MovementReconciliation:       movementProfile(),
+		MovementReconciliation:       contracts.MovementProfile,
 		CreatureAiState:              e.creatureAI,
 		CombatModeState:              e.combatMode,
 	}
 }
 
-func movementContractManifest() []*gamev1.MovementActionContractManifest {
-	ids := []string{"move", "turn", "dodge", "jump", "player_basic_attack_1", "player_basic_attack_2", "player_basic_attack_3", "player_shield_bash", "player_shield_rush"}
-	out := make([]*gamev1.MovementActionContractManifest, 0, len(ids))
-	for i, id := range ids {
-		out = append(out, &gamev1.MovementActionContractManifest{
-			ContractId:      id + "_contract",
-			AbilityKey:      id,
-			MovementType:    id,
-			ActionFamily:    "movement",
-			ContractVersion: "movement_action_v1",
-			ContractHash:    id + "_recovered_v1",
-			ActionPriority:  int32(i + 1),
-			Enabled:         true,
-		})
+func (r *Runtime) locomotion(mode, action, ability, phase string, start, projected vector, sequence uint64) *gamev1.LocomotionState {
+	contract := r.contracts.contractForAbility(ability)
+	if ability == "" {
+		contract = r.contracts.contractForAbility(action)
 	}
-	return out
+	state := locomotionFromContract(contract, phase, start, projected, r.tick, sequence)
+	state.MovementMode = mode
+	state.Action = action
+	state.AbilityKey = ability
+	return state
 }
 
-func movementContractPayloads() []*gamev1.LocomotionState {
-	out := make([]*gamev1.LocomotionState, 0, len(movementContractManifest()))
-	for _, manifest := range movementContractManifest() {
-		state := locomotion("grounded", manifest.AbilityKey, manifest.AbilityKey, "contract", "grounded_move_reconciliation", vector{}, vector{}, 0, 0)
-		state.ContractHash = manifest.ContractHash
-		state.ActionContractId = manifest.ContractId
-		out = append(out, state)
+func locomotionFromContract(contract MovementActionRuntimeContract, phase string, start, projected vector, tick uint64, sequence uint64) *gamev1.LocomotionState {
+	reconciliation := contract.ReconciliationCategory
+	if reconciliation == "" {
+		reconciliation = contract.ReconciliationContractID
 	}
-	return out
-}
-
-func movementProfile() *gamev1.MovementReconciliationProfile {
-	return &gamev1.MovementReconciliationProfile{
-		ProfileId:                         "recovered_default_movement_profile",
-		MaxSpeed:                          470,
-		SprintSpeedMultiplier:             1.45,
-		Acceleration:                      2048,
-		Deceleration:                      2048,
-		GroundFriction:                    8,
-		AirAcceleration:                   768,
-		JumpHeight:                        180,
-		JumpDurationMs:                    620,
-		RotationRateYaw:                   720,
-		GravityScale:                      1,
-		BrakingFrictionFactor:             2,
-		MaxSlopeDeg:                       45,
-		StepHeight:                        45,
-		BaseDeadzone:                      25,
-		GroundedSpeedDeadzoneFactor:       0.08,
-		GroundedSpeedDeadzoneMin:          35,
-		GroundedSpeedDeadzoneMax:          90,
-		MoveSustainDeadzone:               45,
-		MoveSustainTransitionDeadzone:     65,
-		AirborneDeadzone:                  120,
-		LeapRecentDeadzone:                140,
-		LeapAirborneSnapshotDeadzone:      165,
-		LeapLandingDeadzoneFactor:         0.12,
-		LeapLandingDeadzoneMin:            80,
-		LeapLandingDeadzoneMax:            180,
-		DodgeRecentDeadzone:               90,
-		DodgeActiveDeadzone:               90,
-		DodgeExitDeadzoneFactor:           0.12,
-		DodgeExitDeadzoneMin:              65,
-		DodgeExitDeadzoneMax:              180,
-		PostActionGroundedDeadzone:        55,
-		CorrectionMaxStep:                 80,
-		HardSnapDistance:                  1400,
-		SevereDesyncDistance:              2200,
-		VisualSmoothingMs:                 80,
-		VisualSmoothingMaxDistance:        260,
-		RemoteVisualInterpolationMs:       100,
-		RemoteVisualMaxExtrapolationMs:    100,
-		RemoteVisualHardSnapDistance:      600,
-		MovementTurnResubmitDotThreshold:  0.92,
-		MovementTurnResubmitMinIntervalMs: 33,
-		MovementSubmitIntervalMs:          33,
-		SnapshotPollIntervalMs:            33,
+	if reconciliation == "" {
+		reconciliation = "grounded_move_reconciliation"
 	}
-}
-
-func locomotion(mode, action, ability, phase, reconciliation string, start, projected vector, tick uint64, sequence uint64) *gamev1.LocomotionState {
+	duration := contract.DurationMS
+	if duration == 0 {
+		duration = 180
+	}
+	active := contract.ActiveMS
+	if active == 0 {
+		active = 120
+	}
+	recovery := contract.RecoveryMS
+	if recovery == 0 {
+		recovery = 60
+	}
+	phasePolicy := contract.PhaseWindowPolicy
+	if phasePolicy == "" {
+		phasePolicy = "server_authoritative"
+	}
+	predictionPolicy := contract.PredictionErrorPolicy
+	if predictionPolicy == "" {
+		predictionPolicy = "bounded_smooth_correction"
+	}
 	return &gamev1.LocomotionState{
-		MovementMode:            mode,
-		Action:                  action,
-		AbilityKey:              ability,
+		MovementMode:            "grounded",
+		Action:                  contract.ActionType,
+		AbilityKey:              contract.AbilityKey,
 		Phase:                   phase,
 		ReconciliationMode:      reconciliation,
-		DurationMs:              180,
-		ActiveMs:                120,
-		RecoveryMs:              60,
+		DurationMs:              duration,
+		ActiveMs:                active,
+		RecoveryMs:              recovery,
 		ContractVersion:         "movement_action_v1",
-		ContractHash:            reconciliation,
-		PhaseWindowPolicy:       "server_authoritative",
-		PredictionErrorPolicy:   "bounded_smooth_correction",
-		ActionContractId:        ability + "_contract",
-		ActionFamily:            "movement",
-		MovementType:            action,
+		ContractHash:            contractHash(contract),
+		PhaseWindowPolicy:       phasePolicy,
+		PredictionErrorPolicy:   predictionPolicy,
+		ActionContractId:        contract.ID,
+		ActionFamily:            actionFamily(contract),
+		MovementType:            contract.ActionType,
 		ContractSyncState:       "confirmed",
 		ClientActionSequence:    sequence,
 		ServerReceivedTick:      tick,
@@ -746,7 +742,7 @@ func locomotion(mode, action, ability, phase, reconciliation string, start, proj
 	}
 }
 
-func swordShieldCombatMode(active string) *gamev1.CombatModeState {
+func swordShieldCombatMode(active string, slots []*gamev1.CombatModeSlot) *gamev1.CombatModeState {
 	return &gamev1.CombatModeState{
 		WeaponCombinationId: "sword_shield",
 		ActiveCombatMode:    active,
@@ -754,12 +750,7 @@ func swordShieldCombatMode(active string) *gamev1.CombatModeState {
 		Phase:               "ready",
 		SwitchDurationMs:    500,
 		CombatModeEnforced:  true,
-		ModeSlots: []*gamev1.CombatModeSlot{
-			{CombatModeId: "mode_sword_shield_vanguard", SlotIndex: 1, SkillId: "player_basic_attack_1", Enabled: true},
-			{CombatModeId: "mode_sword_shield_bulwark", SlotIndex: 1, SkillId: "player_basic_attack_1", Enabled: true},
-			{CombatModeId: "mode_sword_shield_bulwark", SlotIndex: 3, SkillId: "player_shield_bash", Enabled: true},
-			{CombatModeId: "mode_sword_shield_bulwark", SlotIndex: 4, SkillId: "player_shield_rush", Enabled: true},
-		},
+		ModeSlots:           slots,
 	}
 }
 
@@ -771,23 +762,6 @@ func nextBasicAttack(player *entityState) string {
 		return "player_basic_attack_3"
 	default:
 		return "player_basic_attack_1"
-	}
-}
-
-func skillDistance(skillID string) float64 {
-	switch skillID {
-	case "player_basic_attack_1":
-		return 55
-	case "player_basic_attack_2":
-		return 35
-	case "player_basic_attack_3":
-		return 200
-	case "player_shield_bash":
-		return 130
-	case "player_shield_rush":
-		return 340
-	default:
-		return 0
 	}
 }
 

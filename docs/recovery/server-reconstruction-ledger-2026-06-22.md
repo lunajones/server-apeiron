@@ -175,3 +175,48 @@ From current thread:
 5. Restore DB API clients matching reconstructed DB service surfaces.
 6. Run `go test ./...`; use the errors as the authoritative missing-symbol checklist.
 7. Only after server and DB compile, restart services and verify runtime readiness.
+# 2026-06-22 - Runtime contract recovery slice
+
+## Decision
+
+The recovered game API must not keep movement, skill movement, and wolf behavior as scattered literals inside `internal/gameapi/runtime.go`.
+
+Current source-of-truth order:
+
+1. `db-apeiron` gRPC contract endpoints, when `DB_APEIRON_ENDPOINT` is configured and ready.
+2. `gameapi.RecoveredRuntimeContracts()` only as explicit recovery fallback so the game can still boot while DB is offline or still being reconstructed.
+
+## Implemented
+
+- `db-apeiron` now exposes:
+  - `SkillDataService/GetSkillActionTiming`
+  - `SkillDataService/GetSkillMovementActionBinding`
+  - `ProfileDataService/GetMovementActionContract`
+  - `ProfileDataService/GetMovementReconciliationContract`
+  - `ProfileDataService/GetCreatureBehaviorRuntimeContract`
+  - `ProfileDataService/GetCreatureEvasionPolicies`
+  - `ProfileDataService/GetCreatureSkillSetupPolicies`
+- `db-apeiron/bootstrap/014_action_runtime_contract_seed.sql` includes base movement action contracts for `move`, `turn`, `dodge`, and `jump`, plus recovered player/wolf skill movement contracts.
+- `server-apeiron/internal/gameapi/contracts.go` centralizes recovered and DB-loaded runtime contracts.
+- `server-apeiron/internal/gameapi/runtime.go` now consumes `RuntimeContracts` for movement manifests, locomotion payloads, skill distances, dodge/jump distances, movement reconciliation profile, combat mode slots, and wolf policy values.
+- Basic attack ACK metadata now reports the resolved combo step (`player_basic_attack_1`, etc.) instead of the generic `player_basic_attack` request alias.
+- Movement action manifest ordering is deterministic: `move`, `turn`, `dodge`, `jump`, basic combo, shield skills, then any extra sorted keys.
+
+## Validated
+
+- `db-apeiron`: `go test ./...`
+- `db-apeiron`: `go build ./cmd/db-api`
+- `server-apeiron`: `go test ./...`
+- `server-apeiron`: `go build ./cmd/game-server`
+- Live `game-server` on `127.0.0.1:50052`:
+  - `ObservabilityService/Health`
+  - `SessionService/OpenSession`
+  - `SessionService/AttachPlayer`
+  - `CommandService/SubmitCommand` for `player_shield_rush`
+  - `SnapshotService/GetSnapshot`
+
+## Remaining Recovery Notes
+
+- The currently running server is using `recovered_runtime_fallback` because `DB_APEIRON_ENDPOINT` is not configured in this shell.
+- Once `db-api` and Postgres are running with seeds applied, restart `game-server` with `DB_APEIRON_ENDPOINT=127.0.0.1:50051` to validate the DB-backed path.
+- This slice restores runtime shape and contract delivery; it does not prove the full historical combat implementation is completely recovered yet.
