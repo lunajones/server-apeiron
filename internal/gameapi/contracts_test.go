@@ -139,7 +139,33 @@ func (f fakeRuntimeContractSource) GetSkill(_ context.Context, req *dbv1.IdReque
 			BaseDamage:    12,
 			PostureDamage: 20,
 			MaxRange:      300,
+			MaxTargets:    1,
+			IsBlockable:   true,
 		},
+	}, nil
+}
+
+func (f fakeRuntimeContractSource) GetSkillHitboxProfiles(_ context.Context, req *dbv1.IdRequest, _ ...grpc.CallOption) (*dbv1.SkillHitboxProfilesResponse, error) {
+	if f.missingSkills[req.GetId()] {
+		return &dbv1.SkillHitboxProfilesResponse{Found: false}, nil
+	}
+	targetType := "enemy"
+	maxTargets := int32(1)
+	return &dbv1.SkillHitboxProfilesResponse{
+		Found: true,
+		Profiles: []*dbv1.SkillHitboxProfile{{
+			Id:            "hitbox_" + req.GetId(),
+			SkillId:       req.GetId(),
+			HitboxShape:   "temporal_sweep",
+			HitboxStartMs: 0,
+			HitboxEndMs:   160,
+			Length:        300,
+			Radius:        60,
+			Angle:         90,
+			TargetType:    &targetType,
+			MaxTargets:    &maxTargets,
+			Priority:      20,
+		}},
 	}, nil
 }
 

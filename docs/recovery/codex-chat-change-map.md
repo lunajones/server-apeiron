@@ -357,7 +357,7 @@ Prioridade do que **sumiu** e precisa voltar:
 | Alta | **CTRL troca de combat mode** — processar ACK (active/target/phase) + bridge fresco; Q/R/F só do modo ativo | chat 1 #1-3 | `ApeironGameServerBridge.cpp` (`ApplyCommandAckResponse`), HUD viewmodel |
 | Alta | **Fila HTTP coalesce/prioriza** (switch_mode/leap/dodge/cast) — conserta pulo preso atrás de spam de movimento | chat 1 #4 | `ApeironTestPlayerCharacter.cpp` (`coalesce` sumiu) |
 | Média | **Shield Rush dano a meio cilindro** (`offset_x=48`, `radius=96`) | chat 1 #5 | `db:bootstrap` (seed 026 sumiu) |
-| 🔨 Média | **Arco 180° / back-bypass** no block — **tijolo 1 feito `0c285b9`** (`resolveDirectionalBlock` puro + testes); falta wiring no runtime (depende do pipeline de dano abaixo) | 14/06 #1 | `gameapi/defense.go` |
+| ✅ Média | **Arco 180° / back-bypass** no block — **tijolo 1 feito `0c285b9`** (`resolveDirectionalBlock` puro + testes) e ligado no runtime vivo pelo brick 3 (`applySkillImpact`) para segurar HP quando o alvo bloqueia de frente e ainda aplicar pressao de postura. | 14/06 #1 | `gameapi/defense.go`, `gameapi/impact.go` |
 | Média | Confirmar **hitbox-decide-hit** (não target lock) no wolf | 14/06 #2 | `gameapi/runtime.go` |
 | Média | **Reconciliação**: smoothing acima da dead-zone, snap só severo | 04/06 #4-5 | `ApeironGameServerBridge.cpp` |
 | Média | Verificar **Shield Bash gap-close** (75/80/940) | 16/06 #1 | `db:bootstrap/013_player_sword_shield_skill_seed.sql` |
@@ -372,11 +372,11 @@ O runtime vivo (gameapi) ainda **não resolve dano**. Reconstrução em tijolos:
 1. ✅ `0c285b9` **block direcional** (`gameapi/defense.go:resolveDirectionalBlock`, arco 180°) — puro, testado.
 2a. ✅ `4fcb17f` **dano no contrato** — `SkillRuntimeContract.Damage/PostureDamage` + player skills populados do seed 013 (shield_rush 14/34, bash 10/26, basic 8/10·7/9·6/18). Materializado no fallback recuperado.
 2b. ✅ `0cc69dc` **DB-authoritative damage — SEM regen** (o medo de regen estava errado): o server importa `db-apeiron/gen/apeiron/v1` direto, então `dbv1.Skill` já tem `GetBaseDamage/GetPostureDamage/GetMaxRange` e o `SkillDataService` já tem `GetSkill`. `loadSkillRuntimeContract` agora busca o Skill e mapeia `base_damage→Damage`, `posture_damage→PostureDamage`, `max_range→Range` (best-effort; fallback nos valores do seed da brick 2a quando DB off). + `GetSkill` na interface `ContractSource` + teste. **Range agora disponível → desbloqueia o tijolo 3.**
-3. ⏳ **Resolução de hit** — quando skill ativa, achar alvo por **range + cone vindos do DB** (depois geometria real do `internal/hitbox`), aplicar `Damage` ao HP usando o tijolo 1 pro block; HP→0 = morte/respawn. **Depende do 2b** (range/cone) pra não inventar valor.
+3. ✅ **Resolução de hit no runtime vivo recuperado** — `ContractSource` agora carrega `GetSkillHitboxProfiles`; `SkillRuntimeContract` carrega hitboxes/max_targets/blockable; `gameapi/impact.go` seleciona alvo por perfil de hitbox DB/recovered seed, aplica `Damage/PostureDamage` e usa o tijolo 1 para block direcional. Testes cobrem dano, block frontal preservando HP e miss fora do volume. **Ainda falta promover a resolução temporal completa por frame/sweep do `internal/hitbox`/`internal/combat` como refinamento AAA do pipeline principal.**
 4. ⏳ **Parry** (chat "continuar dia 10"): janela frontal, zera dano, interrompe atacante.
 5. ⏳ **Impact response** por alvo (flesh/bone/stone) no evento de dano.
 
-**Limite/boundary:** tijolos 1 e 2a feitos no server. O **2b é o gargalo** — integração DB↔proto↔gameapi (regen de proto, cross-project db+server). É o slice grande; melhor com contexto limpo. Sem o 2b, o 3 só seria possível inventando range/cone (proibido pelo gap-audit).
+**Limite/boundary:** tijolos 1, 2a, 2b e o brick 3 do runtime vivo estao feitos no server. O `gameapi` agora resolve dano suficiente para gameplay recuperado, sem inventar valores locais; a proxima fatia AAA e substituir o acerto imediato simplificado pela avaliacao temporal/swept completa ja descrita nos hitbox profiles e reaproveitar o `internal/hitbox`/`internal/combat` como fonte unica de geometria de dano.
 
 ## Anexo: meta-sessão de recuperação (provenance do HEAD atual)
 

@@ -18,6 +18,7 @@ type ContractSource interface {
 	GetSkill(context.Context, *dbv1.IdRequest, ...grpc.CallOption) (*dbv1.SkillResponse, error)
 	GetSkillActionTiming(context.Context, *dbv1.IdRequest, ...grpc.CallOption) (*dbv1.SkillActionTimingResponse, error)
 	GetSkillMovementActionBinding(context.Context, *dbv1.IdRequest, ...grpc.CallOption) (*dbv1.SkillMovementActionBindingResponse, error)
+	GetSkillHitboxProfiles(context.Context, *dbv1.IdRequest, ...grpc.CallOption) (*dbv1.SkillHitboxProfilesResponse, error)
 }
 
 type ProfileContractSource interface {
@@ -65,6 +66,9 @@ type SkillRuntimeContract struct {
 	Damage        float64
 	PostureDamage float64
 	Range         float64
+	MaxTargets    int32
+	Blockable     bool
+	Hitboxes      []*dbv1.SkillHitboxProfile
 	Enabled       bool
 }
 
@@ -276,6 +280,11 @@ func loadSkillRuntimeContract(ctx context.Context, skills ContractSource, skillI
 		contract.Damage = s.GetBaseDamage()
 		contract.PostureDamage = s.GetPostureDamage()
 		contract.Range = s.GetMaxRange()
+		contract.MaxTargets = s.GetMaxTargets()
+		contract.Blockable = s.GetIsBlockable()
+	}
+	if hitboxResp, err := skills.GetSkillHitboxProfiles(ctx, &dbv1.IdRequest{Id: skillID}); err == nil && hitboxResp.GetFound() {
+		contract.Hitboxes = hitboxResp.GetProfiles()
 	}
 	return contract, true
 }
@@ -357,6 +366,55 @@ func recoveredPlayerSkillDamage(skillID string) (damage float64, posture float64
 	}
 }
 
+func recoveredPlayerSkillMaxTargets(skillID string) int32 {
+	switch skillID {
+	case "player_basic_attack_2":
+		return 2
+	case "player_basic_attack_3":
+		return 3
+	case "player_shield_bash":
+		return 4
+	case "player_shield_rush":
+		return 5
+	default:
+		return 1
+	}
+}
+
+func recoveredPlayerSkillHitboxes(skillID string) []*dbv1.SkillHitboxProfile {
+	targetType := "enemy"
+	maxTargets := recoveredPlayerSkillMaxTargets(skillID)
+	profile := &dbv1.SkillHitboxProfile{
+		Id:                  skillID + "_recovered_temporal_hitbox",
+		SkillId:             skillID,
+		HitboxShape:         "temporal_sweep",
+		TargetType:          &targetType,
+		MaxTargets:          &maxTargets,
+		RequiresLineOfSight: true,
+		CanHitNeutral:       true,
+	}
+	switch skillID {
+	case "player_basic_attack_1":
+		profile.HitboxStartMs, profile.HitboxEndMs = 90, 230
+		profile.Length, profile.Angle, profile.Radius = 230, 90, 50
+	case "player_basic_attack_2":
+		profile.HitboxStartMs, profile.HitboxEndMs = 100, 250
+		profile.Length, profile.Angle, profile.Radius = 250, 90, 58
+	case "player_basic_attack_3":
+		profile.HitboxStartMs, profile.HitboxEndMs = 180, 440
+		profile.Length, profile.Angle, profile.Radius = 440, 95, 60
+	case "player_shield_bash":
+		profile.HitboxStartMs, profile.HitboxEndMs = 120, 340
+		profile.Length, profile.Radius = 210, 95
+	case "player_shield_rush":
+		profile.HitboxStartMs, profile.HitboxEndMs = 160, 590
+		profile.Length, profile.Radius = 290, 96
+	default:
+		return nil
+	}
+	return []*dbv1.SkillHitboxProfile{profile}
+}
+
 func recoveredSkillContract(skillID string, distance float64, durationMS, activeMS, recoveryMS int32) SkillRuntimeContract {
 	action := MovementActionRuntimeContract{
 		ID:                       skillID + "_contract",
@@ -384,6 +442,9 @@ func recoveredSkillContract(skillID string, distance float64, durationMS, active
 		MovementAction:           action,
 		Damage:                   damage,
 		PostureDamage:            posture,
+		MaxTargets:               recoveredPlayerSkillMaxTargets(skillID),
+		Blockable:                true,
+		Hitboxes:                 recoveredPlayerSkillHitboxes(skillID),
 		ActiveMS:                 activeMS,
 		RecoveryMS:               recoveryMS,
 		MovementLockPolicy:       "skill_root_motion_owner",
@@ -430,6 +491,8 @@ func recoveredCreatureSkillContract(skillID string, contractID string, actionTyp
 		NormalInputPolicy:        "blocked_during_owned_root",
 		TargetPolicy:             "target_direction",
 		ContactPolicy:            contactPolicy,
+		MaxTargets:               1,
+		Blockable:                true,
 		Enabled:                  true,
 	}
 }

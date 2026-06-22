@@ -705,6 +705,7 @@ func (r *Runtime) applySkill(player *entityState, cmd *gamev1.PlayerCommand) {
 		CooldownEndMs:    time.UnixMilli(now).Add(durationFromMS(skillContract.CooldownMS)).UnixMilli(),
 		LastResolvedAtMs: now,
 	}
+	r.applySkillImpact(player, skillContract, start, player.position, dir)
 }
 
 func (r *Runtime) applyDefense(player *entityState, cmd *gamev1.PlayerCommand) {
