@@ -21,6 +21,7 @@ import (
 	"server-apeiron/internal/movement"
 
 	"google.golang.org/grpc"
+	"google.golang.org/protobuf/proto"
 )
 
 const (
@@ -1619,16 +1620,51 @@ func (e *entityState) snapshot(contracts RuntimeContracts) *gamev1.SnapshotEntit
 		MovementState:                e.movementState,
 		CombatState:                  e.combatState,
 		SkillState:                   e.skillState,
-		SkillRuntimeState:            e.skillRuntime,
+		SkillRuntimeState:            cloneSkillRuntimeState(e.skillRuntime),
 		AggroState:                   e.aggroState,
 		Aggression:                   e.aggression,
 		LastProcessedCommandSequence: e.lastSequence,
 		LastProcessedClientTick:      e.lastClientTick,
-		Locomotion:                   e.locomotion,
-		MovementReconciliation:       contracts.MovementProfile,
-		CreatureAiState:              e.creatureAI,
-		CombatModeState:              e.combatMode,
+		Locomotion:                   cloneLocomotionState(e.locomotion),
+		MovementReconciliation:       cloneMovementReconciliationProfile(contracts.MovementProfile),
+		CreatureAiState:              cloneCreatureAIState(e.creatureAI),
+		CombatModeState:              cloneCombatModeState(e.combatMode),
 	}
+}
+
+func cloneSkillRuntimeState(state *gamev1.SkillRuntimeState) *gamev1.SkillRuntimeState {
+	if state == nil {
+		return nil
+	}
+	return proto.Clone(state).(*gamev1.SkillRuntimeState)
+}
+
+func cloneLocomotionState(state *gamev1.LocomotionState) *gamev1.LocomotionState {
+	if state == nil {
+		return nil
+	}
+	return proto.Clone(state).(*gamev1.LocomotionState)
+}
+
+func cloneMovementReconciliationProfile(profile *gamev1.MovementReconciliationProfile) *gamev1.MovementReconciliationProfile {
+	if profile == nil {
+		return nil
+	}
+	return proto.Clone(profile).(*gamev1.MovementReconciliationProfile)
+}
+
+func cloneCreatureAIState(state *gamev1.CreatureAIState) *gamev1.CreatureAIState {
+	if state == nil {
+		return nil
+	}
+	return proto.Clone(state).(*gamev1.CreatureAIState)
+}
+
+func cloneCombatModeState(state *gamev1.CombatModeState) *gamev1.CombatModeState {
+	if state == nil {
+		return nil
+	}
+	return proto.Clone(state).(*gamev1.CombatModeState)
 }
 
 func (r *Runtime) locomotion(mode, action, ability, phase string, start, projected vector, sequence uint64) *gamev1.LocomotionState {

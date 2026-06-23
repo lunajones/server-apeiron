@@ -408,6 +408,54 @@ func TestRuntimeAttachPlayerResetsEphemeralCommandReplayState(t *testing.T) {
 	}
 }
 
+func TestRuntimeSnapshotDeepCopiesMutableProtoState(t *testing.T) {
+	runtime := NewRuntimeWithOptions(DevFixtureRuntimeContracts(), RuntimeOptions{MovementValidation: true})
+	sessionID := "runtime-snapshot-deep-copy"
+	if _, err := runtime.OpenSession(context.Background(), &gamev1.OpenSessionRequest{
+		Context: &gamev1.RequestContext{SessionId: sessionID},
+	}); err != nil {
+		t.Fatalf("OpenSession failed: %v", err)
+	}
+	if _, err := runtime.AttachPlayer(context.Background(), &gamev1.AttachPlayerRequest{
+		Context:  &gamev1.RequestContext{SessionId: sessionID},
+		PlayerId: "local_player",
+	}); err != nil {
+		t.Fatalf("AttachPlayer failed: %v", err)
+	}
+	if _, err := runtime.SubmitCommand(context.Background(), testRuntimeMoveCommand(sessionID, 1, gamev1Vector(1, 0, 0), 1, true, nil)); err != nil {
+		t.Fatalf("SubmitCommand failed: %v", err)
+	}
+	snapshot, err := runtime.GetSnapshot(context.Background(), &gamev1.SnapshotRequest{
+		Context:          &gamev1.RequestContext{SessionId: sessionID},
+		IncludeFullState: true,
+	})
+	if err != nil {
+		t.Fatalf("GetSnapshot failed: %v", err)
+	}
+	if len(snapshot.GetEntities()) == 0 || snapshot.GetEntities()[0].GetLocomotion() == nil {
+		t.Fatalf("snapshot missing locomotion: %#v", snapshot.GetEntities())
+	}
+	entity := snapshot.GetEntities()[0]
+	oldAction := entity.GetLocomotion().GetAction()
+	oldMode := entity.GetMovementReconciliation().GetProfileId()
+	oldCombatMode := entity.GetCombatModeState().GetActiveCombatMode()
+
+	player := runtime.ensurePlayerLocked("local_player")
+	player.locomotion.Action = "mutated_after_snapshot"
+	player.combatMode.ActiveCombatMode = "mutated_after_snapshot"
+	runtime.contracts.MovementProfile.ProfileId = "mutated_after_snapshot"
+
+	if entity.GetLocomotion().GetAction() != oldAction {
+		t.Fatalf("snapshot locomotion shared mutable pointer: got %q want %q", entity.GetLocomotion().GetAction(), oldAction)
+	}
+	if entity.GetCombatModeState().GetActiveCombatMode() != oldCombatMode {
+		t.Fatalf("snapshot combat mode shared mutable pointer: got %q want %q", entity.GetCombatModeState().GetActiveCombatMode(), oldCombatMode)
+	}
+	if entity.GetMovementReconciliation().GetProfileId() != oldMode {
+		t.Fatalf("snapshot movement profile shared mutable pointer: got %q want %q", entity.GetMovementReconciliation().GetProfileId(), oldMode)
+	}
+}
+
 func TestRuntimeSprintStrafeYawInversionInterleavedWithSkills(t *testing.T) {
 	t.Parallel()
 

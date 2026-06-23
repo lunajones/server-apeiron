@@ -120,6 +120,10 @@ Expected final architecture:
 - Unreal may predict locally, but must reconcile against server snapshots using DB-backed reconciliation profile data.
 - Normal movement must not know skill-specific rules. It can use action/reconciliation categories, not skill ids.
 - `leap`, `dodge`, and `turn` are protected baseline actions.
+- Snapshot responses must deep-copy mutable protobuf runtime state before crossing the gRPC boundary. Locomotion,
+  skill runtime, creature AI, combat mode, and reconciliation profile pointers are live runtime state; returning those
+  pointers directly can race with later ticks and produce protobuf marshal size mismatches or incoherent client
+  reconciliation data.
 
 Evidence to cross-check:
 
