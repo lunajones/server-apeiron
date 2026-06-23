@@ -295,6 +295,30 @@ Because of that, missing recovered files must not be copied by path name. Recove
 
 The historical rubberbanding work repeatedly failed when movement authority was split across multiple paths. This slice restores a single movement-owned contract classification point so `gameapi` can publish manifests and locomotion snapshots without owning reconciliation semantics itself.
 
+# 2026-06-22 - Strict runtime contract boot slice
+
+## Finding
+
+The app boot path still initialized `gameapi.RecoveredRuntimeContracts()` before trying DB-backed runtime contracts. That meant a missing DB endpoint or partial recovered startup could look playable while using recovery-only values for movement, skill movement, wolf policy, and combat mode slots.
+
+## Implemented
+
+- Added `ALLOW_RECOVERED_RUNTIME_FALLBACK` / `-AllowRecoveredRuntimeFallback`.
+- `internal/app/lifecycle.go` now refuses to load game runtime contracts without DB unless the recovered fallback flag is explicitly enabled.
+- Complete strict DB loads are labeled `db_contracts`.
+- `gameapi.NewRuntimeWithOptions` no longer backfills missing contract groups from recovered runtime unless the source itself is an explicit recovered fallback source.
+- `RuntimeContracts.contractForAbility` and `skillContract` no longer invent missing contracts for strict DB sources.
+
+## Validated
+
+- `server-apeiron`: `go test ./...`
+- `server-apeiron`: `go build -o bin/game-server.exe ./cmd/game-server`
+
+## Remaining Recovery Notes
+
+- `movement_reconciliation_contract` in DB is still not the full rich `MovementReconciliationProfile` shape consumed by Unreal snapshots. Do not invent more Go/C++ literals for that. Restore/extend DB/proto if profile-level reconciliation tuning must become fully DB-authoritative.
+- `internal/combat/player_skill_combat_system.go` still has fallback player attack profile paths and remains the next strict-fallback recovery target.
+
 # 2026-06-22 - Wolf maul contract recovery slice
 
 ## Finding

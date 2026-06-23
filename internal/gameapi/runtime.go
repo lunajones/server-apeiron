@@ -155,22 +155,28 @@ func NewRuntimeWithContracts(contracts RuntimeContracts) *Runtime {
 }
 
 func NewRuntimeWithOptions(contracts RuntimeContracts, options RuntimeOptions) *Runtime {
-	if contracts.MovementProfile == nil {
+	if contracts.recoveredFallbacksAllowed() && contracts.MovementProfile == nil {
 		contracts.MovementProfile = recoveredMovementProfile()
 	}
-	if contracts.ActionContracts == nil {
+	if contracts.recoveredFallbacksAllowed() && contracts.ActionContracts == nil {
 		recovered := RecoveredRuntimeContracts()
 		contracts.ActionContracts = recovered.ActionContracts
 	}
-	if contracts.SkillContracts == nil {
+	if contracts.recoveredFallbacksAllowed() && contracts.SkillContracts == nil {
 		recovered := RecoveredRuntimeContracts()
 		contracts.SkillContracts = recovered.SkillContracts
 	}
-	if contracts.WolfPolicy.ContractID == "" {
+	if contracts.recoveredFallbacksAllowed() && contracts.WolfPolicy.ContractID == "" {
 		contracts.WolfPolicy = RecoveredRuntimeContracts().WolfPolicy
 	}
-	if len(contracts.CombatModes) == 0 {
+	if contracts.recoveredFallbacksAllowed() && len(contracts.CombatModes) == 0 {
 		contracts.CombatModes = recoveredCombatModeSlots()
+	}
+	if contracts.ActionContracts == nil {
+		contracts.ActionContracts = map[string]MovementActionRuntimeContract{}
+	}
+	if contracts.SkillContracts == nil {
+		contracts.SkillContracts = map[string]SkillRuntimeContract{}
 	}
 	return &Runtime{
 		started:   time.Now(),

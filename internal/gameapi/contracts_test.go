@@ -55,6 +55,9 @@ func TestLoadRuntimeContractsFromDBUsesRequiredSkillBindings(t *testing.T) {
 	if err := contracts.ValidateRequiredCoverage(true); err != nil {
 		t.Fatalf("db contract coverage failed: %v", err)
 	}
+	if contracts.Source != "db_contracts" {
+		t.Fatalf("source = %q, want db_contracts", contracts.Source)
+	}
 
 	for _, skillID := range requiredRuntimeSkillIDs() {
 		skill := contracts.skillContract(skillID)
@@ -109,6 +112,17 @@ func TestLoadRuntimeContractsFromDBRejectsMissingRequiredBinding(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "missing skill runtime maul") {
 		t.Fatalf("coverage error = %v", err)
+	}
+}
+
+func TestDBRuntimeContractsDoNotInventMissingFallbacks(t *testing.T) {
+	contracts := RuntimeContracts{Source: "db_contracts"}
+
+	if got := contracts.contractForAbility("dodge"); got.ID != "" {
+		t.Fatalf("strict DB contract invented ability fallback: %#v", got)
+	}
+	if got := contracts.skillContract("player_shield_rush"); got.MovementAction.ID != "" || got.Enabled {
+		t.Fatalf("strict DB contract invented skill fallback: %#v", got)
 	}
 }
 

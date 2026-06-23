@@ -37,20 +37,25 @@ Source threads:
 - `recuperacao 11` / `019e97f2-1f69-7222-a875-ff1fa9bf074b`
 - current code audit
 
+Status:
+- Mitigated in the app/gameapi boot path on 2026-06-22.
+- Keep this item open only for the broader combat fallback audit below.
+
 Expected architecture:
 - DB/profile contracts are authoritative for tuning shared by server and Unreal.
 - Fallbacks can exist only as explicit dev/recovery mode, never as silent production behavior.
 
 Current recovered code evidence:
-- `internal/app/lifecycle.go` starts with `gameapi.RecoveredRuntimeContracts()`.
-- `internal/gameapi/runtime.go` fills missing `MovementProfile`, `ActionContracts`, `SkillContracts`, `WolfPolicy`, and `CombatModes` from recovered fallback.
+- `internal/app/lifecycle.go` now loads DB contracts first and rejects startup without DB unless `ALLOW_RECOVERED_RUNTIME_FALLBACK=true` is explicitly set.
+- `internal/gameapi/runtime.go` only backfills missing runtime contract groups when the contract source is an explicit recovered fallback source.
+- `internal/gameapi/contracts.go` labels complete strict DB loads as `db_contracts`.
 - `internal/gameapi/contracts.go` declares source `recovered_runtime_fallback`.
 
 Risk:
-- Missing DB data can silently look "working" while behavior differs from intended design.
+- Remaining risk is no longer silent app boot fallback; it is combat-package fallback attack profiles and any vertical-slice code path that bypasses `app.Run`.
 
 Required reconstruction:
-- Add strict startup mode for required DB contract coverage.
+- Keep strict startup mode for required DB contract coverage.
 - Keep fallback behind explicit recovery/dev flag only.
 - Log and fail loudly when required production contracts are missing.
 - Add readiness report listing every required action/skill/creature/combat mode contract and its source.
@@ -171,7 +176,7 @@ Required:
 
 1. Finish paging remaining source threads and update `thread-source-index-2026-06-22.md`.
 2. Rebuild/restore movement resolver ownership before more rubberband tuning.
-3. Harden fallback policy: DB contracts required outside explicit recovery mode.
+3. Harden fallback policy: DB contracts required outside explicit recovery mode. (app/gameapi boot path done; readiness report still pending)
 4. Reconnect basic attack/skill strict profile loading and remove final gameplay fallbacks.
 5. Audit `gameapi/runtime.go` versus combat/domain packages; decide whether it is a temporary vertical-slice runtime or the real server runtime.
 6. Run `go test ./...` in `server-apeiron` and `db-apeiron`, then Unreal build.

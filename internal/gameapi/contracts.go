@@ -238,6 +238,9 @@ func LoadRuntimeContractsFromDB(ctx context.Context, skills ContractSource, prof
 	} else {
 		contracts.LoadIssues = append(contracts.LoadIssues, "missing weapon combat mode slots weaponkit_sword_shield")
 	}
+	if len(contracts.LoadIssues) == 0 {
+		contracts.Source = "db_contracts"
+	}
 	return contracts
 }
 
@@ -424,6 +427,10 @@ func (c RuntimeContracts) ValidateRequiredCoverage(strictLoadedSource bool) erro
 		return fmt.Errorf("runtime contract coverage incomplete: %s", strings.Join(missing, "; "))
 	}
 	return nil
+}
+
+func (c RuntimeContracts) recoveredFallbacksAllowed() bool {
+	return c.Source == "recovered_runtime_fallback" || c.Source == "db_contracts_with_recovered_fallback"
 }
 
 func loadSkillRuntimeContract(ctx context.Context, skills ContractSource, skillID string) (SkillRuntimeContract, bool) {
@@ -831,6 +838,9 @@ func (c RuntimeContracts) contractForAbility(ability string) MovementActionRunti
 	if contract, ok := registry.Resolve(ability); ok {
 		return contract
 	}
+	if !c.recoveredFallbacksAllowed() {
+		return MovementActionRuntimeContract{AbilityKey: ability}
+	}
 	return MovementActionRuntimeContract{
 		ID:                       ability + "_contract",
 		AbilityKey:               ability,
@@ -848,6 +858,9 @@ func (c RuntimeContracts) contractForAbility(ability string) MovementActionRunti
 func (c RuntimeContracts) skillContract(skillID string) SkillRuntimeContract {
 	if contract, ok := c.SkillContracts[skillID]; ok {
 		return contract
+	}
+	if !c.recoveredFallbacksAllowed() {
+		return SkillRuntimeContract{SkillID: skillID}
 	}
 	return recoveredSkillContract(skillID, 0, 180, 120, 60)
 }

@@ -25,21 +25,11 @@ func Run(ctx context.Context, cfg *config.Config) error {
 		}()
 	}
 
-	runtimeContracts := gameapi.RecoveredRuntimeContracts()
-	if dbClient != nil {
-		loadCtx, cancel := context.WithTimeout(ctx, cfg.DBApeiron.RequestTimeout)
-		runtimeContracts = gameapi.LoadRuntimeContractsFromDB(loadCtx, dbClient.Skills, dbClient.Profiles)
-		cancel()
-		if err := runtimeContracts.ValidateRequiredCoverage(true); err != nil {
-			return err
-		}
-		log.Info().Str("source", runtimeContracts.Source).Msg("game runtime contracts loaded")
-	} else {
-		if err := runtimeContracts.ValidateRequiredCoverage(false); err != nil {
-			return err
-		}
-		log.Warn().Str("source", runtimeContracts.Source).Msg("game runtime using recovered fallback contracts")
+	runtimeContracts, err := loadGameRuntimeContracts(ctx, cfg, dbClient)
+	if err != nil {
+		return err
 	}
+	log.Info().Str("source", runtimeContracts.Source).Msg("game runtime contracts loaded")
 
 	runtimeOptions := gameapi.RuntimeOptions{
 		MovementValidation: cfg.Validation.MovementValidation,
@@ -50,6 +40,34 @@ func Run(ctx context.Context, cfg *config.Config) error {
 		Bool("creature_runtime_enabled", cfg.AI.CreatureRuntimeEnabled).
 		Msg("game server bootstrap completed")
 	return gameapi.ServeRuntime(ctx, cfg.Network, gameapi.NewRuntimeWithOptions(runtimeContracts, runtimeOptions))
+}
+
+func loadGameRuntimeContracts(ctx context.Context, cfg *config.Config, dbClient *dbapeiron.Client) (gameapi.RuntimeContracts, error) {
+	if dbClient != nil {
+		loadCtx, cancel := context.WithTimeout(ctx, cfg.DBApeiron.RequestTimeout)
+		contracts := gameapi.LoadRuntimeContractsFromDB(loadCtx, dbClient.Skills, dbClient.Profiles)
+		cancel()
+		if err := contracts.ValidateRequiredCoverage(true); err != nil {
+			return gameapi.RuntimeContracts{}, err
+		}
+		return contracts, nil
+	}
+
+	if cfg != nil && cfg.Runtime.AllowRecoveredRuntimeFallback {
+		contracts := gameapi.RecoveredRuntimeContracts()
+		if err := contracts.ValidateRequiredCoverage(false); err != nil {
+			return gameapi.RuntimeContracts{}, err
+		}
+		logging.WithComponent("app").
+			Warn().
+			Str("source", contracts.Source).
+			Msg("game runtime using explicitly enabled recovered fallback contracts")
+		return contracts, nil
+	}
+
+	return gameapi.RuntimeContracts{}, dbapeiron.ErrRequiredUnavailable(
+		"game runtime contracts require db-apeiron; set DB_APEIRON_ENDPOINT or explicitly set ALLOW_RECOVERED_RUNTIME_FALLBACK=true for recovery-only boot",
+	)
 }
 
 func connectDBApeiron(ctx context.Context, cfg *config.Config) (*dbapeiron.Client, error) {
