@@ -45,6 +45,7 @@ type Runtime struct {
 	nextID    uint64
 	contracts RuntimeContracts
 	options   RuntimeOptions
+	aiSystem  *creatureai.RegionBrainSystem
 }
 
 type RuntimeOptions struct {
@@ -88,7 +89,6 @@ type entityState struct {
 	actionMotion          *actionMotionState
 	combatMode            *gamev1.CombatModeState
 	creatureAI            *gamev1.CreatureAIState
-	creatureMemory        creatureai.Memory
 	creatureCooldownUntil map[string]time.Time
 
 	// actionLockedUntil marks an owned movement action (leap/dodge) the player cannot
@@ -177,6 +177,7 @@ func NewRuntimeWithOptions(contracts RuntimeContracts, options RuntimeOptions) *
 		nextID:    1000000,
 		contracts: contracts,
 		options:   options,
+		aiSystem:  creatureai.NewRegionBrainSystem(),
 	}
 }
 
@@ -383,28 +384,25 @@ func (r *Runtime) ensureWolfLocked(player *entityState) *entityState {
 		}
 	}
 	wolf := &entityState{
-		id:            r.nextRuntimeIDLocked(),
-		entityType:    "creature",
-		regionID:      defaultRegionID,
-		templateID:    "steppe_wolf",
-		archetype:     "wolf",
-		visualID:      "steppe_wolf",
-		position:      vector{x: player.position.x + 520, y: player.position.y + 120, z: player.position.z},
-		yaw:           180,
-		health:        160,
-		maxHealth:     160,
-		stamina:       100,
-		maxStamina:    100,
-		posture:       100,
-		maxPosture:    100,
-		movementState: "orbit",
-		combatState:   "engaged",
-		skillState:    "idle",
-		aggroState:    "engaged",
-		aggression:    0.75,
-		creatureMemory: creatureai.Memory{
-			OrbitSide: "left",
-		},
+		id:                    r.nextRuntimeIDLocked(),
+		entityType:            "creature",
+		regionID:              defaultRegionID,
+		templateID:            "steppe_wolf",
+		archetype:             "wolf",
+		visualID:              "steppe_wolf",
+		position:              vector{x: player.position.x + 520, y: player.position.y + 120, z: player.position.z},
+		yaw:                   180,
+		health:                160,
+		maxHealth:             160,
+		stamina:               100,
+		maxStamina:            100,
+		posture:               100,
+		maxPosture:            100,
+		movementState:         "orbit",
+		combatState:           "engaged",
+		skillState:            "idle",
+		aggroState:            "engaged",
+		aggression:            0.75,
 		creatureCooldownUntil: map[string]time.Time{},
 	}
 	wolf.locomotion = r.locomotion("grounded", "orbit", "run", "active", wolf.position, wolf.position, 0)
@@ -459,9 +457,7 @@ func (r *Runtime) updateWolfPolicyLocked(wolf *entityState, player *entityState)
 	if skillID, active := r.activeCreatureSkillLocked(wolf, nowTime); active {
 		activeSkill = skillID
 	}
-	brain := creatureai.NewBrain(wolfBrainPolicy(policy))
-	brain.Memory = wolf.creatureMemory
-	decision := brain.Decide(creatureai.Input{
+	decision := r.creatureBrainSystemLocked().Decide(fmt.Sprintf("creature:%d", wolf.id), wolfBrainPolicy(policy), creatureai.Input{
 		Tick:             r.tick,
 		CreaturePosition: toDomainVector(wolf.position),
 		TargetPosition:   toDomainVector(player.position),
@@ -471,7 +467,6 @@ func (r *Runtime) updateWolfPolicyLocked(wolf *entityState, player *entityState)
 		Pressure:         wolf.aggression,
 		UnavailableSkill: r.creatureUnavailableSkillsLocked(wolf, nowTime),
 	})
-	wolf.creatureMemory = brain.Memory
 	action := decision.Action
 	selectedSkill := decision.SelectedSkill
 
@@ -576,6 +571,13 @@ func (r *Runtime) startCreatureSkillCooldownLocked(creature *entityState, skillI
 		creature.creatureCooldownUntil = map[string]time.Time{}
 	}
 	creature.creatureCooldownUntil[skillID] = now.Add(durationFromMS(contract.CooldownMS))
+}
+
+func (r *Runtime) creatureBrainSystemLocked() *creatureai.RegionBrainSystem {
+	if r.aiSystem == nil {
+		r.aiSystem = creatureai.NewRegionBrainSystem()
+	}
+	return r.aiSystem
 }
 
 func wolfBrainPolicy(policy WolfRuntimePolicy) creatureai.Policy {

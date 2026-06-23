@@ -52,7 +52,7 @@ evidence to audit, not final authority. Normal gameplay must be DB/profile/contr
 | Temporal melee hitboxes | `PARTIAL` | DB has temporal hitbox tables/seeds; server has `internal/hitbox` runtime and tests. | `internal/gameapi/impact.go` still has simplified profile containment logic; need confirm all player/wolf skills use temporal sweep over time, not static full arcs. | Make temporal hitbox canonical for M1-1/M1-2/M1-3/F/R and wolf bite/lunge/maul; remove or clearly isolate static arc compatibility. |
 | Damage / defense / posture / stamina | `PARTIAL` | DB has skill damage/posture, combat core, defense contracts; server has `internal/gameapi/defense.go`, `impact.go`, tests. | `internal/damage`, `internal/defense`, `internal/stamina` packages are absent. Logic is concentrated in `gameapi`; `defaultBlockArcDeg` exists. | Split only when useful: create authoritative combat-resolution modules or packages so DB contracts own values and runtime owns flow. Remove default gameplay numbers from normal paths. |
 | Player action runtime / ActionInstance | `PARTIAL` | `internal/combat/actionruntime` exists; combat system uses action instances/locks. | Server still has separate `gameapi` runtime for recovered vertical slice. Need ensure player and creature use the same action language. | Centralize action instance phase/lock/cooldown/queue semantics for player and creature. Avoid separate creature lock/cooldown maps as final architecture. |
-| Creature brain package | `PARTIAL` | `internal/ai/creature_brain.go`, `skill_setup.go`, `tactics.go`, and `memory.go` were rebuilt. `gameapi` now converts `WolfRuntimePolicy` and skill behavior bindings into `ai.Policy` and asks `Brain.Decide` instead of owning lunge/maul/dodge selection inline. | Region-scale brain orchestration, cooldown/resource budgets, repeat penalties, and richer perception are still not complete. | Continue from this module, not from `gameapi` branches: add region brain/system orchestration, cooldown/resource budget, setup memory, and tests before calling creature runtime fully restored. |
+| Creature brain package | `PARTIAL` | `internal/ai/creature_brain.go`, `skill_setup.go`, `tactics.go`, `memory.go`, and `region_brain_system.go` were rebuilt. `gameapi` now converts `WolfRuntimePolicy` and skill behavior bindings into `ai.Policy` and asks the regional brain system instead of owning lunge/maul/dodge selection inline. | Rich perception, stamina/resource budgets, repeat penalties, and creature action-runtime parity are still not complete. | Continue from this module, not from `gameapi` branches: add perception inputs, stamina/resource budget, setup memory, and tests before calling creature runtime fully restored. |
 | Wolf behavior contracts | `PARTIAL` | DB seed `016_wolf_behavior_contract_seed.sql` includes lunge/maul/bite/dodge, behavior runtime contract, target opportunity, orbit, evasion, setup, bindings. Unreal placeholder has creature visual skill motion. | Server-side brain parity is missing/monolithic. Wolf floating/overlap issues suggest Unreal presentation and server ground/nav state still need proof. | Restore server creature brain first, then fix wolf ground plane/visual offset using authoritative locomotion data, not visual hacks. |
 | Creature skill movement | `PARTIAL` | DB has movement action contracts for wolf skills and legacy compatibility for lunge. Unreal has predictive creature skill visual motion. | Current lunge/maul behavior may be using stale or simplified server state. Need prove landing inertia, airborne passthrough, hit timing, damage timing. | gRPC-check lunge/maul contracts, add server tests for movement envelope and damage timing, then Unreal visual validation. |
 | World/map/session pipeline | `PARTIAL` | Unreal has world volumes/exporter and map docs; server docs describe map/runtime startup integration. | Multi-region/map future is not final; current focus is PlainTestMap vertical slice. | Do not expand world streaming until combat/movement recovery is stable. Keep contracts ready but avoid broad scope. |
@@ -63,8 +63,8 @@ evidence to audit, not final authority. Normal gameplay must be DB/profile/contr
 
 1. `P0`: Restore creature brain architecture in `server-apeiron/internal/ai`.
    - Status: `PARTIAL`.
-   - Done: rebuilt local brain/tactic/setup/memory module and wired wolf decision selection through it.
-   - Remaining: region brain orchestration, stamina/resource budget, repeat penalties, richer perception, and creature action runtime parity.
+   - Done: rebuilt local brain/tactic/setup/memory/region brain system module and wired wolf decision selection through it.
+   - Remaining: stamina/resource budget, repeat penalties, richer perception, and creature action runtime parity.
 2. `P0`: Re-audit player movement / skill movement authority.
    - Verify no duplicate position authority, no stale recovery handoff, no normal input fighting skill movement.
    - Protected baselines: leap, dodge, turn.
@@ -370,13 +370,13 @@ Required files to reconstruct or reintroduce:
 - `internal/ai/skill_setup.go` - `RESTORED`
 - `internal/ai/tactics.go` - `RESTORED`
 - `internal/ai/memory.go` - `RESTORED`
-- `internal/ai/region_brain_system.go`
+- `internal/ai/region_brain_system.go` - `RESTORED`
 - server-side provider/wiring for DB behavior runtime contracts
 
 Current restored behavior:
 
 - `gameapi` converts DB-loaded `WolfRuntimePolicy` and `CreatureSkillBehaviorRuntimeBinding` into `ai.Policy`.
-- The brain chooses bite/lunge/maul/dodge/orbit from policy/bindings and preserves orbit side memory.
+- The regional brain system chooses bite/lunge/maul/dodge/orbit from policy/bindings and preserves orbit side memory independently per creature.
 - Creature skill cooldowns are tracked by the runtime and passed to the brain as unavailable skills; the brain skips cooldown-blocked bindings instead of repeating them.
 - `gameapi` applies movement and publishes snapshot state; it no longer owns the lunge/maul/dodge decision schedule.
 - Recovered runtime contracts now include behavior bindings so recovery/dev fixtures exercise the same decision route as DB-backed runtime.
