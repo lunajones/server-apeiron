@@ -10,6 +10,7 @@ import (
 	"time"
 
 	gamev1 "server-apeiron/gen/apeiron/game/v1"
+	creatureai "server-apeiron/internal/ai"
 	"server-apeiron/internal/combat/actionruntime"
 	"server-apeiron/internal/config"
 	"server-apeiron/internal/domain/ids"
@@ -87,6 +88,7 @@ type entityState struct {
 	actionMotion   *actionMotionState
 	combatMode     *gamev1.CombatModeState
 	creatureAI     *gamev1.CreatureAIState
+	creatureMemory creatureai.Memory
 
 	// actionLockedUntil marks an owned movement action (leap/dodge) the player cannot
 	// interrupt with a skill/basic. Restores the chat 6 #3 rule: no skill while
@@ -399,6 +401,9 @@ func (r *Runtime) ensureWolfLocked(player *entityState) *entityState {
 		skillState:    "idle",
 		aggroState:    "engaged",
 		aggression:    0.75,
+		creatureMemory: creatureai.Memory{
+			OrbitSide: "left",
+		},
 	}
 	wolf.locomotion = r.locomotion("grounded", "orbit", "run", "active", wolf.position, wolf.position, 0)
 	wolf.creatureAI = &gamev1.CreatureAIState{
@@ -441,67 +446,44 @@ func (r *Runtime) updateCreaturePoliciesLocked() {
 }
 
 func (r *Runtime) updateWolfPolicyLocked(wolf *entityState, player *entityState) {
-	toPlayer := normalize(vector{x: player.position.x - wolf.position.x, y: player.position.y - wolf.position.y})
-	if toPlayer == (vector{}) {
-		toPlayer = vector{x: -1}
-	}
-	right := vector{x: -toPlayer.y, y: toPlayer.x}
 	rangeCM := distance(wolf.position, player.position)
 	start := wolf.position
 
 	policy := r.contracts.WolfPolicy
 	lungeMinRangeCM := positiveOr(policy.LungeMinRangeCM, policy.LungeRangeCM)
 	lungeMaxRangeCM := positiveOr(policy.LungeMaxRangeCM, policy.ChaseRangeCM)
-	maulRangeCM := positiveOr(policy.BiteRangeCM, policy.RetreatRangeCM)
 	nowTime := time.Now()
-	phaseTick := r.tick % 240
-	action := "orbit"
-	selectedSkill := "bite"
-	speed := policy.OrbitSpeedCMS
-	moveDir := right
-
-	if activeSkill, active := r.activeCreatureSkillLocked(wolf, nowTime); active {
-		selectedSkill = activeSkill
-		action = creatureActionForSkill(activeSkill, policy)
-		speed = creatureSpeedForSkill(activeSkill, policy)
-		moveDir = creatureMoveDirectionForSkill(activeSkill, policy, toPlayer, right)
-	} else {
-		switch {
-		case rangeCM > policy.ChaseRangeCM:
-			action = "chase"
-			selectedSkill = "lunge"
-			speed = policy.ChaseSpeedCMS
-			moveDir = toPlayer
-		case phaseTick >= 72 && phaseTick < 92 && rangeCM >= lungeMinRangeCM && rangeCM <= lungeMaxRangeCM:
-			action = "lunge"
-			selectedSkill = "lunge"
-			speed = policy.LungeSpeedCMS
-			moveDir = toPlayer
-		case phaseTick >= 150 && phaseTick < 166 && rangeCM < maulRangeCM:
-			action = "maul"
-			selectedSkill = "maul"
-			speed = policy.MaulSpeedCMS
-			moveDir = right
-		case rangeCM < policy.RetreatRangeCM:
-			action = "retreat"
-			selectedSkill = policy.DodgeSkillID
-			speed = policy.RetreatSpeedCMS
-			moveDir = scale(toPlayer, -1)
-		}
+	activeSkill := ""
+	if skillID, active := r.activeCreatureSkillLocked(wolf, nowTime); active {
+		activeSkill = skillID
 	}
+	brain := creatureai.NewBrain(wolfBrainPolicy(policy))
+	brain.Memory = wolf.creatureMemory
+	decision := brain.Decide(creatureai.Input{
+		Tick:             r.tick,
+		CreaturePosition: toDomainVector(wolf.position),
+		TargetPosition:   toDomainVector(player.position),
+		TargetFacingYaw:  player.yaw,
+		ActiveSkillID:    activeSkill,
+		LineOfSight:      true,
+		Pressure:         wolf.aggression,
+	})
+	wolf.creatureMemory = brain.Memory
+	action := decision.Action
+	selectedSkill := decision.SelectedSkill
 
 	selectedRuntime := r.contracts.skillContract(selectedSkill)
 	motion := movement.ResolveConstantStep(movement.ConstantStepInput{
 		Position:         toDomainVector(wolf.position),
-		Direction:        toDomainVector(moveDir),
-		SpeedCMPerSecond: speed,
+		Direction:        decision.Direction,
+		SpeedCMPerSecond: decision.SpeedCMPerSec,
 		TickRate:         tickRate,
 	})
 	wolf.position = fromDomainVector(motion.Projected)
 	wolf.velocity = fromDomainVector(motion.Velocity)
-	wolf.yaw = vectorYaw(toPlayer)
+	wolf.yaw = vectorYaw(normalize(vector{x: player.position.x - wolf.position.x, y: player.position.y - wolf.position.y}))
 	wolf.movementState = action
-	if creatureActionPublishesSkill(action) {
+	if creatureai.PublishesSkill(action) {
 		wolf.skillState = action
 	} else {
 		wolf.skillState = "idle"
@@ -511,18 +493,18 @@ func (r *Runtime) updateWolfPolicyLocked(wolf *entityState, player *entityState)
 	wolf.locomotion.Action = action
 	wolf.locomotion.AbilityKey = selectedSkill
 	wolf.creatureAI = &gamev1.CreatureAIState{
-		MovementTactic:                        "flank",
-		CombatTactic:                          "harass",
-		Commitment:                            "probing",
+		MovementTactic:                        decision.MovementTactic,
+		CombatTactic:                          decision.CombatTactic,
+		Commitment:                            decision.Commitment,
 		CapabilityId:                          policy.CapabilityID,
 		ContractId:                            policy.ContractID,
 		ContractHash:                          policy.ContractHash,
-		OrbitSide:                             "left",
-		LastReason:                            "recovered_runtime_policy",
-		TacticalDestination:                   toProto(add(wolf.position, scale(moveDir, 180))),
+		OrbitSide:                             decision.OrbitSide,
+		LastReason:                            decision.Reason,
+		TacticalDestination:                   toProto(fromDomainVector(decision.Destination)),
 		BehaviorFamily:                        "beast_harasser",
 		CombatRole:                            "duelist",
-		DecisionScore:                         0.72,
+		DecisionScore:                         decision.Score,
 		DesiredRangeCm:                        policy.DesiredRangeCM,
 		ActualRangeCm:                         rangeCM,
 		PathState:                             "direct",
@@ -547,7 +529,7 @@ func (r *Runtime) updateWolfPolicyLocked(wolf *entityState, player *entityState)
 		SkillMovementStopAtContactRatio:       1,
 	}
 	now := nowTime.UnixMilli()
-	if creatureActionPublishesSkill(action) {
+	if creatureai.PublishesSkill(action) {
 		startedAt := now
 		if wolf.skillRuntime != nil && wolf.skillRuntime.GetCurrentSkillId() == selectedSkill && wolf.skillRuntime.GetStartedAtMs() > 0 {
 			startedAt = wolf.skillRuntime.GetStartedAtMs()
@@ -556,6 +538,66 @@ func (r *Runtime) updateWolfPolicyLocked(wolf *entityState, player *entityState)
 	} else {
 		wolf.skillRuntime = &gamev1.SkillRuntimeState{State: "idle", LastResolvedAtMs: now}
 	}
+}
+
+func wolfBrainPolicy(policy WolfRuntimePolicy) creatureai.Policy {
+	return creatureai.Policy{
+		ContractID:                     policy.ContractID,
+		ContractHash:                   policy.ContractHash,
+		CapabilityID:                   policy.CapabilityID,
+		DesiredRangeCM:                 policy.DesiredRangeCM,
+		ChaseRangeCM:                   policy.ChaseRangeCM,
+		RetreatRangeCM:                 policy.RetreatRangeCM,
+		OrbitSpeedCMS:                  policy.OrbitSpeedCMS,
+		ChaseSpeedCMS:                  policy.ChaseSpeedCMS,
+		LungeSpeedCMS:                  policy.LungeSpeedCMS,
+		MaulSpeedCMS:                   policy.MaulSpeedCMS,
+		RetreatSpeedCMS:                policy.RetreatSpeedCMS,
+		DodgeSkillID:                   policy.DodgeSkillID,
+		ApproachMinDistanceCM:          policy.ApproachMinDistanceCM,
+		ApproachMaxDistanceCM:          policy.ApproachMaxDistanceCM,
+		BiteRangeCM:                    policy.BiteRangeCM,
+		LungeMinRangeCM:                policy.LungeMinRangeCM,
+		LungeMaxRangeCM:                policy.LungeMaxRangeCM,
+		MaulPressureThreshold:          policy.MaulPressureThreshold,
+		OrbitLocomotionMode:            policy.OrbitLocomotionMode,
+		OrbitSpeedScale:                policy.OrbitSpeedScale,
+		MinOrbitDurationTicks:          msToRuntimeTicks(policy.MinOrbitDurationMS),
+		SideSwitchCooldownTicks:        msToRuntimeTicks(policy.SideSwitchCooldownMS),
+		AllowSideSwitchWhenTargetFaces: policy.AllowSideSwitchWhenTargetFaces,
+		PreferLongSideCommit:           policy.PreferLongSideCommit,
+		SideFlipChanceMultiplier:       policy.SideFlipChanceMultiplier,
+		LockSideDuringSetup:            policy.LockSideDuringSetup,
+		Bindings:                       wolfBrainBindings(policy.SkillBehaviorBindings),
+	}
+}
+
+func wolfBrainBindings(bindings []CreatureSkillBehaviorRuntimeBinding) []creatureai.SkillBinding {
+	out := make([]creatureai.SkillBinding, 0, len(bindings))
+	for _, binding := range bindings {
+		out = append(out, creatureai.SkillBinding{
+			ID:                  binding.ID,
+			SkillID:             binding.SkillID,
+			TacticalState:       binding.TacticalState,
+			DecisionPhase:       binding.DecisionPhase,
+			SetupPolicyID:       binding.SetupPolicyID,
+			MinRangeCM:          binding.MinRangeCM,
+			MaxRangeCM:          binding.MaxRangeCM,
+			Priority:            binding.Priority,
+			UsageWeight:         binding.UsageWeight,
+			CooldownGroup:       binding.CooldownGroup,
+			RequiresLineOfSight: binding.RequiresLineOfSight,
+			Enabled:             binding.Enabled,
+		})
+	}
+	return out
+}
+
+func msToRuntimeTicks(ms int32) uint64 {
+	if ms <= 0 {
+		return 0
+	}
+	return uint64(math.Ceil(float64(ms) * tickRate / 1000))
 }
 
 func (r *Runtime) activeCreatureSkillLocked(creature *entityState, now time.Time) (string, bool) {
@@ -576,52 +618,6 @@ func (r *Runtime) activeCreatureSkillLocked(creature *entityState, now time.Time
 		return "", false
 	}
 	return skillID, now.Before(time.UnixMilli(startedAtMS).Add(duration))
-}
-
-func creatureActionPublishesSkill(action string) bool {
-	switch action {
-	case "lunge", "maul", "retreat", "dodge":
-		return true
-	default:
-		return false
-	}
-}
-
-func creatureActionForSkill(skillID string, policy WolfRuntimePolicy) string {
-	switch skillID {
-	case "lunge":
-		return "lunge"
-	case "maul":
-		return "maul"
-	case policy.DodgeSkillID:
-		return "retreat"
-	default:
-		return "skill"
-	}
-}
-
-func creatureSpeedForSkill(skillID string, policy WolfRuntimePolicy) float64 {
-	switch skillID {
-	case "lunge":
-		return policy.LungeSpeedCMS
-	case "maul":
-		return policy.MaulSpeedCMS
-	case policy.DodgeSkillID:
-		return policy.RetreatSpeedCMS
-	default:
-		return policy.OrbitSpeedCMS
-	}
-}
-
-func creatureMoveDirectionForSkill(skillID string, policy WolfRuntimePolicy, toPlayer vector, right vector) vector {
-	switch skillID {
-	case "maul":
-		return right
-	case policy.DodgeSkillID:
-		return scale(toPlayer, -1)
-	default:
-		return toPlayer
-	}
 }
 
 func (r *Runtime) playerForCommandLocked(cmd *gamev1.PlayerCommand) *entityState {

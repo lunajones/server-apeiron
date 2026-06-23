@@ -651,6 +651,13 @@ func RecoveredRuntimeContracts() RuntimeContracts {
 			PreferLongSideCommit:           true,
 			SideFlipChanceMultiplier:       0.35,
 			LockSideDuringSetup:            true,
+			SkillBehaviorBindings: []CreatureSkillBehaviorRuntimeBinding{
+				{ID: "recovered_bind_bite_circle", SkillID: "bite", TacticalState: "circle", DecisionPhase: "reposition", MinRangeCM: 0, MaxRangeCM: 300, Priority: 70, UsageWeight: 0.85, CooldownGroup: "wolf_bite", RequiresLineOfSight: true, Enabled: true},
+				{ID: "recovered_bind_lunge_circle", SkillID: "lunge", TacticalState: "circle", DecisionPhase: "reposition", MinRangeCM: 180, MaxRangeCM: 760, Priority: 85, UsageWeight: 0.75, CooldownGroup: "wolf_lunge", RequiresLineOfSight: true, Enabled: true},
+				{ID: "recovered_bind_lunge_approach", SkillID: "lunge", TacticalState: "approach", DecisionPhase: "acquire", MinRangeCM: 420, MaxRangeCM: 980, Priority: 95, UsageWeight: 1, CooldownGroup: "wolf_lunge", RequiresLineOfSight: true, Enabled: true},
+				{ID: "recovered_bind_maul_pressure", SkillID: "maul", TacticalState: "pressure", DecisionPhase: "counter", MinRangeCM: 0, MaxRangeCM: 260, Priority: 100, UsageWeight: 0.9, CooldownGroup: "wolf_maul", RequiresLineOfSight: true, Enabled: true},
+				{ID: "recovered_bind_dodge_pressure", SkillID: "wolf_dodge", TacticalState: "pressure", DecisionPhase: "evade", MinRangeCM: 0, MaxRangeCM: 420, Priority: 110, UsageWeight: 1.15, CooldownGroup: "wolf_dodge", RequiresLineOfSight: false, Enabled: true},
+			},
 		},
 		CombatModes: recoveredCombatModeSlots(),
 	}

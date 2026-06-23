@@ -47,6 +47,12 @@ func TestRecoveredRuntimeContractsExposeCreatureSkillContracts(t *testing.T) {
 			t.Fatalf("%s has no reconciliation contract id", skillID)
 		}
 	}
+	if !hasCreatureSkillBehaviorBinding(contracts.WolfPolicy.SkillBehaviorBindings, "lunge", "circle", "reposition") {
+		t.Fatalf("recovered wolf lunge binding missing: %#v", contracts.WolfPolicy.SkillBehaviorBindings)
+	}
+	if !hasCreatureSkillBehaviorBinding(contracts.WolfPolicy.SkillBehaviorBindings, "maul", "pressure", "counter") {
+		t.Fatalf("recovered wolf maul binding missing: %#v", contracts.WolfPolicy.SkillBehaviorBindings)
+	}
 }
 
 func TestLoadRuntimeContractsFromDBUsesRequiredSkillBindings(t *testing.T) {
