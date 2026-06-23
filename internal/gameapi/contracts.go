@@ -223,6 +223,11 @@ type movementActionContractMetadata struct {
 	YawRateDegPerSec       float64 `json:"yaw_rate_deg_per_sec"`
 }
 
+const runtimeContractSourceDB = "db_contracts"
+const runtimeContractSourceDBIncomplete = "db_contracts_incomplete"
+const runtimeContractSourceRecoveryFixture = "recovered_runtime_fallback"
+const runtimeContractSourceUnconfigured = "unconfigured_runtime_contracts"
+
 const runtimeMovementReconciliationProfileID = "player_default_movement_profile"
 const wolfRuntimeContractID = "contract_wolf_pack_harasser_v1"
 const playerCombatCoreProfileID = "combat_core_player_sword_shield_v1"
@@ -323,14 +328,14 @@ func LoadRuntimeContractsFromDB(ctx context.Context, skills ContractSource, prof
 		contracts.LoadIssues = append(contracts.LoadIssues, "missing weapon combat mode slots weaponkit_sword_shield")
 	}
 	if len(contracts.LoadIssues) == 0 {
-		contracts.Source = "db_contracts"
+		contracts.Source = runtimeContractSourceDB
 	}
 	return contracts
 }
 
 func emptyDBRuntimeContracts() RuntimeContracts {
 	return RuntimeContracts{
-		Source:          "db_contracts_incomplete",
+		Source:          runtimeContractSourceDBIncomplete,
 		ActionContracts: map[string]MovementActionRuntimeContract{},
 		SkillContracts:  map[string]SkillRuntimeContract{},
 		CombatCore: CombatCoreRuntimeContracts{
@@ -1062,7 +1067,7 @@ func runtimeMovementReconciliationProfileFromDB(profile *dbv1.RuntimeMovementRec
 // coverage validation; do not call this from production startup.
 func RecoveryFixtureRuntimeContracts() RuntimeContracts {
 	contracts := RuntimeContracts{
-		Source:          "recovered_runtime_fallback",
+		Source:          runtimeContractSourceRecoveryFixture,
 		MovementProfile: recoveredMovementProfile(),
 		ActionContracts: map[string]MovementActionRuntimeContract{},
 		SkillContracts:  map[string]SkillRuntimeContract{},
@@ -1152,10 +1157,10 @@ func RecoveryFixtureRuntimeContracts() RuntimeContracts {
 		CombatModes: recoveredCombatModeSlots(),
 	}
 	for _, contract := range []MovementActionRuntimeContract{
-		{ID: "move_contract", AbilityKey: "move", ActionType: "move", DurationMS: 180, ActiveMS: 120, RecoveryMS: 60, ReconciliationContractID: "grounded_move_reconciliation", ReconciliationCategory: "grounded_move_reconciliation", PhaseWindowPolicy: "server_authoritative", PredictionErrorPolicy: "bounded_smooth_correction"},
-		{ID: "turn_contract", AbilityKey: "turn", ActionType: "turn", DurationMS: 180, ActiveMS: 120, RecoveryMS: 60, YawRateDegPerSec: 720, ReconciliationContractID: "turn_reconciliation", ReconciliationCategory: "turn_reconciliation", PhaseWindowPolicy: "server_authoritative", PredictionErrorPolicy: "bounded_smooth_correction"},
-		{ID: "dodge_contract", AbilityKey: "dodge", ActionType: "dodge", DurationMS: 320, ActiveMS: 260, RecoveryMS: 60, DistanceCM: 260, BaseSpeedCMS: 812.5, SpeedCurveSamples: recoveredMovementCurve("dodge_v1_full_iframe"), VerticalCurveSamples: recoveredVerticalCurve("dodge_v1_full_iframe"), ReconciliationContractID: "dodge_reconciliation", ReconciliationCategory: "dodge_reconciliation", PhaseWindowPolicy: "server_authoritative", PredictionErrorPolicy: "bounded_smooth_correction"},
-		{ID: "jump_contract", AbilityKey: "jump", ActionType: "leap", DurationMS: 620, AirborneDurationMS: 560, ActiveMS: 560, RecoveryMS: 60, DistanceCM: 280, BaseSpeedCMS: 452, SpeedCurveSamples: recoveredMovementCurve("jump_v1_authoritative_grounded_handoff"), VerticalCurveSamples: recoveredVerticalCurve("jump_v1_authoritative_grounded_handoff"), JumpZVelocity: 620, GravityScale: 1, ExpectedApexMS: 310, LandingDetectionPolicy: "server_grounded_handoff", GroundZPolicy: "server_position_is_actor_root", AllowsAirControl: true, AirControlModifier: 0.35, ReconciliationContractID: "leap_reconciliation", ReconciliationCategory: "leap_reconciliation", PhaseWindowPolicy: "server_authoritative", PredictionErrorPolicy: "bounded_smooth_correction"},
+		{ID: "grounded_move_v1", AbilityKey: "move", ActionType: "move", DurationMS: 180, ActiveMS: 120, RecoveryMS: 60, ReconciliationContractID: "grounded_move_reconciliation", ReconciliationCategory: "grounded_move_reconciliation", PhaseWindowPolicy: "server_authoritative", PredictionErrorPolicy: "bounded_smooth_correction"},
+		{ID: "turn_v1_rate_limited_contextual", AbilityKey: "turn", ActionType: "turn", DurationMS: 180, ActiveMS: 120, RecoveryMS: 60, YawRateDegPerSec: 720, ReconciliationContractID: "turn_reconciliation", ReconciliationCategory: "turn_reconciliation", PhaseWindowPolicy: "server_authoritative", PredictionErrorPolicy: "bounded_smooth_correction"},
+		{ID: "dodge_v1_full_iframe", AbilityKey: "dodge", ActionType: "dodge", DurationMS: 320, ActiveMS: 260, RecoveryMS: 60, DistanceCM: 260, BaseSpeedCMS: 812.5, SpeedCurveSamples: recoveredMovementCurve("dodge_v1_full_iframe"), VerticalCurveSamples: recoveredVerticalCurve("dodge_v1_full_iframe"), ReconciliationContractID: "dodge_reconciliation", ReconciliationCategory: "dodge_reconciliation", PhaseWindowPolicy: "server_authoritative", PredictionErrorPolicy: "bounded_smooth_correction"},
+		{ID: "jump_v1_authoritative_grounded_handoff", AbilityKey: "jump", ActionType: "leap", DurationMS: 620, AirborneDurationMS: 560, ActiveMS: 560, RecoveryMS: 60, DistanceCM: 280, BaseSpeedCMS: 452, SpeedCurveSamples: recoveredMovementCurve("jump_v1_authoritative_grounded_handoff"), VerticalCurveSamples: recoveredVerticalCurve("jump_v1_authoritative_grounded_handoff"), JumpZVelocity: 620, GravityScale: 1, ExpectedApexMS: 310, LandingDetectionPolicy: "server_grounded_handoff", GroundZPolicy: "server_position_is_actor_root", AllowsAirControl: true, AirControlModifier: 0.35, ReconciliationContractID: "leap_reconciliation", ReconciliationCategory: "leap_reconciliation", PhaseWindowPolicy: "server_authoritative", PredictionErrorPolicy: "bounded_smooth_correction"},
 	} {
 		contracts.ActionContracts[contract.AbilityKey] = contract
 	}

@@ -157,7 +157,7 @@ func ServeRuntime(ctx context.Context, cfg config.NetworkConfig, runtime *Runtim
 
 func NewRuntime() *Runtime {
 	return NewRuntimeWithContracts(RuntimeContracts{
-		Source:          "unconfigured_runtime_contracts",
+		Source:          runtimeContractSourceUnconfigured,
 		ActionContracts: map[string]MovementActionRuntimeContract{},
 		SkillContracts:  map[string]SkillRuntimeContract{},
 	})
@@ -454,7 +454,7 @@ func (r *Runtime) Readiness(ctx context.Context, _ *gamev1.Empty) (*gamev1.Readi
 	if r == nil {
 		return &gamev1.ReadinessResponse{Ready: false, Blockers: []string{"runtime is nil"}}, nil
 	}
-	strict := r.contracts.Source == "db_contracts"
+	strict := r.contracts.Source == runtimeContractSourceDB
 	report := r.contracts.CoverageReport(strict)
 	if !report.Ready {
 		return &gamev1.ReadinessResponse{Ready: false, Blockers: report.Blockers()}, nil
@@ -492,7 +492,7 @@ func (r *Runtime) RuntimeStats(ctx context.Context, _ *gamev1.Empty) (*gamev1.Ru
 	if r.contracts.Source != "" {
 		phaseStatus["contract_source"] = r.contracts.Source
 	}
-	coverage := r.contracts.CoverageReport(r.contracts.Source == "db_contracts")
+	coverage := r.contracts.CoverageReport(r.contracts.Source == runtimeContractSourceDB)
 	for _, category := range coverage.Categories {
 		if category.Ready {
 			phaseStatus["contracts."+category.Name] = "ready"

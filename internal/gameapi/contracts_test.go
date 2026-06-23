@@ -268,8 +268,8 @@ func TestLoadRuntimeContractsFromDBUsesRequiredSkillBindings(t *testing.T) {
 	if err := contracts.ValidateRequiredCoverage(true); err != nil {
 		t.Fatalf("db contract coverage failed: %v", err)
 	}
-	if contracts.Source != "db_contracts" {
-		t.Fatalf("source = %q, want db_contracts", contracts.Source)
+	if contracts.Source != runtimeContractSourceDB {
+		t.Fatalf("source = %q, want %s", contracts.Source, runtimeContractSourceDB)
 	}
 	if contracts.MovementProfile.GetProfileId() != runtimeMovementReconciliationProfileID {
 		t.Fatalf("movement reconciliation profile = %q", contracts.MovementProfile.GetProfileId())
@@ -419,7 +419,7 @@ func TestLoadRuntimeContractsFromDBDoesNotLeakRecoveredCombatModeFallback(t *tes
 }
 
 func TestDBRuntimeContractsDoNotInventMissingFallbacks(t *testing.T) {
-	contracts := RuntimeContracts{Source: "db_contracts"}
+	contracts := RuntimeContracts{Source: runtimeContractSourceDB}
 
 	if got := contracts.contractForAbility("dodge"); got.ID != "" {
 		t.Fatalf("strict DB contract invented ability fallback: %#v", got)
@@ -430,7 +430,7 @@ func TestDBRuntimeContractsDoNotInventMissingFallbacks(t *testing.T) {
 }
 
 func TestRuntimeContractCoverageReportClassifiesMissingContracts(t *testing.T) {
-	contracts := RuntimeContracts{Source: "db_contracts"}
+	contracts := RuntimeContracts{Source: runtimeContractSourceDB}
 	report := contracts.CoverageReport(true)
 	if report.Ready {
 		t.Fatal("empty DB contracts reported ready")
@@ -512,7 +512,7 @@ func TestLegacyRuntimeSurfaceClassificationKeepsCompatOutOfAuthority(t *testing.
 }
 
 func TestRuntimeReadinessReportsMissingContracts(t *testing.T) {
-	runtime := NewRuntimeWithContracts(RuntimeContracts{Source: "db_contracts"})
+	runtime := NewRuntimeWithContracts(RuntimeContracts{Source: runtimeContractSourceDB})
 	resp, err := runtime.Readiness(context.Background(), &gamev1.Empty{})
 	if err != nil {
 		t.Fatalf("Readiness failed: %v", err)
@@ -569,12 +569,12 @@ func TestRuntimeReadinessAcceptsRecoveredFixtureForDevTests(t *testing.T) {
 }
 
 func TestRuntimeStatsExposeContractCoverageByCategory(t *testing.T) {
-	runtime := NewRuntimeWithContracts(RuntimeContracts{Source: "db_contracts"})
+	runtime := NewRuntimeWithContracts(RuntimeContracts{Source: runtimeContractSourceDB})
 	resp, err := runtime.RuntimeStats(context.Background(), &gamev1.Empty{})
 	if err != nil {
 		t.Fatalf("RuntimeStats failed: %v", err)
 	}
-	if resp.GetPhaseStatus()["contract_source"] != "db_contracts" {
+	if resp.GetPhaseStatus()["contract_source"] != runtimeContractSourceDB {
 		t.Fatalf("contract source status missing: %#v", resp.GetPhaseStatus())
 	}
 	if resp.GetPhaseStatus()["contracts.runtime_movement_profile"] != "blocked" {
