@@ -161,7 +161,11 @@ func (r *Runtime) resolveRuntimeSkillImpact(source *entityState, target *entityS
 	if err != nil {
 		return runtimeSkillImpact{}, false
 	}
-	controlType, releasePolicy := runtimeSkillImpactControlMetadata(skill.ControlEffects, result.StatusApplied)
+	appliedControl := runtimeSkillAppliedControlEffect(skill.ControlEffects, result.StatusApplied)
+	if appliedControl != nil {
+		r.applyRuntimeImpactControlMotionLocked(source, target, dir, appliedControl, now)
+	}
+	controlType, releasePolicy := runtimeSkillImpactControlMetadata(appliedControl)
 	return runtimeSkillImpact{
 		SourceID:              source.id,
 		TargetID:              target.id,
@@ -237,9 +241,9 @@ func runtimeCombatImpactProfile(skill SkillRuntimeContract, profile *dbv1.SkillH
 	}
 }
 
-func runtimeSkillImpactControlMetadata(effects []*dbv1.SkillControlEffect, applied []string) (string, string) {
+func runtimeSkillAppliedControlEffect(effects []*dbv1.SkillControlEffect, applied []string) *dbv1.SkillControlEffect {
 	if len(effects) == 0 || len(applied) == 0 {
-		return "", ""
+		return nil
 	}
 	appliedSet := make(map[string]struct{}, len(applied))
 	for _, statusID := range applied {
@@ -255,9 +259,16 @@ func runtimeSkillImpactControlMetadata(effects []*dbv1.SkillControlEffect, appli
 		if _, ok := appliedSet[effect.GetStatusEffectId()]; !ok {
 			continue
 		}
-		return strings.TrimSpace(effect.GetControlType()), strings.TrimSpace(effect.GetReleasePolicyId())
+		return effect
 	}
-	return "", ""
+	return nil
+}
+
+func runtimeSkillImpactControlMetadata(effect *dbv1.SkillControlEffect) (string, string) {
+	if effect == nil {
+		return "", ""
+	}
+	return strings.TrimSpace(effect.GetControlType()), strings.TrimSpace(effect.GetReleasePolicyId())
 }
 
 func (r *Runtime) runtimeCombatCoreProfile(entity *entityState) *dbv1.CombatCoreProfile {

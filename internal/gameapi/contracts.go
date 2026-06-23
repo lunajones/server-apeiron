@@ -1621,6 +1621,9 @@ func recoveredSkillControlEffect(skillID string) *dbv1.SkillControlEffect {
 			DurationMs:      180,
 			ControlType:     "push",
 			ReleasePolicyId: "carry_contact_forward_release",
+			DistanceCm:      200,
+			SpeedCmS:        recoveredControlSpeedCMS(200, 180),
+			DirectionPolicy: "source_forward",
 		}
 	case "player_shield_bash":
 		return &dbv1.SkillControlEffect{
@@ -1630,6 +1633,9 @@ func recoveredSkillControlEffect(skillID string) *dbv1.SkillControlEffect {
 			DurationMs:      220,
 			ControlType:     "push",
 			ReleasePolicyId: "multi_target_push_forward_release",
+			DistanceCm:      130,
+			SpeedCmS:        recoveredControlSpeedCMS(130, 220),
+			DirectionPolicy: "source_forward",
 		}
 	case "player_shield_rush":
 		return &dbv1.SkillControlEffect{
@@ -1639,10 +1645,20 @@ func recoveredSkillControlEffect(skillID string) *dbv1.SkillControlEffect {
 			DurationMs:      430,
 			ControlType:     "carry_push",
 			ReleasePolicyId: "multi_target_carry_push_forward_release",
+			DistanceCm:      340,
+			SpeedCmS:        recoveredControlSpeedCMS(340, 430),
+			DirectionPolicy: "source_forward",
 		}
 	default:
 		return nil
 	}
+}
+
+func recoveredControlSpeedCMS(distanceCM float64, durationMS int32) float64 {
+	if distanceCM <= 0 || durationMS <= 0 {
+		return 0
+	}
+	return distanceCM / (float64(durationMS) / 1000.0)
 }
 
 func recoveredCreatureSkillStaminaCost(skillID string) float64 {

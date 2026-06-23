@@ -3,6 +3,7 @@ package gameapi
 import (
 	"context"
 	"testing"
+	"time"
 )
 
 func TestRuntimeSkillImpactUsesCombatPipelineParry(t *testing.T) {
@@ -113,5 +114,20 @@ func TestRuntimeSkillImpactAppliesContractControlEffects(t *testing.T) {
 	}
 	if impact.ControlReleasePolicy != "multi_target_carry_push_forward_release" {
 		t.Fatalf("release policy = %q", impact.ControlReleasePolicy)
+	}
+	if wolf.actionMotion == nil {
+		t.Fatal("applied control effect did not start target action motion")
+	}
+	if wolf.actionMotion.Contract.AbilityKey != "impact_shield_rush_carry_push" {
+		t.Fatalf("target control action ability = %q", wolf.actionMotion.Contract.AbilityKey)
+	}
+	if wolf.actionMotion.Contract.DistanceCM != contract.ControlEffects[0].GetDistanceCm() {
+		t.Fatalf("target control distance = %.1f, want %.1f", wolf.actionMotion.Contract.DistanceCM, contract.ControlEffects[0].GetDistanceCm())
+	}
+	startX := wolf.position.x
+	wolf.actionMotion.StartedAt = time.Now().Add(-time.Duration(contract.ControlEffects[0].GetDurationMs()/2) * time.Millisecond)
+	runtime.advanceActionMotionLocked(wolf, time.Now())
+	if wolf.position.x <= startX {
+		t.Fatalf("target control motion did not move forward: %.1f -> %.1f", startX, wolf.position.x)
 	}
 }
