@@ -96,6 +96,59 @@ func TestBrainUsesMaulCounterWhenPressureHigh(t *testing.T) {
 	}
 }
 
+func TestThreatAssessmentPromotesCommittedTargetCounter(t *testing.T) {
+	policy := testPolicy()
+	threat := AssessThreat(policy, Input{
+		Pressure: 0.50,
+		Perception: Perception{
+			TargetActionActive: true,
+			TargetCombatState:  "committed",
+		},
+	}, domainmath.V3(1, 0, 0), 180)
+
+	if threat.Pressure < policy.MaulPressureThreshold {
+		t.Fatalf("pressure = %.2f, want >= %.2f", threat.Pressure, policy.MaulPressureThreshold)
+	}
+	if threat.PreferredCounter != "maul" {
+		t.Fatalf("preferred counter = %q, want maul", threat.PreferredCounter)
+	}
+	if got := skillThreatMultiplier(threat, "maul"); got <= 1 {
+		t.Fatalf("maul multiplier = %.2f, want > 1", got)
+	}
+	if !threat.TargetCommitted {
+		t.Fatalf("threat did not mark target committed: %#v", threat)
+	}
+}
+
+func TestBrainThreatCanPromoteCounterBindingWithoutWolfBranch(t *testing.T) {
+	policy := testPolicy()
+	policy.Bindings = append(policy.Bindings,
+		SkillBinding{ID: "bind_maul_circle_read", SkillID: "maul", TacticalState: "circle", DecisionPhase: "reposition", SetupPolicyID: "wolf_maul_pressure_counter_v1", MinRangeCM: 260, MaxRangeCM: 760, Priority: 84, UsageWeight: 1, Enabled: true, RequiresLineOfSight: true},
+	)
+	brain := NewBrain(policy)
+	decision := brain.Decide(Input{
+		Tick:             10,
+		CreaturePosition: domainmath.V3(0, 0, 0),
+		TargetPosition:   domainmath.V3(520, 0, 0),
+		LineOfSight:      true,
+		Pressure:         0.38,
+		Perception: Perception{
+			TargetActionActive: true,
+			TargetCombatState:  "committed",
+		},
+	})
+
+	if decision.SelectedSkill != "maul" {
+		t.Fatalf("threat multiplier should promote maul counter, got %#v", decision)
+	}
+	if decision.Threat.PreferredCounter != "maul" {
+		t.Fatalf("decision threat = %#v, want maul counter", decision.Threat)
+	}
+	if decision.SetupPolicyID != "wolf_maul_pressure_counter_v1" {
+		t.Fatalf("setup policy = %q, want maul counter setup", decision.SetupPolicyID)
+	}
+}
+
 func TestBrainKeepsActiveSkillUntilRuntimeEnds(t *testing.T) {
 	brain := NewBrain(testPolicy())
 	decision := brain.Decide(Input{
@@ -222,21 +275,26 @@ func TestOrbitSideSwitchFullChanceStillAllowsDeterministicFlip(t *testing.T) {
 
 func testPolicy() Policy {
 	return Policy{
-		DesiredRangeCM:          420,
-		ChaseRangeCM:            760,
-		RetreatRangeCM:          220,
-		OrbitSpeedCMS:           220,
-		ChaseSpeedCMS:           420,
-		LungeSpeedCMS:           760,
-		MaulSpeedCMS:            320,
-		RetreatSpeedCMS:         360,
-		DodgeSkillID:            "wolf_dodge",
-		BiteRangeCM:             220,
-		LungeMinRangeCM:         260,
-		LungeMaxRangeCM:         760,
-		MaulPressureThreshold:   0.65,
-		MinOrbitDurationTicks:   90,
-		SideSwitchCooldownTicks: 45,
+		DesiredRangeCM:           420,
+		ChaseRangeCM:             760,
+		RetreatRangeCM:           220,
+		OrbitSpeedCMS:            220,
+		ChaseSpeedCMS:            420,
+		LungeSpeedCMS:            760,
+		MaulSpeedCMS:             320,
+		RetreatSpeedCMS:          360,
+		DodgeSkillID:             "wolf_dodge",
+		BiteRangeCM:              220,
+		LungeMinRangeCM:          260,
+		LungeMaxRangeCM:          760,
+		MaulPressureThreshold:    0.65,
+		DodgeUnderPressure:       true,
+		MaulCounterUnderPressure: true,
+		MaulCounterChance:        0.22,
+		DodgeRetreatMultiplier:   0.70,
+		GlobalDodgeMultiplier:    0.85,
+		MinOrbitDurationTicks:    90,
+		SideSwitchCooldownTicks:  45,
 		SetupPolicies: map[string]SkillSetupPolicy{
 			"wolf_lunge_flank_windup_v1":    {ID: "wolf_lunge_flank_windup_v1", SkillID: "lunge", SetupType: "moving_windup", MinSetupTicks: 90, MaxSetupTicks: 126, CommitDistanceCM: 520, PreferredMinRangeCM: 180, PreferredMaxRangeCM: 700, MovementTactic: "circle_then_curve_to_target", LockSideDuringSetup: true, Enabled: true},
 			"wolf_maul_pressure_counter_v1": {ID: "wolf_maul_pressure_counter_v1", SkillID: "maul", SetupType: "pressure_counter", MinSetupTicks: 4, MaxSetupTicks: 10, CommitDistanceCM: 160, PreferredMinRangeCM: 0, PreferredMaxRangeCM: 220, MovementTactic: "lateral_counter_dash", LockSideDuringSetup: true, Enabled: true},

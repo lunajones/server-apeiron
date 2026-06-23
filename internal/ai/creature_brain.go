@@ -19,6 +19,7 @@ func (b *Brain) Decide(input Input) Decision {
 	}
 	b.Memory.ensure()
 	toTarget, right, rangeCM := targetVectors(input.CreaturePosition, input.TargetPosition)
+	threat := AssessThreat(b.Policy, input, toTarget, rangeCM)
 
 	if input.ActiveSkillID != "" {
 		action := actionForSkill(input.ActiveSkillID, b.Policy)
@@ -55,18 +56,19 @@ func (b *Brain) Decide(input Input) Decision {
 			Destination:    input.CreaturePosition.Add(dir.Normalize().Scale(180)),
 			RangeCM:        rangeCM,
 			SetupPolicyID:  setupPolicyID,
+			Threat:         threat,
 		}
 		b.Memory.remember(decision, input.Tick)
 		return decision
 	}
 
-	tacticalState, decisionPhase := classifyTactic(b.Policy, rangeCM, input.Pressure)
+	tacticalState, decisionPhase := classifyTactic(b.Policy, rangeCM, threat.Pressure)
 	selectedSkill := ""
 	action := "orbit"
 	reason := "orbit_policy"
 	score := 0.5
 	setupPolicyID := ""
-	if binding, bindingScore, bindingReason, ok := selectBinding(b.Policy, b.Memory, input, tacticalState, decisionPhase, rangeCM); ok {
+	if binding, bindingScore, bindingReason, ok := selectBinding(b.Policy, b.Memory, input, threat, tacticalState, decisionPhase, rangeCM); ok {
 		selectedSkill = binding.SkillID
 		action = actionForSkill(binding.SkillID, b.Policy)
 		reason = bindingReason
@@ -125,6 +127,7 @@ func (b *Brain) Decide(input Input) Decision {
 		Destination:    input.CreaturePosition.Add(dir.Normalize().Scale(180)),
 		RangeCM:        rangeCM,
 		SetupPolicyID:  setupPolicyID,
+		Threat:         threat,
 	}
 	b.Memory.remember(decision, input.Tick)
 	return decision

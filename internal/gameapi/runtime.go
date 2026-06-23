@@ -659,6 +659,7 @@ func (r *Runtime) updateWolfPolicyLocked(wolf *entityState, player *entityState)
 		ActiveSkillElapsedTicks: activeSkillElapsedTicks,
 		LineOfSight:             true,
 		Pressure:                wolf.aggression,
+		Perception:              creaturePerceptionFromTarget(player, nowTime),
 		ResourceCurrent:         wolf.stamina,
 		ResourceMax:             wolf.maxStamina,
 		SkillCosts:              r.creatureSkillCostsLocked(policy),
@@ -687,6 +688,28 @@ func (r *Runtime) updateWolfPolicyLocked(wolf *entityState, player *entityState)
 		applyActionInstanceLocomotionTiming(wolf.locomotion, wolf.actionInstance, nowTime)
 	} else if creatureActionMotionComplete(wolf, nowTime) && !creatureai.PublishesSkill(action) {
 		wolf.skillState = "idle"
+	}
+}
+
+func creaturePerceptionFromTarget(target *entityState, now time.Time) creatureai.Perception {
+	if target == nil {
+		return creatureai.Perception{}
+	}
+	combatState := strings.ToLower(strings.TrimSpace(target.combatState))
+	skillState := strings.ToLower(strings.TrimSpace(target.skillState))
+	return creatureai.Perception{
+		TargetVelocityCMPerSec: toDomainVector(target.velocity),
+		TargetMovementState:    target.movementState,
+		TargetCombatState:      target.combatState,
+		TargetSkillState:       target.skillState,
+		TargetActionActive:     target.actionInstance != nil && target.actionInstance.PhaseAt(now) != actionruntime.PhaseComplete,
+		TargetBlocking:         combatState == "blocking" || combatState == "block" || combatState == "guard",
+		TargetParrying:         combatState == "parry" || combatState == "parry_active" || combatState == "perfect_block",
+		TargetIFrame:           combatState == "iframe" || combatState == "evade" || combatState == "dodge" || skillState == "dodge",
+		TargetResourceCurrent:  target.stamina,
+		TargetResourceMax:      target.maxStamina,
+		TargetPostureCurrent:   target.posture,
+		TargetPostureMax:       target.maxPosture,
 	}
 }
 
@@ -890,6 +913,11 @@ func wolfBrainPolicy(policy WolfRuntimePolicy) creatureai.Policy {
 		LungeMinRangeCM:                policy.LungeMinRangeCM,
 		LungeMaxRangeCM:                policy.LungeMaxRangeCM,
 		MaulPressureThreshold:          policy.MaulPressureThreshold,
+		DodgeUnderPressure:             policy.DodgeUnderPressure,
+		MaulCounterUnderPressure:       policy.MaulCounterUnderPressure,
+		MaulCounterChance:              policy.MaulCounterChance,
+		DodgeRetreatMultiplier:         policy.DodgeRetreatMultiplier,
+		GlobalDodgeMultiplier:          policy.GlobalDodgeMultiplier,
 		OrbitLocomotionMode:            policy.OrbitLocomotionMode,
 		OrbitSpeedScale:                policy.OrbitSpeedScale,
 		MinOrbitDurationTicks:          msToRuntimeTicks(policy.MinOrbitDurationMS),

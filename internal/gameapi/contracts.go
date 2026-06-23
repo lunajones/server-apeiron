@@ -138,6 +138,11 @@ type WolfRuntimePolicy struct {
 	LungeMinRangeCM                float64
 	LungeMaxRangeCM                float64
 	MaulPressureThreshold          float64
+	DodgeUnderPressure             bool
+	MaulCounterUnderPressure       bool
+	MaulCounterChance              float64
+	DodgeRetreatMultiplier         float64
+	GlobalDodgeMultiplier          float64
 	TargetMemoryMS                 int32
 	NoReadySkillMemoryPolicy       string
 	CandidateCooldownVisibility    bool
@@ -191,6 +196,11 @@ type CreatureSkillSetupRuntimePolicy struct {
 
 type creaturePressurePolicyJSON struct {
 	RepeatSkillPenaltyMultiplier float64 `json:"repeatSkillPenaltyMultiplier"`
+	DodgeUnderPressure           bool    `json:"dodgeUnderPressure"`
+	MaulCounterUnderPressure     bool    `json:"maulCounterUnderPressure"`
+	MaulCounterChance            float64 `json:"maulCounterChance"`
+	DodgeRetreatMultiplier       float64 `json:"dodgeRetreatMultiplier"`
+	GlobalDodgeMultiplier        float64 `json:"globalDodgeMultiplier"`
 }
 
 type creatureStaminaPolicyJSON struct {
@@ -468,6 +478,11 @@ func applyWolfBehaviorPolicyJSON(policy *WolfRuntimePolicy, behavior *dbv1.Creat
 		var pressurePolicy creaturePressurePolicyJSON
 		if err := json.Unmarshal([]byte(pressureJSON), &pressurePolicy); err == nil {
 			policy.RepeatSkillPenaltyMultiplier = pressurePolicy.RepeatSkillPenaltyMultiplier
+			policy.DodgeUnderPressure = pressurePolicy.DodgeUnderPressure
+			policy.MaulCounterUnderPressure = pressurePolicy.MaulCounterUnderPressure
+			policy.MaulCounterChance = pressurePolicy.MaulCounterChance
+			policy.DodgeRetreatMultiplier = pressurePolicy.DodgeRetreatMultiplier
+			policy.GlobalDodgeMultiplier = pressurePolicy.GlobalDodgeMultiplier
 		}
 	}
 }
@@ -1098,6 +1113,11 @@ func RecoveryFixtureRuntimeContracts() RuntimeContracts {
 			LungeMinRangeCM:                180,
 			LungeMaxRangeCM:                760,
 			MaulPressureThreshold:          0.72,
+			DodgeUnderPressure:             true,
+			MaulCounterUnderPressure:       true,
+			MaulCounterChance:              0.22,
+			DodgeRetreatMultiplier:         0.70,
+			GlobalDodgeMultiplier:          0.85,
 			TargetMemoryMS:                 1200,
 			NoReadySkillMemoryPolicy:       "observe_only",
 			CandidateCooldownVisibility:    true,

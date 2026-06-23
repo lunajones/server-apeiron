@@ -21,6 +21,11 @@ type Policy struct {
 	LungeMinRangeCM                float64
 	LungeMaxRangeCM                float64
 	MaulPressureThreshold          float64
+	DodgeUnderPressure             bool
+	MaulCounterUnderPressure       bool
+	MaulCounterChance              float64
+	DodgeRetreatMultiplier         float64
+	GlobalDodgeMultiplier          float64
 	OrbitLocomotionMode            string
 	OrbitSpeedScale                float64
 	MinOrbitDurationTicks          uint64
@@ -73,6 +78,7 @@ type Input struct {
 	ActiveSkillElapsedTicks uint64
 	LineOfSight             bool
 	Pressure                float64
+	Perception              Perception
 	ResourceCurrent         float64
 	ResourceMax             float64
 	SkillCosts              map[string]float64
@@ -97,4 +103,5 @@ type Decision struct {
 	Destination    domainmath.Position
 	RangeCM        float64
 	SetupPolicyID  string
+	Threat         ThreatAssessment
 }

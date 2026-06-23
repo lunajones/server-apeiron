@@ -2,7 +2,7 @@ package ai
 
 import "strings"
 
-func selectBinding(policy Policy, memory Memory, input Input, tacticalState string, decisionPhase string, rangeCM float64) (SkillBinding, float64, string, bool) {
+func selectBinding(policy Policy, memory Memory, input Input, threat ThreatAssessment, tacticalState string, decisionPhase string, rangeCM float64) (SkillBinding, float64, string, bool) {
 	var best SkillBinding
 	bestScore := -1.0
 	for _, binding := range policy.Bindings {
@@ -32,6 +32,7 @@ func selectBinding(policy Policy, memory Memory, input Input, tacticalState stri
 		}
 		score := float64(binding.Priority) * firstPositive(binding.UsageWeight, 1)
 		score *= repeatSkillScoreMultiplier(policy, memory, input.Tick, binding.SkillID)
+		score *= skillThreatMultiplier(threat, binding.SkillID)
 		if score > bestScore {
 			best = binding
 			bestScore = score
@@ -40,7 +41,11 @@ func selectBinding(policy Policy, memory Memory, input Input, tacticalState stri
 	if bestScore < 0 {
 		return SkillBinding{}, 0, "no_binding_ready", false
 	}
-	return best, bestScore, "skill_behavior_binding:" + best.ID, true
+	reason := "skill_behavior_binding:" + best.ID
+	if threat.Reason != "" && threat.Reason != "baseline" {
+		reason += ":threat:" + threat.Reason
+	}
+	return best, bestScore, reason, true
 }
 
 func setupPolicyForBinding(policy Policy, binding SkillBinding) SkillSetupPolicy {
