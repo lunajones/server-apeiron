@@ -241,6 +241,31 @@ func TestDBRuntimeContractsDoNotInventMissingFallbacks(t *testing.T) {
 	}
 }
 
+func TestRuntimeReadinessReportsMissingContracts(t *testing.T) {
+	runtime := NewRuntimeWithContracts(RuntimeContracts{Source: "db_contracts"})
+	resp, err := runtime.Readiness(context.Background(), &gamev1.Empty{})
+	if err != nil {
+		t.Fatalf("Readiness failed: %v", err)
+	}
+	if resp.GetReady() {
+		t.Fatal("runtime without DB contracts reported ready")
+	}
+	if len(resp.GetBlockers()) == 0 {
+		t.Fatalf("readiness blockers missing: %#v", resp)
+	}
+}
+
+func TestRuntimeReadinessAcceptsRecoveredFixtureForDevTests(t *testing.T) {
+	runtime := NewRuntimeWithContracts(RecoveryFixtureRuntimeContracts())
+	resp, err := runtime.Readiness(context.Background(), &gamev1.Empty{})
+	if err != nil {
+		t.Fatalf("Readiness failed: %v", err)
+	}
+	if !resp.GetReady() {
+		t.Fatalf("recovered fixture should be ready for dev/test runtime: %#v", resp.GetBlockers())
+	}
+}
+
 func TestWolfMaulPublishesSelectedSkillMovementContract(t *testing.T) {
 	runtime := NewRuntimeWithContracts(RecoveryFixtureRuntimeContracts())
 	player := runtime.ensurePlayerLocked("local_player")

@@ -447,7 +447,37 @@ func (r *Runtime) Health(ctx context.Context, _ *gamev1.Empty) (*gamev1.HealthRe
 }
 
 func (r *Runtime) Readiness(ctx context.Context, _ *gamev1.Empty) (*gamev1.ReadinessResponse, error) {
+	if r == nil {
+		return &gamev1.ReadinessResponse{Ready: false, Blockers: []string{"runtime is nil"}}, nil
+	}
+	strict := r.contracts.Source == "db_contracts"
+	if err := r.contracts.ValidateRequiredCoverage(strict); err != nil {
+		return &gamev1.ReadinessResponse{Ready: false, Blockers: splitCoverageBlockers(err)}, nil
+	}
 	return &gamev1.ReadinessResponse{Ready: true}, nil
+}
+
+func splitCoverageBlockers(err error) []string {
+	if err == nil {
+		return nil
+	}
+	message := strings.TrimSpace(err.Error())
+	const prefix = "runtime contract coverage incomplete: "
+	message = strings.TrimPrefix(message, prefix)
+	if message == "" {
+		return []string{err.Error()}
+	}
+	parts := strings.Split(message, ";")
+	blockers := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if trimmed := strings.TrimSpace(part); trimmed != "" {
+			blockers = append(blockers, trimmed)
+		}
+	}
+	if len(blockers) == 0 {
+		return []string{err.Error()}
+	}
+	return blockers
 }
 
 func (r *Runtime) RuntimeStats(ctx context.Context, _ *gamev1.Empty) (*gamev1.RuntimeStatsResponse, error) {

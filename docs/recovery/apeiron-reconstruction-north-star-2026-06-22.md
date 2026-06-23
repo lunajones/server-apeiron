@@ -473,7 +473,7 @@ Expected final architecture:
 
 Acceptance criteria:
 
-- Server readiness reports missing contract categories.
+- Server readiness reports missing contract categories. `gameapi.Readiness` now runs `RuntimeContracts.ValidateRequiredCoverage`; unconfigured/partial DB runtimes return blockers instead of `Ready: true`.
 - Runtime logs show contract ids/hashes.
 - No gameplay fallback path is reachable during normal boot.
 
