@@ -20,8 +20,42 @@ func TestBrainSelectsLungeFromBindingInCircleRange(t *testing.T) {
 	if decision.Action != "lunge" {
 		t.Fatalf("action = %q, want lunge", decision.Action)
 	}
-	if decision.Direction.X <= 0 {
-		t.Fatalf("lunge should move toward target, got direction %#v", decision.Direction)
+	if decision.SetupPolicyID != "wolf_lunge_flank_windup_v1" {
+		t.Fatalf("setup policy = %q, want flank windup", decision.SetupPolicyID)
+	}
+	if decision.MovementTactic != "circle_then_curve_to_target" || decision.Commitment != "preparing" {
+		t.Fatalf("lunge setup decision = %#v", decision)
+	}
+	if decision.Direction.Y <= 0 || decision.Direction.X <= 0 {
+		t.Fatalf("lunge setup should curve laterally toward target, got direction %#v", decision.Direction)
+	}
+}
+
+func TestBrainKeepsLungeSetupMovementDuringWindup(t *testing.T) {
+	brain := NewBrain(testPolicy())
+	first := brain.Decide(Input{
+		Tick:             10,
+		CreaturePosition: domainmath.V3(0, 0, 0),
+		TargetPosition:   domainmath.V3(520, 0, 0),
+		LineOfSight:      true,
+	})
+	if first.SetupPolicyID == "" {
+		t.Fatalf("first decision did not start setup: %#v", first)
+	}
+
+	active := brain.Decide(Input{
+		Tick:                    12,
+		CreaturePosition:        domainmath.V3(10, 15, 0),
+		TargetPosition:          domainmath.V3(520, 0, 0),
+		ActiveSkillID:           "lunge",
+		ActiveSkillElapsedTicks: 20,
+		LineOfSight:             true,
+	})
+	if active.DecisionPhase != "setup" || active.SetupPolicyID != "wolf_lunge_flank_windup_v1" {
+		t.Fatalf("active setup decision = %#v", active)
+	}
+	if active.Direction.Y <= 0 {
+		t.Fatalf("active lunge setup should keep the locked orbit side, got %#v", active.Direction)
 	}
 }
 
@@ -65,11 +99,12 @@ func TestBrainUsesMaulCounterWhenPressureHigh(t *testing.T) {
 func TestBrainKeepsActiveSkillUntilRuntimeEnds(t *testing.T) {
 	brain := NewBrain(testPolicy())
 	decision := brain.Decide(Input{
-		Tick:             30,
-		CreaturePosition: domainmath.V3(0, 0, 0),
-		TargetPosition:   domainmath.V3(400, 0, 0),
-		ActiveSkillID:    "lunge",
-		LineOfSight:      true,
+		Tick:                    30,
+		CreaturePosition:        domainmath.V3(0, 0, 0),
+		TargetPosition:          domainmath.V3(400, 0, 0),
+		ActiveSkillID:           "lunge",
+		ActiveSkillElapsedTicks: 150,
+		LineOfSight:             true,
 	})
 	if decision.SelectedSkill != "lunge" || decision.DecisionPhase != "active" {
 		t.Fatalf("active skill decision = %#v", decision)
@@ -161,9 +196,13 @@ func testPolicy() Policy {
 		MaulPressureThreshold:   0.65,
 		MinOrbitDurationTicks:   90,
 		SideSwitchCooldownTicks: 45,
+		SetupPolicies: map[string]SkillSetupPolicy{
+			"wolf_lunge_flank_windup_v1":    {ID: "wolf_lunge_flank_windup_v1", SkillID: "lunge", SetupType: "moving_windup", MinSetupTicks: 90, MaxSetupTicks: 126, CommitDistanceCM: 520, PreferredMinRangeCM: 180, PreferredMaxRangeCM: 700, MovementTactic: "circle_then_curve_to_target", LockSideDuringSetup: true, Enabled: true},
+			"wolf_maul_pressure_counter_v1": {ID: "wolf_maul_pressure_counter_v1", SkillID: "maul", SetupType: "pressure_counter", MinSetupTicks: 4, MaxSetupTicks: 10, CommitDistanceCM: 160, PreferredMinRangeCM: 0, PreferredMaxRangeCM: 220, MovementTactic: "lateral_counter_dash", LockSideDuringSetup: true, Enabled: true},
+		},
 		Bindings: []SkillBinding{
-			{ID: "bind_lunge_circle", SkillID: "lunge", TacticalState: "circle", DecisionPhase: "reposition", MinRangeCM: 260, MaxRangeCM: 760, Priority: 90, UsageWeight: 1.1, Enabled: true, RequiresLineOfSight: true},
-			{ID: "bind_maul_pressure", SkillID: "maul", TacticalState: "pressure", DecisionPhase: "counter", MinRangeCM: 0, MaxRangeCM: 260, Priority: 100, UsageWeight: 0.7, Enabled: true, RequiresLineOfSight: true},
+			{ID: "bind_lunge_circle", SkillID: "lunge", TacticalState: "circle", DecisionPhase: "reposition", SetupPolicyID: "wolf_lunge_flank_windup_v1", MinRangeCM: 260, MaxRangeCM: 760, Priority: 90, UsageWeight: 1.1, Enabled: true, RequiresLineOfSight: true},
+			{ID: "bind_maul_pressure", SkillID: "maul", TacticalState: "pressure", DecisionPhase: "counter", SetupPolicyID: "wolf_maul_pressure_counter_v1", MinRangeCM: 0, MaxRangeCM: 260, Priority: 100, UsageWeight: 0.7, Enabled: true, RequiresLineOfSight: true},
 			{ID: "bind_dodge_pressure", SkillID: "wolf_dodge", TacticalState: "pressure", DecisionPhase: "evade", MinRangeCM: 0, MaxRangeCM: 420, Priority: 110, UsageWeight: 1.2, Enabled: true},
 		},
 	}

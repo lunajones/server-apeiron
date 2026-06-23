@@ -43,6 +43,29 @@ func selectBinding(policy Policy, memory Memory, input Input, tacticalState stri
 	return best, bestScore, "skill_behavior_binding:" + best.ID, true
 }
 
+func setupPolicyForBinding(policy Policy, binding SkillBinding) SkillSetupPolicy {
+	if binding.SetupPolicyID == "" || policy.SetupPolicies == nil {
+		return SkillSetupPolicy{}
+	}
+	setup := policy.SetupPolicies[binding.SetupPolicyID]
+	if !setup.Enabled || setup.SkillID != binding.SkillID {
+		return SkillSetupPolicy{}
+	}
+	return setup
+}
+
+func setupPolicyForSkill(policy Policy, skillID string) SkillSetupPolicy {
+	if skillID == "" || policy.SetupPolicies == nil {
+		return SkillSetupPolicy{}
+	}
+	for _, setup := range policy.SetupPolicies {
+		if setup.Enabled && setup.SkillID == skillID {
+			return setup
+		}
+	}
+	return SkillSetupPolicy{}
+}
+
 func skillAvailable(skillID string, unavailable map[string]string) bool {
 	if skillID == "" {
 		return false

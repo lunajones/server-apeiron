@@ -5,6 +5,8 @@ type Memory struct {
 	OrbitSideChangedAtTick uint64
 	LastSelectedSkill      string
 	LastSelectedSkillTick  uint64
+	LastSetupPolicyID      string
+	LastSetupStartedTick   uint64
 	LastDecisionReason     string
 	LastTacticalState      string
 	LastDecisionPhase      string
@@ -26,6 +28,10 @@ func (m *Memory) remember(decision Decision, tick uint64) {
 	}
 	if decision.SelectedSkill != "" && decision.SelectedSkill != m.LastSelectedSkill {
 		m.LastSelectedSkillTick = tick
+	}
+	if decision.SetupPolicyID != "" && decision.SetupPolicyID != m.LastSetupPolicyID {
+		m.LastSetupPolicyID = decision.SetupPolicyID
+		m.LastSetupStartedTick = tick
 	}
 	if decision.SelectedSkill != "" {
 		m.LastSelectedSkill = decision.SelectedSkill

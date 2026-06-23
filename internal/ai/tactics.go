@@ -41,6 +41,29 @@ func movementForAction(action string, policy Policy, toTarget, right domainmath.
 	}
 }
 
+func movementForSetup(setup SkillSetupPolicy, policy Policy, toTarget, right domainmath.Vec3, orbitSide string) (domainmath.Vec3, float64) {
+	switch strings.ToLower(strings.TrimSpace(setup.MovementTactic)) {
+	case "run_chase_then_jump", "chase_then_jump":
+		return toTarget, firstPositive(policy.ChaseSpeedCMS, policy.LungeSpeedCMS, policy.OrbitSpeedCMS)
+	case "lateral_counter_dash":
+		return rightForOrbitSide(right, orbitSide), firstPositive(policy.MaulSpeedCMS, policy.OrbitSpeedCMS)
+	case "circle_then_curve_to_target", "orbit_run", "flank_then_commit":
+		lateral := rightForOrbitSide(right, orbitSide)
+		curveToward := toTarget.Scale(0.28)
+		return lateral.Add(curveToward).Normalize(), firstPositive(policy.ChaseSpeedCMS, policy.LungeSpeedCMS, policy.OrbitSpeedCMS)
+	default:
+		return movementForAction(actionForSkill(setup.SkillID, policy), policy, toTarget, right, orbitSide)
+	}
+}
+
+func rightForOrbitSide(right domainmath.Vec3, orbitSide string) domainmath.Vec3 {
+	side := 1.0
+	if strings.EqualFold(orbitSide, "right") {
+		side = -1
+	}
+	return right.Scale(side)
+}
+
 func orbitSpeed(policy Policy) float64 {
 	speed := firstPositive(policy.OrbitSpeedCMS, policy.ChaseSpeedCMS)
 	scale := firstPositive(policy.OrbitSpeedScale, 1)
@@ -60,6 +83,15 @@ func targetVectors(creature, target domainmath.Position) (domainmath.Vec3, domai
 func firstPositive(values ...float64) float64 {
 	for _, value := range values {
 		if value > 0 && !math.IsNaN(value) {
+			return value
+		}
+	}
+	return 0
+}
+
+func firstPositiveUint64(values ...uint64) uint64 {
+	for _, value := range values {
+		if value > 0 {
 			return value
 		}
 	}

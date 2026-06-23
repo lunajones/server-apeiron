@@ -20,17 +20,31 @@ func (b *Brain) Decide(input Input) Decision {
 
 	if input.ActiveSkillID != "" {
 		action := actionForSkill(input.ActiveSkillID, b.Policy)
+		decisionPhase := "active"
+		movementTactic := action
+		commitment := "committed"
+		reason := "active_skill_continuation"
+		setup := setupPolicyForSkill(b.Policy, input.ActiveSkillID)
 		dir, speed := movementForAction(action, b.Policy, toTarget, right, b.Memory.OrbitSide)
+		setupPolicyID := ""
+		if setup.ID != "" && setup.LockSideDuringSetup && input.ActiveSkillElapsedTicks < firstPositiveUint64(setup.MaxSetupTicks, setup.MinSetupTicks) {
+			dir, speed = movementForSetup(setup, b.Policy, toTarget, right, b.Memory.OrbitSide)
+			decisionPhase = "setup"
+			movementTactic = setup.MovementTactic
+			commitment = "preparing"
+			reason = "active_skill_setup:" + setup.ID
+			setupPolicyID = setup.ID
+		}
 		decision := Decision{
 			Action:         action,
 			SelectedSkill:  input.ActiveSkillID,
 			TacticalState:  b.Memory.LastTacticalState,
-			DecisionPhase:  "active",
-			MovementTactic: action,
+			DecisionPhase:  decisionPhase,
+			MovementTactic: movementTactic,
 			CombatTactic:   "harass",
-			Commitment:     "committed",
+			Commitment:     commitment,
 			OrbitSide:      b.Memory.OrbitSide,
-			Reason:         "active_skill_continuation",
+			Reason:         reason,
 			Score:          1,
 			ResourceCost:   skillCost(input.ActiveSkillID, input.SkillCosts),
 			ResourceState:  resourceState(input),
@@ -38,6 +52,7 @@ func (b *Brain) Decide(input Input) Decision {
 			Direction:      dir,
 			Destination:    input.CreaturePosition.Add(dir.Normalize().Scale(180)),
 			RangeCM:        rangeCM,
+			SetupPolicyID:  setupPolicyID,
 		}
 		b.Memory.remember(decision, input.Tick)
 		return decision
@@ -48,11 +63,15 @@ func (b *Brain) Decide(input Input) Decision {
 	action := "orbit"
 	reason := "orbit_policy"
 	score := 0.5
+	setupPolicyID := ""
 	if binding, bindingScore, bindingReason, ok := selectBinding(b.Policy, b.Memory, input, tacticalState, decisionPhase, rangeCM); ok {
 		selectedSkill = binding.SkillID
 		action = actionForSkill(binding.SkillID, b.Policy)
 		reason = bindingReason
 		score = bindingScore / 100
+		if setup := setupPolicyForBinding(b.Policy, binding); setup.ID != "" {
+			setupPolicyID = setup.ID
+		}
 	} else if tacticalState == "approach" {
 		action = "chase"
 		if skillAvailable("lunge", input.UnavailableSkill) && skillAffordable("lunge", input.ResourceCurrent, input.SkillCosts) {
@@ -77,14 +96,23 @@ func (b *Brain) Decide(input Input) Decision {
 
 	orbitSide := b.nextOrbitSide(input)
 	dir, speed := movementForAction(action, b.Policy, toTarget, right, orbitSide)
+	movementTactic := movementTacticForAction(action)
+	commitment := commitmentForAction(action)
+	if setupPolicyID != "" {
+		setup := b.Policy.SetupPolicies[setupPolicyID]
+		dir, speed = movementForSetup(setup, b.Policy, toTarget, right, orbitSide)
+		movementTactic = setup.MovementTactic
+		commitment = "preparing"
+		reason += ":setup:" + setup.ID
+	}
 	decision := Decision{
 		Action:         action,
 		SelectedSkill:  selectedSkill,
 		TacticalState:  tacticalState,
 		DecisionPhase:  decisionPhase,
-		MovementTactic: movementTacticForAction(action),
+		MovementTactic: movementTactic,
 		CombatTactic:   "harass",
-		Commitment:     commitmentForAction(action),
+		Commitment:     commitment,
 		OrbitSide:      orbitSide,
 		Reason:         reason,
 		Score:          score,
@@ -94,6 +122,7 @@ func (b *Brain) Decide(input Input) Decision {
 		Direction:      dir,
 		Destination:    input.CreaturePosition.Add(dir.Normalize().Scale(180)),
 		RangeCM:        rangeCM,
+		SetupPolicyID:  setupPolicyID,
 	}
 	b.Memory.remember(decision, input.Tick)
 	return decision

@@ -144,6 +144,7 @@ type WolfRuntimePolicy struct {
 	StaminaRegenPerSecond          float64
 	MaxStamina                     float64
 	SkillBehaviorBindings          []CreatureSkillBehaviorRuntimeBinding
+	SkillSetupPolicies             []CreatureSkillSetupRuntimePolicy
 }
 
 type CreatureSkillBehaviorRuntimeBinding struct {
@@ -158,6 +159,20 @@ type CreatureSkillBehaviorRuntimeBinding struct {
 	UsageWeight         float64
 	CooldownGroup       string
 	RequiresLineOfSight bool
+	Enabled             bool
+}
+
+type CreatureSkillSetupRuntimePolicy struct {
+	ID                  string
+	SkillID             string
+	SetupType           string
+	MinSetupMS          int32
+	MaxSetupMS          int32
+	CommitDistanceCM    float64
+	PreferredMinRangeCM float64
+	PreferredMaxRangeCM float64
+	MovementTactic      string
+	LockSideDuringSetup bool
 	Enabled             bool
 }
 
@@ -256,6 +271,7 @@ func LoadRuntimeContractsFromDB(ctx context.Context, skills ContractSource, prof
 	loadWolfBrainRuntimeContracts(ctx, profiles, &contracts)
 
 	if setupResp, err := profiles.GetCreatureSkillSetupPolicies(ctx, &dbv1.IdRequest{Id: contracts.WolfPolicy.ContractID}); err == nil && setupResp.GetFound() {
+		contracts.WolfPolicy.SkillSetupPolicies = creatureSkillSetupPoliciesFromDB(setupResp.GetPolicies())
 		for _, setup := range setupResp.GetPolicies() {
 			if setup.GetSkillId() != "lunge" || !setup.GetIsEnabled() {
 				continue
@@ -484,6 +500,29 @@ func creatureSkillBehaviorBindingsFromDB(bindings []*dbv1.CreatureSkillBehaviorB
 	return runtimeBindings
 }
 
+func creatureSkillSetupPoliciesFromDB(policies []*dbv1.CreatureSkillSetupPolicy) []CreatureSkillSetupRuntimePolicy {
+	runtimePolicies := make([]CreatureSkillSetupRuntimePolicy, 0, len(policies))
+	for _, policy := range policies {
+		if policy == nil || !policy.GetIsEnabled() || policy.GetSkillId() == "" {
+			continue
+		}
+		runtimePolicies = append(runtimePolicies, CreatureSkillSetupRuntimePolicy{
+			ID:                  policy.GetId(),
+			SkillID:             policy.GetSkillId(),
+			SetupType:           policy.GetSetupType(),
+			MinSetupMS:          policy.GetMinSetupMs(),
+			MaxSetupMS:          policy.GetMaxSetupMs(),
+			CommitDistanceCM:    policy.GetCommitDistanceCm(),
+			PreferredMinRangeCM: policy.GetPreferredMinRangeCm(),
+			PreferredMaxRangeCM: policy.GetPreferredMaxRangeCm(),
+			MovementTactic:      policy.GetMovementTactic(),
+			LockSideDuringSetup: policy.GetLockSideDuringSetup(),
+			Enabled:             policy.GetIsEnabled(),
+		})
+	}
+	return runtimePolicies
+}
+
 func (c RuntimeContracts) ValidateRequiredCoverage(strictLoadedSource bool) error {
 	var missing []string
 	if c.MovementProfile == nil {
@@ -563,6 +602,9 @@ func (c RuntimeContracts) ValidateRequiredCoverage(strictLoadedSource bool) erro
 		}
 		if len(c.WolfPolicy.SkillBehaviorBindings) == 0 {
 			missing = append(missing, "wolf skill behavior bindings")
+		}
+		if len(c.WolfPolicy.SkillSetupPolicies) == 0 {
+			missing = append(missing, "wolf skill setup policies")
 		}
 	}
 	if len(c.CombatModes) == 0 {
@@ -879,10 +921,15 @@ func RecoveryFixtureRuntimeContracts() RuntimeContracts {
 			MaxStamina:                     100,
 			SkillBehaviorBindings: []CreatureSkillBehaviorRuntimeBinding{
 				{ID: "recovered_bind_bite_circle", SkillID: "bite", TacticalState: "circle", DecisionPhase: "reposition", MinRangeCM: 0, MaxRangeCM: 300, Priority: 70, UsageWeight: 0.85, CooldownGroup: "wolf_bite", RequiresLineOfSight: true, Enabled: true},
-				{ID: "recovered_bind_lunge_circle", SkillID: "lunge", TacticalState: "circle", DecisionPhase: "reposition", MinRangeCM: 180, MaxRangeCM: 760, Priority: 85, UsageWeight: 0.75, CooldownGroup: "wolf_lunge", RequiresLineOfSight: true, Enabled: true},
-				{ID: "recovered_bind_lunge_approach", SkillID: "lunge", TacticalState: "approach", DecisionPhase: "acquire", MinRangeCM: 420, MaxRangeCM: 980, Priority: 95, UsageWeight: 1, CooldownGroup: "wolf_lunge", RequiresLineOfSight: true, Enabled: true},
-				{ID: "recovered_bind_maul_pressure", SkillID: "maul", TacticalState: "pressure", DecisionPhase: "counter", MinRangeCM: 0, MaxRangeCM: 260, Priority: 100, UsageWeight: 0.9, CooldownGroup: "wolf_maul", RequiresLineOfSight: true, Enabled: true},
+				{ID: "recovered_bind_lunge_circle", SkillID: "lunge", TacticalState: "circle", DecisionPhase: "reposition", SetupPolicyID: "wolf_lunge_flank_windup_v1", MinRangeCM: 180, MaxRangeCM: 760, Priority: 85, UsageWeight: 0.75, CooldownGroup: "wolf_lunge", RequiresLineOfSight: true, Enabled: true},
+				{ID: "recovered_bind_lunge_approach", SkillID: "lunge", TacticalState: "approach", DecisionPhase: "acquire", SetupPolicyID: "wolf_lunge_chase_windup_v1", MinRangeCM: 420, MaxRangeCM: 980, Priority: 95, UsageWeight: 1, CooldownGroup: "wolf_lunge", RequiresLineOfSight: true, Enabled: true},
+				{ID: "recovered_bind_maul_pressure", SkillID: "maul", TacticalState: "pressure", DecisionPhase: "counter", SetupPolicyID: "wolf_maul_pressure_counter_v1", MinRangeCM: 0, MaxRangeCM: 260, Priority: 100, UsageWeight: 0.9, CooldownGroup: "wolf_maul", RequiresLineOfSight: true, Enabled: true},
 				{ID: "recovered_bind_dodge_pressure", SkillID: "wolf_dodge", TacticalState: "pressure", DecisionPhase: "evade", MinRangeCM: 0, MaxRangeCM: 420, Priority: 110, UsageWeight: 1.15, CooldownGroup: "wolf_dodge", RequiresLineOfSight: false, Enabled: true},
+			},
+			SkillSetupPolicies: []CreatureSkillSetupRuntimePolicy{
+				{ID: "wolf_lunge_flank_windup_v1", SkillID: "lunge", SetupType: "moving_windup", MinSetupMS: 3000, MaxSetupMS: 4200, CommitDistanceCM: 520, PreferredMinRangeCM: 180, PreferredMaxRangeCM: 700, MovementTactic: "circle_then_curve_to_target", LockSideDuringSetup: true, Enabled: true},
+				{ID: "wolf_lunge_chase_windup_v1", SkillID: "lunge", SetupType: "chase_windup", MinSetupMS: 1200, MaxSetupMS: 2600, CommitDistanceCM: 640, PreferredMinRangeCM: 520, PreferredMaxRangeCM: 1200, MovementTactic: "run_chase_then_jump", LockSideDuringSetup: false, Enabled: true},
+				{ID: "wolf_maul_pressure_counter_v1", SkillID: "maul", SetupType: "pressure_counter", MinSetupMS: 120, MaxSetupMS: 320, CommitDistanceCM: 160, PreferredMinRangeCM: 0, PreferredMaxRangeCM: 220, MovementTactic: "lateral_counter_dash", LockSideDuringSetup: true, Enabled: true},
 			},
 		},
 		CombatModes: recoveredCombatModeSlots(),

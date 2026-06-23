@@ -152,6 +152,12 @@ func TestLoadRuntimeContractsFromDBUsesRequiredSkillBindings(t *testing.T) {
 	if !hasCreatureSkillBehaviorBinding(contracts.WolfPolicy.SkillBehaviorBindings, "maul", "pressure", "counter") {
 		t.Fatalf("wolf maul pressure/counter binding missing: %#v", contracts.WolfPolicy.SkillBehaviorBindings)
 	}
+	if !hasCreatureSkillSetupPolicy(contracts.WolfPolicy.SkillSetupPolicies, "wolf_lunge_flank_windup_v1", "lunge", "circle_then_curve_to_target") {
+		t.Fatalf("wolf lunge setup policy missing: %#v", contracts.WolfPolicy.SkillSetupPolicies)
+	}
+	if !hasCreatureSkillSetupPolicy(contracts.WolfPolicy.SkillSetupPolicies, "wolf_maul_pressure_counter_v1", "maul", "lateral_counter_dash") {
+		t.Fatalf("wolf maul setup policy missing: %#v", contracts.WolfPolicy.SkillSetupPolicies)
+	}
 }
 
 func TestLoadRuntimeContractsFromDBDoesNotLeakRecoveredCombatFallback(t *testing.T) {
@@ -710,8 +716,18 @@ func (fakeRuntimeContractSource) GetCreatureEvasionPolicies(_ context.Context, r
 	}, nil
 }
 
-func (fakeRuntimeContractSource) GetCreatureSkillSetupPolicies(context.Context, *dbv1.IdRequest, ...grpc.CallOption) (*dbv1.CreatureSkillSetupPoliciesResponse, error) {
-	return &dbv1.CreatureSkillSetupPoliciesResponse{Found: false}, nil
+func (fakeRuntimeContractSource) GetCreatureSkillSetupPolicies(_ context.Context, req *dbv1.IdRequest, _ ...grpc.CallOption) (*dbv1.CreatureSkillSetupPoliciesResponse, error) {
+	if req.GetId() != "contract_wolf_pack_harasser_v1" {
+		return &dbv1.CreatureSkillSetupPoliciesResponse{Found: false}, nil
+	}
+	return &dbv1.CreatureSkillSetupPoliciesResponse{
+		Found: true,
+		Policies: []*dbv1.CreatureSkillSetupPolicy{
+			{Id: "wolf_lunge_flank_windup_v1", BehaviorContractId: req.GetId(), SkillId: "lunge", SetupType: "moving_windup", MinSetupMs: 3000, MaxSetupMs: 4200, CommitDistanceCm: 520, PreferredMinRangeCm: 180, PreferredMaxRangeCm: 700, MovementTactic: "circle_then_curve_to_target", LockSideDuringSetup: true, IsEnabled: true},
+			{Id: "wolf_lunge_chase_windup_v1", BehaviorContractId: req.GetId(), SkillId: "lunge", SetupType: "chase_windup", MinSetupMs: 1200, MaxSetupMs: 2600, CommitDistanceCm: 640, PreferredMinRangeCm: 520, PreferredMaxRangeCm: 1200, MovementTactic: "run_chase_then_jump", LockSideDuringSetup: false, IsEnabled: true},
+			{Id: "wolf_maul_pressure_counter_v1", BehaviorContractId: req.GetId(), SkillId: "maul", SetupType: "pressure_counter", MinSetupMs: 120, MaxSetupMs: 320, CommitDistanceCm: 160, PreferredMinRangeCm: 0, PreferredMaxRangeCm: 220, MovementTactic: "lateral_counter_dash", LockSideDuringSetup: true, IsEnabled: true},
+		},
+	}, nil
 }
 
 func (fakeRuntimeContractSource) GetCreatureSkillBehaviorBindings(_ context.Context, req *dbv1.IdRequest, _ ...grpc.CallOption) (*dbv1.CreatureSkillBehaviorBindingsResponse, error) {
@@ -776,6 +792,15 @@ func hasEmptyCombatModeSlot(slots []*gamev1.CombatModeSlot, combatModeID string,
 func hasCreatureSkillBehaviorBinding(bindings []CreatureSkillBehaviorRuntimeBinding, skillID string, tacticalState string, decisionPhase string) bool {
 	for _, binding := range bindings {
 		if binding.SkillID == skillID && binding.TacticalState == tacticalState && binding.DecisionPhase == decisionPhase && binding.Enabled {
+			return true
+		}
+	}
+	return false
+}
+
+func hasCreatureSkillSetupPolicy(policies []CreatureSkillSetupRuntimePolicy, id string, skillID string, movementTactic string) bool {
+	for _, policy := range policies {
+		if policy.ID == id && policy.SkillID == skillID && policy.MovementTactic == movementTactic && policy.Enabled {
 			return true
 		}
 	}

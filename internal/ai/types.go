@@ -32,6 +32,7 @@ type Policy struct {
 	RepeatSkillPenaltyWindowTicks  uint64
 	RepeatSkillPenaltyMultiplier   float64
 	Bindings                       []SkillBinding
+	SetupPolicies                  map[string]SkillSetupPolicy
 }
 
 type SkillBinding struct {
@@ -49,18 +50,33 @@ type SkillBinding struct {
 	Enabled             bool
 }
 
+type SkillSetupPolicy struct {
+	ID                  string
+	SkillID             string
+	SetupType           string
+	MinSetupTicks       uint64
+	MaxSetupTicks       uint64
+	CommitDistanceCM    float64
+	PreferredMinRangeCM float64
+	PreferredMaxRangeCM float64
+	MovementTactic      string
+	LockSideDuringSetup bool
+	Enabled             bool
+}
+
 type Input struct {
-	Tick             uint64
-	CreaturePosition domainmath.Position
-	TargetPosition   domainmath.Position
-	TargetFacingYaw  float64
-	ActiveSkillID    string
-	LineOfSight      bool
-	Pressure         float64
-	ResourceCurrent  float64
-	ResourceMax      float64
-	SkillCosts       map[string]float64
-	UnavailableSkill map[string]string
+	Tick                    uint64
+	CreaturePosition        domainmath.Position
+	TargetPosition          domainmath.Position
+	TargetFacingYaw         float64
+	ActiveSkillID           string
+	ActiveSkillElapsedTicks uint64
+	LineOfSight             bool
+	Pressure                float64
+	ResourceCurrent         float64
+	ResourceMax             float64
+	SkillCosts              map[string]float64
+	UnavailableSkill        map[string]string
 }
 
 type Decision struct {
@@ -80,4 +96,5 @@ type Decision struct {
 	Direction      domainmath.Vec3
 	Destination    domainmath.Position
 	RangeCM        float64
+	SetupPolicyID  string
 }

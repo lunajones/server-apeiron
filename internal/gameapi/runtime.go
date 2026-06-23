@@ -509,21 +509,29 @@ func (r *Runtime) updateWolfPolicyLocked(wolf *entityState, player *entityState)
 	lungeMaxRangeCM := positiveOr(policy.LungeMaxRangeCM, policy.ChaseRangeCM)
 	nowTime := time.Now()
 	activeSkill := ""
+	activeSkillElapsedTicks := uint64(0)
 	if skillID, active := r.activeCreatureSkillLocked(wolf, nowTime); active {
 		activeSkill = skillID
+		if wolf.skillRuntime != nil && wolf.skillRuntime.GetStartedAtMs() > 0 {
+			elapsedMS := nowTime.UnixMilli() - wolf.skillRuntime.GetStartedAtMs()
+			if elapsedMS > 0 {
+				activeSkillElapsedTicks = uint64(math.Ceil(float64(elapsedMS) * tickRate / 1000))
+			}
+		}
 	}
 	decision := r.creatureBrainSystemLocked().Decide(fmt.Sprintf("creature:%d", wolf.id), wolfBrainPolicy(policy), creatureai.Input{
-		Tick:             r.tick,
-		CreaturePosition: toDomainVector(wolf.position),
-		TargetPosition:   toDomainVector(player.position),
-		TargetFacingYaw:  player.yaw,
-		ActiveSkillID:    activeSkill,
-		LineOfSight:      true,
-		Pressure:         wolf.aggression,
-		ResourceCurrent:  wolf.stamina,
-		ResourceMax:      wolf.maxStamina,
-		SkillCosts:       r.creatureSkillCostsLocked(policy),
-		UnavailableSkill: r.creatureUnavailableSkillsLocked(wolf, nowTime),
+		Tick:                    r.tick,
+		CreaturePosition:        toDomainVector(wolf.position),
+		TargetPosition:          toDomainVector(player.position),
+		TargetFacingYaw:         player.yaw,
+		ActiveSkillID:           activeSkill,
+		ActiveSkillElapsedTicks: activeSkillElapsedTicks,
+		LineOfSight:             true,
+		Pressure:                wolf.aggression,
+		ResourceCurrent:         wolf.stamina,
+		ResourceMax:             wolf.maxStamina,
+		SkillCosts:              r.creatureSkillCostsLocked(policy),
+		UnavailableSkill:        r.creatureUnavailableSkillsLocked(wolf, nowTime),
 	})
 	action := decision.Action
 	selectedSkill := decision.SelectedSkill
@@ -796,6 +804,7 @@ func wolfBrainPolicy(policy WolfRuntimePolicy) creatureai.Policy {
 		RepeatSkillPenaltyWindowTicks:  msToRuntimeTicks(policy.RepeatSkillPenaltyWindowMS),
 		RepeatSkillPenaltyMultiplier:   policy.RepeatSkillPenaltyMultiplier,
 		Bindings:                       wolfBrainBindings(policy.SkillBehaviorBindings),
+		SetupPolicies:                  wolfBrainSetupPolicies(policy.SkillSetupPolicies),
 	}
 }
 
@@ -816,6 +825,35 @@ func wolfBrainBindings(bindings []CreatureSkillBehaviorRuntimeBinding) []creatur
 			RequiresLineOfSight: binding.RequiresLineOfSight,
 			Enabled:             binding.Enabled,
 		})
+	}
+	return out
+}
+
+func wolfBrainSetupPolicies(policies []CreatureSkillSetupRuntimePolicy) map[string]creatureai.SkillSetupPolicy {
+	if len(policies) == 0 {
+		return nil
+	}
+	out := make(map[string]creatureai.SkillSetupPolicy, len(policies))
+	for _, policy := range policies {
+		if policy.ID == "" || !policy.Enabled {
+			continue
+		}
+		out[policy.ID] = creatureai.SkillSetupPolicy{
+			ID:                  policy.ID,
+			SkillID:             policy.SkillID,
+			SetupType:           policy.SetupType,
+			MinSetupTicks:       msToRuntimeTicks(policy.MinSetupMS),
+			MaxSetupTicks:       msToRuntimeTicks(policy.MaxSetupMS),
+			CommitDistanceCM:    policy.CommitDistanceCM,
+			PreferredMinRangeCM: policy.PreferredMinRangeCM,
+			PreferredMaxRangeCM: policy.PreferredMaxRangeCM,
+			MovementTactic:      policy.MovementTactic,
+			LockSideDuringSetup: policy.LockSideDuringSetup,
+			Enabled:             policy.Enabled,
+		}
+	}
+	if len(out) == 0 {
+		return nil
 	}
 	return out
 }
