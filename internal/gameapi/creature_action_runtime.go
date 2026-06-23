@@ -49,9 +49,7 @@ func (r *Runtime) applyCreatureActionRuntimeLocked(creature *entityState, target
 		LastResolvedAtMs: now.UnixMilli(),
 	}
 	if phase == actionruntime.PhaseComplete {
-		creature.skillState = "idle"
-		creature.combatState = "ready"
-		creature.actionMotion = nil
+		r.completeCreatureActionRuntimeLocked(creature, now)
 		return creatureActionRuntimeUpdate{Started: started, Phase: phase}
 	}
 	creature.skillState = string(phase)
@@ -80,11 +78,10 @@ func (r *Runtime) clearCreatureActionRuntimeLocked(creature *entityState, now ti
 	if creature == nil {
 		return
 	}
-	creature.skillRuntime = &gamev1.SkillRuntimeState{State: "idle", LastResolvedAtMs: now.UnixMilli()}
-	creature.skillState = "idle"
-	creature.combatState = "ready"
-	creature.actionInstance = nil
-	creature.actionMotion = nil
+	if entityActionRuntimeActiveAt(creature, now) {
+		r.interruptEntityActionRuntimeLocked(creature, now, "")
+	}
+	r.completeCreatureActionRuntimeLocked(creature, now)
 }
 
 func (r *Runtime) newCreatureActionInstance(creature *entityState, skillID string, contract SkillRuntimeContract, start vector, now time.Time) actionruntime.Instance {

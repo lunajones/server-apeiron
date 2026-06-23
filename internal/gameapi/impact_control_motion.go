@@ -66,17 +66,7 @@ func (r *Runtime) interruptTargetActionForImpactControlLocked(target *entityStat
 	if r == nil || target == nil {
 		return
 	}
-	if target.actionInstance != nil {
-		r.cancelSkillImpactScheduleLocked(target, target.actionInstance.SkillID.String(), target.actionInstance.InstanceID, target.actionInstance.StartedAt)
-	}
-	target.actionInstance = nil
-	if target.actionMotion != nil && target.actionMotion.MotionSource != "impact_control" {
-		target.actionMotion = nil
-	}
-	if target.skillRuntime != nil {
-		target.skillRuntime.State = "interrupted"
-		target.skillRuntime.LastResolvedAtMs = now.UnixMilli()
-	}
+	r.interruptEntityActionRuntimeLocked(target, now, "impact_control")
 }
 
 func runtimeImpactControlActionContract(effect *dbv1.SkillControlEffect) MovementActionRuntimeContract {

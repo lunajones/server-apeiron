@@ -1381,6 +1381,10 @@ func (r *Runtime) refreshActionRuntimeStatesLocked(now time.Time) {
 		entity.skillRuntime.State = string(phase)
 		entity.skillRuntime.LastResolvedAtMs = now.UnixMilli()
 		if phase == actionruntime.PhaseComplete {
+			if entity.entityType == "creature" {
+				r.completeCreatureActionRuntimeLocked(entity, now)
+				continue
+			}
 			entity.skillState = "idle"
 			entity.combatState = "ready"
 			entity.actionMotion = nil

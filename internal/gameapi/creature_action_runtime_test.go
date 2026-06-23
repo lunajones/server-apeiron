@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	gamev1 "server-apeiron/gen/apeiron/game/v1"
 	creatureai "server-apeiron/internal/ai"
 	"server-apeiron/internal/combat/actionruntime"
 	domainmath "server-apeiron/internal/domain/math"
@@ -378,6 +379,82 @@ func TestWolfCompletedActionRuntimeClearsBeforeNextBrainDecision(t *testing.T) {
 	}
 	if wolf.creatureAI.GetSelectedSkillId() == "lunge" {
 		t.Fatalf("completed lunge immediately reselected despite cooldown: %#v", wolf.creatureAI)
+	}
+}
+
+func TestCreatureActionCompletionDoesNotCancelPendingImpactSchedule(t *testing.T) {
+	runtime := NewRuntimeWithContracts(RecoveryFixtureRuntimeContracts())
+	player := runtime.ensurePlayerLocked("local_player")
+	wolf := runtime.ensureWolfLocked(player)
+	wolf.position = vector{x: player.position.x - 160, y: player.position.y, z: player.position.z}
+
+	contract := runtime.contracts.skillContract("bite")
+	startedAt := time.Now()
+	instance := runtime.newCreatureActionInstance(wolf, "bite", contract, wolf.position, startedAt)
+	wolf.actionInstance = &instance
+	wolf.skillRuntime = &gamev1.SkillRuntimeState{
+		CurrentSkillId: "bite",
+		State:          "active",
+		StartedAtMs:    startedAt.UnixMilli(),
+	}
+	if !runtime.enqueueCreatureSkillImpactLocked(wolf, player, contract, startedAt) {
+		t.Fatal("failed to enqueue bite impact")
+	}
+	if runtime.impacts == nil || runtime.impacts.PendingCount() != 1 {
+		t.Fatalf("pending bite impact count = %d, want 1", runtime.impacts.PendingCount())
+	}
+
+	runtime.completeCreatureActionRuntimeLocked(wolf, startedAt.Add(5*time.Second))
+
+	if wolf.actionInstance != nil || wolf.actionMotion != nil {
+		t.Fatalf("completed creature action left runtime active: instance=%#v motion=%#v", wolf.actionInstance, wolf.actionMotion)
+	}
+	if wolf.skillRuntime.GetState() != "idle" {
+		t.Fatalf("completed creature skill runtime state = %q, want idle", wolf.skillRuntime.GetState())
+	}
+	if runtime.impacts.PendingCount() != 1 {
+		t.Fatalf("normal completion cancelled pending impact schedule: %d", runtime.impacts.PendingCount())
+	}
+}
+
+func TestCreatureActionClearDuringActiveCancelsPendingImpactSchedule(t *testing.T) {
+	runtime := NewRuntimeWithContracts(RecoveryFixtureRuntimeContracts())
+	player := runtime.ensurePlayerLocked("local_player")
+	wolf := runtime.ensureWolfLocked(player)
+	wolf.position = vector{x: player.position.x - 160, y: player.position.y, z: player.position.z}
+
+	contract := runtime.contracts.skillContract("lunge")
+	startedAt := time.Now()
+	instance := runtime.newCreatureActionInstance(wolf, "lunge", contract, wolf.position, startedAt)
+	wolf.actionInstance = &instance
+	wolf.actionMotion = &actionMotionState{
+		SkillID:      "lunge",
+		CommandID:    instance.InstanceID,
+		MotionSource: "skill_root",
+		StartedAt:    startedAt,
+	}
+	wolf.skillRuntime = &gamev1.SkillRuntimeState{
+		CurrentSkillId: "lunge",
+		State:          "active",
+		StartedAtMs:    startedAt.UnixMilli(),
+	}
+	if !runtime.enqueueCreatureSkillImpactLocked(wolf, player, contract, startedAt) {
+		t.Fatal("failed to enqueue lunge impact")
+	}
+	if runtime.impacts == nil || runtime.impacts.PendingCount() != 1 {
+		t.Fatalf("pending lunge impact count = %d, want 1", runtime.impacts.PendingCount())
+	}
+
+	runtime.clearCreatureActionRuntimeLocked(wolf, startedAt.Add(120*time.Millisecond))
+
+	if wolf.actionInstance != nil || wolf.actionMotion != nil {
+		t.Fatalf("cleared creature action left runtime active: instance=%#v motion=%#v", wolf.actionInstance, wolf.actionMotion)
+	}
+	if wolf.skillRuntime.GetState() != "idle" || wolf.skillState != "idle" || wolf.combatState != "ready" {
+		t.Fatalf("cleared creature action states skillRuntime=%q skill=%q combat=%q", wolf.skillRuntime.GetState(), wolf.skillState, wolf.combatState)
+	}
+	if runtime.impacts.PendingCount() != 0 {
+		t.Fatalf("interrupted lunge impact remained pending: %d", runtime.impacts.PendingCount())
 	}
 }
 
