@@ -386,6 +386,7 @@ Acceptance criteria:
 - Player shield/drive push controls are now contract-backed; push/carry contact policies require explicit control effects in strict runtime coverage.
 - Shield Drive/Bash/Rush target movement is now contract-backed via `SkillControlEffect` motion fields; the runtime creates target `actionMotion` for applied controls instead of applying a one-tick position snap.
 - Applied impact control now has higher motion authority than the target's previous skill root: it interrupts the target action instance, cancels that instance's pending delayed damage schedule, runs as `impact_control` action motion, and returns the target to grounded/post-impact locomotion on completion.
+- The old `gameapi` directional-block helper with a fallback 180-degree arc was removed; block/parry resolution now remains in `internal/combat` and requires DB/proto `CombatDefenseContract.FrontalArcDeg`.
 
 ### D. Creature Runtime
 
