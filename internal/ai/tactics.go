@@ -29,7 +29,7 @@ func movementForAction(action string, policy Policy, toTarget, right domainmath.
 	case "maul":
 		return right, policy.MaulSpeedCMS
 	case "retreat", "dodge":
-		return toTarget.Scale(-1), policy.RetreatSpeedCMS
+		return evasionDirection(policy, toTarget, right, orbitSide), policy.RetreatSpeedCMS
 	default:
 		side := 1.0
 		if strings.EqualFold(orbitSide, "right") {
@@ -37,6 +37,16 @@ func movementForAction(action string, policy Policy, toTarget, right domainmath.
 		}
 		return right.Scale(side), orbitSpeed(policy)
 	}
+}
+
+func evasionDirection(policy Policy, toTarget, right domainmath.Vec3, orbitSide string) domainmath.Vec3 {
+	back := toTarget.Scale(-1)
+	lateral := rightForOrbitSide(right, orbitSide)
+	dir := back.Scale(policy.EvasionBackstepBias).Add(lateral.Scale(policy.EvasionLateralBias)).Normalize()
+	if dir.IsZero() {
+		return back
+	}
+	return dir
 }
 
 func movementForSetup(setup SkillSetupPolicy, policy Policy, toTarget, right domainmath.Vec3, orbitSide string) (domainmath.Vec3, float64) {

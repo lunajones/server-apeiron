@@ -15,6 +15,9 @@ type Policy struct {
 	MaulSpeedCMS                   float64
 	RetreatSpeedCMS                float64
 	DodgeSkillID                   string
+	EvasionLateralBias             float64
+	EvasionBackstepBias            float64
+	EvasionPressureThreshold       float64
 	ApproachMinDistanceCM          float64
 	ApproachMaxDistanceCM          float64
 	BiteRangeCM                    float64

@@ -77,6 +77,9 @@ func TestBrainUsesRetreatEvasionUnderPressure(t *testing.T) {
 	if decision.Direction.X >= 0 {
 		t.Fatalf("retreat should move away from target, got direction %#v", decision.Direction)
 	}
+	if decision.Direction.Y <= 0 {
+		t.Fatalf("retreat should include lateral evasion bias, got direction %#v", decision.Direction)
+	}
 }
 
 func TestBrainUsesMaulCounterWhenPressureHigh(t *testing.T) {
@@ -285,6 +288,9 @@ func testPolicy() Policy {
 		MaulSpeedCMS:                   320,
 		RetreatSpeedCMS:                360,
 		DodgeSkillID:                   "wolf_dodge",
+		EvasionLateralBias:             0.72,
+		EvasionBackstepBias:            0.28,
+		EvasionPressureThreshold:       0.42,
 		BiteRangeCM:                    220,
 		LungeMinRangeCM:                260,
 		LungeMaxRangeCM:                760,

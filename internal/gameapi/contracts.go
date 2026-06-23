@@ -138,6 +138,9 @@ type WolfRuntimePolicy struct {
 	LungeArcHeightCM               float64
 	DodgeSkillID                   string
 	EvasionChainCount              int32
+	EvasionLateralBias             float64
+	EvasionBackstepBias            float64
+	EvasionPressureThreshold       float64
 	TargetOpportunityPolicyID      string
 	CommitAngleMaxDeg              float64
 	MinCommitDistanceCM            float64
@@ -356,6 +359,9 @@ func LoadRuntimeContractsFromDB(ctx context.Context, skills ContractSource, prof
 			}
 			contracts.WolfPolicy.DodgeSkillID = evasion.GetDodgeSkillId()
 			contracts.WolfPolicy.EvasionChainCount = evasion.GetMaxChainCount()
+			contracts.WolfPolicy.EvasionLateralBias = evasion.GetLateralBias()
+			contracts.WolfPolicy.EvasionBackstepBias = evasion.GetBackstepBias()
+			contracts.WolfPolicy.EvasionPressureThreshold = evasion.GetPressureThreshold()
 			break
 		}
 	}
@@ -1240,6 +1246,9 @@ func RecoveryFixtureRuntimeContracts() RuntimeContracts {
 			LungeArcHeightCM:               120,
 			DodgeSkillID:                   "wolf_dodge",
 			EvasionChainCount:              4,
+			EvasionLateralBias:             0.72,
+			EvasionBackstepBias:            0.28,
+			EvasionPressureThreshold:       0.42,
 			TargetOpportunityPolicyID:      "opportunity_wolf_harasser_v1",
 			CommitAngleMaxDeg:              180,
 			MinCommitDistanceCM:            120,

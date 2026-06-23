@@ -38,6 +38,9 @@ func ValidatePolicy(policy Policy) []string {
 	issues = append(issues, requirePositive("vulnerable bite multiplier", policy.VulnerableBiteMultiplier)...)
 	issues = append(issues, requirePositive("vulnerable maul multiplier", policy.VulnerableMaulMultiplier)...)
 	issues = append(issues, requirePositive("tactical destination distance", policy.TacticalDestinationDistanceCM)...)
+	issues = append(issues, requirePositive("evasion lateral bias", policy.EvasionLateralBias)...)
+	issues = append(issues, requirePositive("evasion backstep bias", policy.EvasionBackstepBias)...)
+	issues = append(issues, requirePositive("evasion pressure threshold", policy.EvasionPressureThreshold)...)
 	if policy.LungeMinRangeCM > 0 && policy.LungeMaxRangeCM > 0 && policy.LungeMinRangeCM > policy.LungeMaxRangeCM {
 		issues = append(issues, "lunge min range exceeds max range")
 	}

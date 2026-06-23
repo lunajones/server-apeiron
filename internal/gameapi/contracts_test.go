@@ -363,6 +363,9 @@ func TestLoadRuntimeContractsFromDBUsesRequiredSkillBindings(t *testing.T) {
 	if contracts.WolfPolicy.DodgeCommittedThreatMultiplier != 1.12 || contracts.WolfPolicy.VulnerableBiteMultiplier != 1.16 || contracts.WolfPolicy.TacticalDestinationDistanceCM != 180 {
 		t.Fatalf("wolf threat policy = dodge %.2f vulnerable bite %.2f destination %.0f", contracts.WolfPolicy.DodgeCommittedThreatMultiplier, contracts.WolfPolicy.VulnerableBiteMultiplier, contracts.WolfPolicy.TacticalDestinationDistanceCM)
 	}
+	if contracts.WolfPolicy.EvasionLateralBias != 0.72 || contracts.WolfPolicy.EvasionBackstepBias != 0.28 || contracts.WolfPolicy.EvasionPressureThreshold != 0.42 {
+		t.Fatalf("wolf evasion policy = lateral %.2f back %.2f pressure %.2f", contracts.WolfPolicy.EvasionLateralBias, contracts.WolfPolicy.EvasionBackstepBias, contracts.WolfPolicy.EvasionPressureThreshold)
+	}
 	if contracts.WolfPolicy.LungeMinRangeCM != 180 || contracts.WolfPolicy.LungeMaxRangeCM != 700 {
 		t.Fatalf("wolf lunge range = %.0f..%.0f", contracts.WolfPolicy.LungeMinRangeCM, contracts.WolfPolicy.LungeMaxRangeCM)
 	}
@@ -1161,9 +1164,9 @@ func (fakeRuntimeContractSource) GetCreatureEvasionPolicies(_ context.Context, r
 				MaxChainCount:           4,
 				StaminaCostMultiplier:   0.5,
 				RetreatChanceMultiplier: 0.7,
-				LateralBias:             0.8,
-				BackstepBias:            0.2,
-				PressureThreshold:       0.55,
+				LateralBias:             0.72,
+				BackstepBias:            0.28,
+				PressureThreshold:       0.42,
 				CooldownMs:              260,
 			},
 		},
