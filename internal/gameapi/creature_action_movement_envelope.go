@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"server-apeiron/internal/combat/actionruntime"
-	"server-apeiron/internal/combat/contactpolicy"
 	"server-apeiron/internal/movement"
 )
 
@@ -50,10 +49,10 @@ func creatureActionMovementEnvelopeAt(instance actionruntime.Instance, contract 
 	if actionEnd := instance.StartedAt.Add(instance.Timing.Windup + instance.Timing.Active + instance.Timing.Recovery); actionEnd.After(handoff) {
 		handoff = actionEnd
 	}
-	contact := contactpolicy.Classify(contract.ContactPolicy, contract.MovementAction.ContactPolicy)
+	contact := creatureActionContactRuntimeFromContract(contract)
 	envelope := creatureActionMovementEnvelope{
 		SkillID:           contract.SkillID,
-		ContactPolicy:     contact.Canonical,
+		ContactPolicy:     contact.Policy,
 		MovementStartsAt:  rootStart,
 		MovementEndsAt:    rootEnd,
 		AirborneStartsAt:  rootStart,
@@ -106,7 +105,7 @@ func creatureSkillAirborneDuration(contract SkillRuntimeContract) time.Duration 
 }
 
 func creatureSkillMovementStopAtContactRate(contract SkillRuntimeContract) float64 {
-	policy := contactpolicy.Classify(contract.ContactPolicy, contract.MovementAction.ContactPolicy)
+	policy := creatureActionContactRuntimeFromContract(contract)
 	if policy.AllowsPassthrough {
 		return 1
 	}

@@ -116,6 +116,11 @@ type actionMotionState struct {
 	Contract          MovementActionRuntimeContract
 	NormalInputPolicy string
 	TotalDistanceCM   float64
+	ContactPolicy     string
+	ContactTargetID   uint64
+	AllowsPassthrough bool
+	StopsAtContact    bool
+	ContactStopCM     float64
 }
 
 type vector struct {
@@ -1374,8 +1379,18 @@ func (r *Runtime) advanceActionMotionLocked(entity *entityState, now time.Time) 
 		Elapsed:            now.Sub(motion.StartedAt),
 	})
 
-	entity.position = fromDomainVector(progress.Projected)
-	entity.velocity = fromDomainVector(progress.Velocity)
+	projected := fromDomainVector(progress.Projected)
+	velocity := fromDomainVector(progress.Velocity)
+	distanceCM := progress.DistanceCM
+	contact := r.resolveActionMotionContactResponseLocked(entity, motion, projected, velocity, distanceCM)
+	if contact.Applied {
+		projected = contact.Position
+		velocity = contact.Velocity
+		distanceCM = contact.DistanceCM
+	}
+
+	entity.position = projected
+	entity.velocity = velocity
 	entity.movementState = motion.Contract.ActionType
 	if motion.SkillID != "" {
 		entity.skillState = "active"
@@ -1392,18 +1407,24 @@ func (r *Runtime) advanceActionMotionLocked(entity *entityState, now time.Time) 
 		}
 	}
 	entity.locomotion = locomotionFromContractWithOverrides(motion.Contract, phase, motion.StartPosition, entity.position, r.tick, motion.Sequence, progress.SpeedCMPerSecond, progress.DistanceCM)
-	entity.locomotion.ActionDistanceTraveled = progress.DistanceCM
+	entity.locomotion.ActionDistanceTraveled = distanceCM
 	entity.locomotion.ActionProjectedPosition = toProto(entity.position)
 	entity.locomotion.ClientActionSequence = motion.Sequence
 	entity.locomotion.ServerReceivedTick = r.tick
 	entity.locomotion.LastUpdatedTick = r.tick
 	applyActionInstanceLocomotionTiming(entity.locomotion, entity.actionInstance, now)
 
-	if progress.Complete {
-		entity.position = motion.ProjectedPosition
+	if progress.Complete || contact.Stopped {
+		if progress.Complete && !contact.Stopped {
+			entity.position = motion.ProjectedPosition
+		}
 		entity.velocity = vector{}
 		entity.locomotion.ActionProjectedPosition = toProto(entity.position)
-		entity.locomotion.ActionDistanceTraveled = progress.TotalDistanceCM
+		if progress.Complete && !contact.Stopped {
+			entity.locomotion.ActionDistanceTraveled = progress.TotalDistanceCM
+		} else {
+			entity.locomotion.ActionDistanceTraveled = distanceCM
+		}
 		entity.actionMotion = nil
 		return false
 	}

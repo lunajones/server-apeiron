@@ -213,6 +213,11 @@ func (r *Runtime) startCreatureSkillRootMotionLocked(creature *entityState, targ
 	if fullMotion.Stopped || fullMotion.DistanceCM <= 0 {
 		return
 	}
+	contact := creatureActionContactRuntimeFromContract(contract)
+	var contactTargetID uint64
+	if target != nil {
+		contactTargetID = target.id
+	}
 	creature.actionMotion = &actionMotionState{
 		SkillID:           decision.SelectedSkill,
 		CommandID:         instance.InstanceID,
@@ -224,6 +229,11 @@ func (r *Runtime) startCreatureSkillRootMotionLocked(creature *entityState, targ
 		Contract:          contract.MovementAction,
 		NormalInputPolicy: contract.NormalInputPolicy,
 		TotalDistanceCM:   fullMotion.DistanceCM,
+		ContactPolicy:     contact.Policy,
+		ContactTargetID:   contactTargetID,
+		AllowsPassthrough: contact.AllowsPassthrough,
+		StopsAtContact:    contact.StopsAtContact,
+		ContactStopCM:     contact.StopDistanceCM,
 	}
 }
 

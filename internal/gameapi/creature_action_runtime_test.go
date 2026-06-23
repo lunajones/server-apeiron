@@ -197,6 +197,84 @@ func TestWolfLungeMovementEnvelopeKeepsLandingInertiaAfterAirbornePhase(t *testi
 	}
 }
 
+func TestWolfLungePassthroughDoesNotStopRootMotionAtPlayerBody(t *testing.T) {
+	runtime := NewRuntimeWithContracts(RecoveryFixtureRuntimeContracts())
+	player := runtime.ensurePlayerLocked("local_player")
+	wolf := runtime.ensureWolfLocked(player)
+	contract := runtime.contracts.skillContract("lunge")
+	startedAt := time.Now().Add(-durationFromMS(contract.WindupMS) - 420*time.Millisecond)
+	instance := runtime.newCreatureActionInstance(wolf, "lunge", contract, wolf.position, startedAt)
+	wolf.actionInstance = &instance
+	wolf.position = vector{x: player.position.x + 260, y: player.position.y, z: player.position.z}
+
+	runtime.startCreatureSkillRootMotionLocked(wolf, player, creatureai.Decision{Action: "lunge", SelectedSkill: "lunge"}, contract, instance, creatureSkillMovementStartAt(instance, contract))
+	if wolf.actionMotion == nil {
+		t.Fatal("lunge did not start root motion")
+	}
+	if !wolf.actionMotion.AllowsPassthrough || wolf.actionMotion.StopsAtContact {
+		t.Fatalf("lunge contact flags = passthrough:%v stop:%v", wolf.actionMotion.AllowsPassthrough, wolf.actionMotion.StopsAtContact)
+	}
+	before := wolf.position
+	runtime.advanceActionMotionLocked(wolf, time.Now())
+
+	if wolf.actionMotion == nil {
+		t.Fatal("passthrough lunge stopped action motion at target contact")
+	}
+	if wolf.position.x >= before.x {
+		t.Fatalf("passthrough lunge did not continue through target: before=%#v after=%#v", before, wolf.position)
+	}
+}
+
+func TestWolfMaulContactStopsBeforeOverlappingTargetUsingContractGeometry(t *testing.T) {
+	runtime := NewRuntimeWithContracts(RecoveryFixtureRuntimeContracts())
+	player := runtime.ensurePlayerLocked("local_player")
+	wolf := runtime.ensureWolfLocked(player)
+	contract := runtime.contracts.skillContract("maul")
+	start := vector{x: player.position.x + 160, y: player.position.y, z: player.position.z}
+	wolf.position = start
+	startedAt := time.Now().Add(-760 * time.Millisecond)
+	instance := runtime.newCreatureActionInstance(wolf, "maul", contract, wolf.position, startedAt)
+
+	runtime.startCreatureSkillRootMotionLocked(wolf, player, creatureai.Decision{Action: "maul", SelectedSkill: "maul"}, contract, instance, startedAt)
+	if wolf.actionMotion == nil {
+		t.Fatal("maul did not start root motion")
+	}
+	if !wolf.actionMotion.StopsAtContact || wolf.actionMotion.AllowsPassthrough {
+		t.Fatalf("maul contact flags = passthrough:%v stop:%v", wolf.actionMotion.AllowsPassthrough, wolf.actionMotion.StopsAtContact)
+	}
+	if wolf.actionMotion.ContactStopCM <= 0 {
+		t.Fatalf("maul contact stop distance was not derived from contract geometry: %#v", wolf.actionMotion)
+	}
+	stopDistance := wolf.actionMotion.ContactStopCM
+
+	runtime.advanceActionMotionLocked(wolf, time.Now())
+
+	if wolf.actionMotion != nil {
+		t.Fatalf("maul contact stop should complete root motion: %#v", wolf.actionMotion)
+	}
+	if wolf.position.z != start.z {
+		t.Fatalf("maul contact response changed ground plane: %.2f -> %.2f", start.z, wolf.position.z)
+	}
+	targetDistance := distance(start, player.position)
+	remainingDistance := distance(wolf.position, player.position)
+	if remainingDistance < stopDistance-0.001 {
+		t.Fatalf("maul overlapped target: remaining %.2f stop %.2f targetDistance %.2f", remainingDistance, stopDistance, targetDistance)
+	}
+}
+
+func TestCreatureContactStopDistanceComesFromHitboxGeometryOnly(t *testing.T) {
+	contracts := RecoveryFixtureRuntimeContracts()
+	maul := contracts.skillContract("maul")
+	if got := creatureSkillContactStopDistanceCM(maul); got <= 0 {
+		t.Fatalf("maul stop distance = %.2f, want contract-derived geometry", got)
+	}
+
+	maul.Hitboxes = nil
+	if got := creatureSkillContactStopDistanceCM(maul); got != 0 {
+		t.Fatalf("empty hitbox contract invented stop distance %.2f", got)
+	}
+}
+
 func TestWolfLungeMovementPresentationIsContractDerived(t *testing.T) {
 	runtime := NewRuntimeWithContracts(RecoveryFixtureRuntimeContracts())
 	contract := runtime.contracts.skillContract("lunge")
