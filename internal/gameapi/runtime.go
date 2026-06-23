@@ -246,6 +246,7 @@ func (r *Runtime) AttachPlayer(ctx context.Context, req *gamev1.AttachPlayerRequ
 	}
 
 	player := r.ensurePlayerLocked(playerID)
+	r.clearExpiredOwnedRootMotionForAttachLocked(player, time.Now())
 	resetPlayerCommandReplayState(player)
 	if r.creaturesEnabled() {
 		r.ensureWolfLocked(player)
@@ -456,6 +457,42 @@ func resetPlayerCommandReplayState(player *entityState) {
 	player.lastClientTick = 0
 	player.processedCommandIDs = nil
 	player.processedCommandOrder = nil
+}
+
+func (r *Runtime) clearExpiredOwnedRootMotionForAttachLocked(player *entityState, now time.Time) {
+	if player == nil || player.actionMotion == nil || player.actionMotion.MotionSource != "owned_locomotion" || player.actionMotion.StartedAt.IsZero() {
+		return
+	}
+
+	expiry := durationFromMS(player.actionMotion.Contract.DurationMS)
+	if strings.EqualFold(player.actionMotion.Contract.ActionType, "dodge") && r.contracts.MovementProfile != nil {
+		expiry += durationFromMS(r.contracts.MovementProfile.GetDodgeCarryHandoffMs())
+	}
+	if expiry <= 0 || now.Sub(player.actionMotion.StartedAt) < expiry {
+		return
+	}
+
+	player.velocity = vector{}
+	player.movementState = "grounded"
+	player.skillState = "idle"
+	player.combatState = "ready"
+	player.actionLockedUntil = time.Time{}
+	player.actionLockReason = ""
+	if player.locomotion != nil && strings.EqualFold(player.locomotion.GetAction(), player.actionMotion.Contract.ActionType) {
+		player.locomotion.Phase = "complete"
+		player.locomotion.MovementMode = "grounded"
+		player.locomotion.PhaseElapsedMs = 0
+		player.locomotion.PhaseRemainingMs = 0
+		player.locomotion.TargetSpeed = 0
+		player.locomotion.EffectiveSpeed = 0
+		player.locomotion.LandingHandoffActive = false
+		player.locomotion.LandingExitDirection = nil
+		player.locomotion.LandingExitSpeed = 0
+		player.locomotion.LastUpdatedTick = r.tick
+	}
+	player.actionHandoffUntil = time.Time{}
+	player.actionHandoffAction = ""
+	player.actionMotion = nil
 }
 
 func resolvedPlayerSkillID(player *entityState, requestedSkillID string) string {

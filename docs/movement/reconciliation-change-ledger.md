@@ -459,3 +459,63 @@ rubberband signatures. Do not hide future failures by loosening correction/rejec
 manual PIE still shows rubber while this suite passes, investigate interference from state that this
 suite intentionally excludes: creature contact, action state persistence, post-skill handoff, or
 runtime state surviving across sessions.
+
+## 2026-06-23 - Reattach Clears Expired Owned Dodge Root
+
+### Symptom
+
+Dedicated dodge validation could open PIE but never submitted the first dodge. The log showed:
+`authoritative_dodge=true`, `auth_phase=active`, `phase_remaining=0.000`, `submitted=0`. Manual PIE
+matched this failure mode: dodge sometimes left the player unable to move, and closing/reopening
+Unreal could keep the player stuck because the server still exposed the old action state.
+
+### Hypothesis Matrix
+
+- Client/server contract mismatch: unlikely for this symptom because the dodge contract payload was
+  confirmed as `dodge_v1_full_iframe`.
+- Tuning/deadzone problem: rejected; the player was blocked before movement or correction could
+  happen.
+- Duplicate position owner: possible secondary risk, but not the first failure because no dodge was
+  submitted.
+- Stale post-action handoff/action state: confirmed by the zero-remaining authoritative dodge phase.
+- Creature/contact interference: excluded in validation because game-server ran with
+  `MOVEMENT_VALIDATION=true` and creature runtime disabled.
+
+### Cause
+
+`AttachPlayer` reset command replay state but did not clear an expired owned root motion for the
+player. A stale dodge action could therefore survive a new Unreal attach. On the client,
+`IsAuthoritativeDodgeStateActive` treated `startup/active/recovery` as active even when the
+effective remaining phase time was already zero.
+
+### Change
+
+- Server `AttachPlayer` now clears expired player-owned root motion before resetting replay state.
+  The cleanup is limited to expired `owned_locomotion`; it does not clear active actions or creature
+  state.
+- The cleanup also releases the action lock, clears exit handoff, zeros velocity, and marks matching
+  dodge locomotion complete.
+- Unreal `IsAuthoritativeDodgeStateActive` now uses effective phase remaining time, so a transient
+  authoritative dodge phase with zero remaining time cannot block movement/dodge submission forever.
+- PowerShell focused validation scanner now accepts the current focused summary shape with
+  `focused=dodge=1 ... stationary_basic=6 ...`.
+
+### Tests
+
+- `go test ./internal/gameapi -run "TestRubberbandGuardAttachClearsExpiredOwnedDodgeRoot|TestRubberbandGuardDodgeExitHandoffStopsLocalCarryAndReleasesLock|TestRubberbandGuardDodgeSnapshotPublishesAuthoritativeTimeline"`
+- `go test ./...` in `server-apeiron`
+- `go test ./...` in `db-apeiron`
+- `PlainTestMapEditor Win64 Development` Unreal build succeeded with `-NoHotReload`.
+- Dedicated Unreal dodge suite passed:
+  `Apeiron movement validation log scan passed`.
+- Dedicated Unreal grounded suite passed:
+  `Apeiron movement validation log scan passed`.
+- Focused Unreal M1/R/F suite passed:
+  `focused=dodge=1 dodge_cm=673.7 stationary_basic=6 rf=4/4 interleaved_basic=16 slow_curve=4 slow_curve_cm=10853.1 distance=5063.8 root_suppressed=0`.
+
+### Guardrail
+
+Do not let `AttachPlayer` revive expired owned-root state. Reattach may preserve a genuinely active
+server action, but an expired action plus expired handoff must become complete before the next local
+client run. Client-side authoritative action checks must use effective remaining time, not only the
+phase label, because old snapshots can otherwise act like permanent locks.

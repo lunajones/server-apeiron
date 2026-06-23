@@ -405,6 +405,45 @@ func TestRubberbandGuardDodgeExitHandoffStopsLocalCarryAndReleasesLock(t *testin
 	assertGroundedMoveLocomotion(t, h.player, "post-dodge-handoff")
 }
 
+func TestRubberbandGuardAttachClearsExpiredOwnedDodgeRoot(t *testing.T) {
+	t.Parallel()
+
+	h := newRuntimeGuardHarness(t, "rubber-guard-reattach-expired-dodge")
+	h.dodge(gamev1Vector(0, 1, 0))
+	if h.player.actionMotion == nil {
+		t.Fatal("dodge did not start owned action motion")
+	}
+	expiry := durationFromMS(h.player.actionMotion.Contract.DurationMS) + durationFromMS(h.runtime.contracts.MovementProfile.GetDodgeCarryHandoffMs())
+	h.player.actionMotion.StartedAt = time.Now().Add(-expiry - 100*time.Millisecond)
+	h.player.actionLockedUntil = time.Now().Add(time.Second)
+	h.player.actionLockReason = "dodge"
+
+	if _, err := h.runtime.AttachPlayer(context.Background(), &gamev1.AttachPlayerRequest{
+		Context:  &gamev1.RequestContext{SessionId: h.sessionID},
+		PlayerId: "local_player",
+	}); err != nil {
+		t.Fatalf("reattach failed: %v", err)
+	}
+	if h.player.actionMotion != nil {
+		t.Fatalf("reattach left expired dodge action motion active: %#v", h.player.actionMotion)
+	}
+	if !h.player.actionLockedUntil.IsZero() || h.player.actionLockReason != "" {
+		t.Fatalf("reattach left expired dodge lock until=%v reason=%q", h.player.actionLockedUntil, h.player.actionLockReason)
+	}
+	if loco := h.player.locomotion; loco != nil && loco.GetAction() == "dodge" && loco.GetPhase() != "complete" {
+		t.Fatalf("reattach left dodge locomotion phase=%q, want complete or non-dodge", loco.GetPhase())
+	}
+
+	h.sequence = 1
+	ack, err := h.runtime.SubmitCommand(context.Background(), testRuntimeDodgeCommand(h.sessionID, h.nextSequence(), gamev1Vector(1, 0, 0)))
+	if err != nil {
+		t.Fatalf("post-reattach dodge failed: %v", err)
+	}
+	if !ack.GetAccepted() {
+		t.Fatalf("post-reattach dodge rejected code=%q message=%q metadata=%v", ack.GetRejectionCode(), ack.GetMessage(), ack.GetMetadata())
+	}
+}
+
 func TestRubberbandGuardRepeatedShieldSkillsWhileSprintingForward(t *testing.T) {
 	t.Parallel()
 
