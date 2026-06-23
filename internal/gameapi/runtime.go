@@ -147,7 +147,11 @@ func ServeRuntime(ctx context.Context, cfg config.NetworkConfig, runtime *Runtim
 }
 
 func NewRuntime() *Runtime {
-	return NewRuntimeWithContracts(RecoveredRuntimeContracts())
+	return NewRuntimeWithContracts(RuntimeContracts{
+		Source:          "unconfigured_runtime_contracts",
+		ActionContracts: map[string]MovementActionRuntimeContract{},
+		SkillContracts:  map[string]SkillRuntimeContract{},
+	})
 }
 
 func NewRuntimeWithContracts(contracts RuntimeContracts) *Runtime {
@@ -155,23 +159,6 @@ func NewRuntimeWithContracts(contracts RuntimeContracts) *Runtime {
 }
 
 func NewRuntimeWithOptions(contracts RuntimeContracts, options RuntimeOptions) *Runtime {
-	if contracts.recoveredFallbacksAllowed() && contracts.MovementProfile == nil {
-		contracts.MovementProfile = recoveredMovementProfile()
-	}
-	if contracts.recoveredFallbacksAllowed() && contracts.ActionContracts == nil {
-		recovered := RecoveredRuntimeContracts()
-		contracts.ActionContracts = recovered.ActionContracts
-	}
-	if contracts.recoveredFallbacksAllowed() && contracts.SkillContracts == nil {
-		recovered := RecoveredRuntimeContracts()
-		contracts.SkillContracts = recovered.SkillContracts
-	}
-	if contracts.recoveredFallbacksAllowed() && contracts.WolfPolicy.ContractID == "" {
-		contracts.WolfPolicy = RecoveredRuntimeContracts().WolfPolicy
-	}
-	if contracts.recoveredFallbacksAllowed() && len(contracts.CombatModes) == 0 {
-		contracts.CombatModes = recoveredCombatModeSlots()
-	}
 	if contracts.ActionContracts == nil {
 		contracts.ActionContracts = map[string]MovementActionRuntimeContract{}
 	}

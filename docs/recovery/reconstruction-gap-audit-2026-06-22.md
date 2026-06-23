@@ -44,21 +44,20 @@ Status:
 
 Expected architecture:
 - DB/profile contracts are authoritative for tuning shared by server and Unreal.
-- Fallbacks can exist only as explicit dev/recovery mode, never as silent production behavior.
+- Runtime fallbacks must not be reachable from production boot. Recovered data can exist only as test/reconstruction fixture while DB contracts are being rebuilt.
 
 Current recovered code evidence:
-- `internal/app/lifecycle.go` now loads DB contracts first and rejects startup without DB unless `ALLOW_RECOVERED_RUNTIME_FALLBACK=true` is explicitly set.
-- `internal/gameapi/runtime.go` only backfills missing runtime contract groups when the contract source is an explicit recovered fallback source.
+- `internal/app/lifecycle.go` rejects startup without DB.
+- `internal/gameapi/runtime.go` does not backfill missing runtime contract groups from recovered runtime.
 - `internal/gameapi/contracts.go` labels complete strict DB loads as `db_contracts`.
 - `db-apeiron.runtime_movement_reconciliation_profile` is now the source for the rich Unreal-facing movement reconciliation profile.
-- `internal/gameapi/contracts.go` declares source `recovered_runtime_fallback`.
+- `LoadRuntimeContractsFromDB` starts from an empty strict container instead of `RecoveredRuntimeContracts()`.
 
 Risk:
-- Remaining risk is no longer silent app boot fallback; it is combat-package fallback attack profiles and any vertical-slice code path that bypasses `app.Run`.
+- Remaining risk is direct test/reconstruction fixture use, not app boot. Keep production paths DB-required.
 
 Required reconstruction:
 - Keep strict startup mode for required DB contract coverage.
-- Keep fallback behind explicit recovery/dev flag only.
 - Log and fail loudly when required production contracts are missing.
 - Add readiness report listing every required action/skill/creature/combat mode contract and its source.
 
@@ -69,26 +68,22 @@ Source threads:
 - current code audit
 
 Status:
-- Partially mitigated on 2026-06-22 for the migrated player surface.
-- Basic combo alias/stages plus Shield Bash and Shield Rush reject recovered fallback profiles even if recovery fallback mode is enabled.
+- Completed on 2026-06-22 for the player attack fallback path.
 
 Expected architecture:
 - Basic attack is a first-class combo alias resolved by server into `player_basic_attack_1/2/3`.
 - Each stage is a real skill/profile from DB, with movement/timing/hitbox/defense contract.
 
 Current recovered code evidence:
-- `internal/combat/player_skill_combat_system.go` still contains `AllowFallbackAttack` and `fallbackPlayerAttackProfile`.
-- Fallback literals include damage, range, cooldown, hitbox shape, length, angle, max targets.
-- `internal/combat/runtime_helpers.go` blocks fallback for `player_basic_attack`, `player_basic_attack_1/2/3`, `player_shield_bash`, and `player_shield_rush`.
+- `internal/combat/player_skill_combat_system.go` no longer contains `AllowFallbackAttack` or `fallbackPlayerAttackProfile`.
+- Missing attack profile runtime data records `contract_missing` instead of fabricating data.
+- The old migrated-skill fallback blocklist was removed because the fallback path no longer exists.
 
 Risk:
-- Missing DB profile can still produce a "working" attack only for non-migrated recovery skills if `AllowFallbackAttack` is deliberately enabled.
-- Tuning can diverge from DB and from Unreal visuals.
+- Missing DB profile now surfaces as missing contract behavior. This is intentionally harsher and should force DB/profile recovery.
 
 Required reconstruction:
-- Keep fallback attack profiles dev/recovery-only.
-- For normal runtime, missing player skill profile must reject command with explicit contract error.
-- Add broader tests proving `player_basic_attack` alias resolves to stage contracts and never to fallback in strict mode.
+- Add broader tests proving `player_basic_attack` alias resolves to stage contracts and missing DB data is reported as `contract_missing`.
 
 ## P1 Gaps
 

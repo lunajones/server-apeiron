@@ -55,7 +55,6 @@ type RegionPlayerSkillCombatSystem struct {
 	LastMisses              []SkillMiss
 	LastActionRuntimeEvents []ActionRuntimeEvent
 	ActionRuntimeCounters   ActionRuntimeCounters
-	AllowFallbackAttack     bool
 	actionStates            map[ids.RuntimeEntityID]playerActionRuntimeState
 }
 
@@ -2878,8 +2877,7 @@ func (s *RegionPlayerSkillCombatSystem) profileForSkill(ctx context.Context, ski
 
 func (s *RegionPlayerSkillCombatSystem) playerAttackProfileForSkill(ctx context.Context, source domainentity.Entity, skillID ids.SkillID, now time.Time, reason string) AttackProfile {
 	profile := s.profileForSkill(ctx, skillID)
-	usesFallback := attackProfileMissingRuntimeData(profile)
-	if usesFallback && (skillMovementMigratedProfileFallbackBlocked(skillID) || !s.AllowFallbackAttack) {
+	if attackProfileMissingRuntimeData(profile) {
 		if profile.Skill == nil {
 			profile.Skill = &apeironv1.Skill{Id: skillID.String()}
 		}
@@ -2887,20 +2885,8 @@ func (s *RegionPlayerSkillCombatSystem) playerAttackProfileForSkill(ctx context.
 		if source != nil {
 			entityID = source.RuntimeID()
 		}
-		blockReason := reason + "_blocked_missing_profile"
-		if skillMovementMigratedProfileFallbackBlocked(skillID) {
-			blockReason = reason + "_blocked_migrated_skill"
-		}
-		s.recordActionRuntimeEvent(actionRuntimeFallbackEvent(actionruntime.ActorKindPlayer, entityID, ids.SkillID(profile.Skill.GetId()), now, blockReason))
+		s.recordActionRuntimeEvent(actionRuntimeContractMissingEvent(actionruntime.ActorKindPlayer, entityID, ids.SkillID(profile.Skill.GetId()), now, reason+"_missing_profile"))
 		return profile
-	}
-	profile = fallbackPlayerAttackProfile(profile, skillID)
-	if usesFallback {
-		entityID := ids.RuntimeEntityID(0)
-		if source != nil {
-			entityID = source.RuntimeID()
-		}
-		s.recordActionRuntimeEvent(actionRuntimeFallbackEvent(actionruntime.ActorKindPlayer, entityID, ids.SkillID(profile.Skill.GetId()), now, reason))
 	}
 	return profile
 }
@@ -3299,65 +3285,6 @@ func (s *RegionPlayerSkillCombatSystem) applySourceDefenseReaction(source domain
 	components.Skills.CurrentSkillID = ""
 	components.Skills.LastResolvedAtMS = state.RiposteVulnerableUntil.UnixMilli()
 	return "parry_interrupted_riposte_vulnerable", state.RiposteVulnerableUntil.UnixMilli()
-}
-
-func fallbackPlayerAttackProfile(profile AttackProfile, skillID ids.SkillID) AttackProfile {
-	if skillID == "" {
-		skillID = skill.DefaultWeaponBasicActionID
-	}
-	if profile.Skill == nil {
-		profile.Skill = &apeironv1.Skill{
-			Id:               skillID.String(),
-			SkillType:        "melee_attack",
-			TargetType:       "enemy",
-			BaseDamage:       28,
-			DamageType:       "physical",
-			DamageMultiplier: 1,
-			PostureDamage:    18,
-			IsBlockable:      true,
-			IsParryable:      true,
-			MaxTargets:       2,
-			MaxRange:         220,
-			CooldownMs:       850,
-		}
-	}
-	if len(profile.Hitboxes) == 0 {
-		profile.Hitboxes = []*apeironv1.SkillHitboxProfile{{
-			Id:                  profile.Skill.GetId() + "_player_arc",
-			SkillId:             profile.Skill.GetId(),
-			HitboxIndex:         0,
-			HitboxShape:         "cone",
-			HitboxStartMs:       0,
-			HitboxEndMs:         140,
-			Length:              230,
-			Angle:               92,
-			TargetType:          stringPointer("enemy"),
-			MaxTargets:          int32Pointer(maxInt32(profile.Skill.GetMaxTargets(), 1)),
-			Priority:            20,
-			RequiresLineOfSight: true,
-			CanHitNeutral:       true,
-		}}
-	}
-	if profile.Impact == nil {
-		profile.Impact = &apeironv1.SkillImpactProfile{SkillId: profile.Skill.GetId(), ImpactType: "light", PoiseDamage: 10, StaggerPower: 0.2, GuardDamageMultiplier: 1.15}
-	}
-	if profile.SourceCore == nil {
-		profile.SourceCore = &apeironv1.CombatCoreProfile{DamageDealtMultiplier: 1}
-	}
-	if profile.TargetCore == nil {
-		profile.TargetCore = &apeironv1.CombatCoreProfile{CanBlock: true, BlockDamageReduction: 0.6, MaxPosture: 100, PostureDamageMultiplier: 1, PostureBreakDurationMs: 900}
-	}
-	if profile.Cooldown <= 0 && playerSkillUsesCooldown(profile) {
-		if profile.Skill.GetCooldownMs() > 0 {
-			profile.Cooldown = time.Duration(profile.Skill.GetCooldownMs()) * time.Millisecond
-		} else {
-			profile.Cooldown = 850 * time.Millisecond
-		}
-	}
-	if profile.Timing != nil && profile.Timing.GetGlobalCooldownMs() > 0 && playerSkillUsesCooldown(profile) {
-		profile.Cooldown = maxDuration(profile.Cooldown, time.Duration(profile.Timing.GetGlobalCooldownMs())*time.Millisecond)
-	}
-	return profile
 }
 
 func playerSkillCooldown(profile AttackProfile, timing ActionTimingConfig) time.Duration {

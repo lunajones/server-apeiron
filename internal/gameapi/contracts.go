@@ -154,6 +154,7 @@ type movementActionContractMetadata struct {
 }
 
 const runtimeMovementReconciliationProfileID = "player_default_movement_profile"
+const wolfRuntimeContractID = "contract_wolf_pack_harasser_v1"
 
 func requiredBaseMovementActions() []struct {
 	abilityKey string
@@ -185,8 +186,7 @@ func requiredRuntimeSkillIDs() []string {
 }
 
 func LoadRuntimeContractsFromDB(ctx context.Context, skills ContractSource, profiles ProfileContractSource) RuntimeContracts {
-	contracts := RecoveredRuntimeContracts()
-	contracts.Source = "db_contracts_with_recovered_fallback"
+	contracts := emptyDBRuntimeContracts()
 
 	if resp, err := profiles.GetRuntimeMovementReconciliationProfile(ctx, &dbv1.IdRequest{Id: runtimeMovementReconciliationProfileID}); err == nil && resp.GetFound() {
 		contracts.MovementProfile = runtimeMovementReconciliationProfileFromDB(resp.GetProfile())
@@ -252,6 +252,17 @@ func LoadRuntimeContractsFromDB(ctx context.Context, skills ContractSource, prof
 		contracts.Source = "db_contracts"
 	}
 	return contracts
+}
+
+func emptyDBRuntimeContracts() RuntimeContracts {
+	return RuntimeContracts{
+		Source:          "db_contracts_incomplete",
+		ActionContracts: map[string]MovementActionRuntimeContract{},
+		SkillContracts:  map[string]SkillRuntimeContract{},
+		WolfPolicy: WolfRuntimePolicy{
+			ContractID: wolfRuntimeContractID,
+		},
+	}
 }
 
 func loadWolfBrainRuntimeContracts(ctx context.Context, profiles ProfileContractSource, contracts *RuntimeContracts) {
@@ -441,10 +452,6 @@ func (c RuntimeContracts) ValidateRequiredCoverage(strictLoadedSource bool) erro
 	return nil
 }
 
-func (c RuntimeContracts) recoveredFallbacksAllowed() bool {
-	return c.Source == "recovered_runtime_fallback" || c.Source == "db_contracts_with_recovered_fallback"
-}
-
 func validateRuntimeMovementReconciliationProfile(profile *gamev1.MovementReconciliationProfile) []string {
 	var missing []string
 	if profile.GetProfileId() == "" {
@@ -601,8 +608,8 @@ func RecoveredRuntimeContracts() RuntimeContracts {
 		ActionContracts: map[string]MovementActionRuntimeContract{},
 		SkillContracts:  map[string]SkillRuntimeContract{},
 		WolfPolicy: WolfRuntimePolicy{
-			ContractID:                     "contract_wolf_pack_harasser_v1",
-			ContractHash:                   "contract_wolf_pack_harasser_v1",
+			ContractID:                     wolfRuntimeContractID,
+			ContractHash:                   wolfRuntimeContractID,
 			CapabilityID:                   "wolf_pack_harasser",
 			DesiredRangeCM:                 420,
 			ChaseRangeCM:                   760,
@@ -950,31 +957,14 @@ func (c RuntimeContracts) contractForAbility(ability string) MovementActionRunti
 	if contract, ok := registry.Resolve(ability); ok {
 		return contract
 	}
-	if !c.recoveredFallbacksAllowed() {
-		return MovementActionRuntimeContract{AbilityKey: ability}
-	}
-	return MovementActionRuntimeContract{
-		ID:                       ability + "_contract",
-		AbilityKey:               ability,
-		ActionType:               ability,
-		DurationMS:               180,
-		ActiveMS:                 120,
-		RecoveryMS:               60,
-		ReconciliationContractID: "grounded_move_reconciliation",
-		ReconciliationCategory:   "grounded_move_reconciliation",
-		PhaseWindowPolicy:        "server_authoritative",
-		PredictionErrorPolicy:    "bounded_smooth_correction",
-	}
+	return MovementActionRuntimeContract{AbilityKey: ability}
 }
 
 func (c RuntimeContracts) skillContract(skillID string) SkillRuntimeContract {
 	if contract, ok := c.SkillContracts[skillID]; ok {
 		return contract
 	}
-	if !c.recoveredFallbacksAllowed() {
-		return SkillRuntimeContract{SkillID: skillID}
-	}
-	return recoveredSkillContract(skillID, 0, 180, 120, 60)
+	return SkillRuntimeContract{SkillID: skillID}
 }
 
 func (c RuntimeContracts) movementContractManifest() []*gamev1.MovementActionContractManifest {

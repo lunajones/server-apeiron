@@ -23,7 +23,6 @@ const (
 	ActionRuntimeEventInstanceCreated          = "instance_created"
 	ActionRuntimeEventMovementContractResolved = "movement_contract_resolved"
 	ActionRuntimeEventContractMissing          = "contract_missing"
-	ActionRuntimeEventFallbackProfile          = "fallback_profile"
 	ActionRuntimeEventQueueAccepted            = "queue_accepted"
 	ActionRuntimeEventQueueRejected            = "queue_rejected"
 )
@@ -42,16 +41,6 @@ func skillMovementContractRequiredForProfile(profile AttackProfile) bool {
 		}
 	}
 	return false
-}
-
-func skillMovementMigratedProfileFallbackBlocked(skillID ids.SkillID) bool {
-	switch skillID {
-	case "player_basic_attack", "player_basic_attack_1", "player_basic_attack_2", "player_basic_attack_3",
-		"player_shield_bash", "player_shield_rush":
-		return true
-	default:
-		return false
-	}
 }
 
 func ActionTimingFromProfile(profile AttackProfile) ActionTimingConfig {
@@ -107,8 +96,6 @@ func (s *RegionPlayerSkillCombatSystem) recordActionRuntimeEvent(event ActionRun
 	}
 	s.LastActionRuntimeEvents = append(s.LastActionRuntimeEvents, event)
 	switch event.Kind {
-	case ActionRuntimeEventFallbackProfile:
-		s.ActionRuntimeCounters.Fallbacks++
 	case ActionRuntimeEventContractMissing:
 		s.ActionRuntimeCounters.MissingContracts++
 	}
@@ -137,10 +124,6 @@ func (s *RegionPlayerSkillCombatSystem) updatePlayerActionPhase(entityID ids.Run
 
 func actionRuntimeContractMissingEvent(actorKind actionruntime.ActorKind, entityID ids.RuntimeEntityID, skillID ids.SkillID, at time.Time, reason string) ActionRuntimeEvent {
 	return ActionRuntimeEvent{Kind: ActionRuntimeEventContractMissing, ActorKind: actorKind, EntityID: entityID, SkillID: skillID, At: at, Reason: reason}
-}
-
-func actionRuntimeFallbackEvent(actorKind actionruntime.ActorKind, entityID ids.RuntimeEntityID, skillID ids.SkillID, at time.Time, reason string) ActionRuntimeEvent {
-	return ActionRuntimeEvent{Kind: ActionRuntimeEventFallbackProfile, ActorKind: actorKind, EntityID: entityID, SkillID: skillID, At: at, Reason: reason}
 }
 
 func actionRuntimeEventFromInstance(kind string, instance actionruntime.Instance, at time.Time, reason string) ActionRuntimeEvent {

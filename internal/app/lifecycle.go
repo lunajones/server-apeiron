@@ -53,20 +53,8 @@ func loadGameRuntimeContracts(ctx context.Context, cfg *config.Config, dbClient 
 		return contracts, nil
 	}
 
-	if cfg != nil && cfg.Runtime.AllowRecoveredRuntimeFallback {
-		contracts := gameapi.RecoveredRuntimeContracts()
-		if err := contracts.ValidateRequiredCoverage(false); err != nil {
-			return gameapi.RuntimeContracts{}, err
-		}
-		logging.WithComponent("app").
-			Warn().
-			Str("source", contracts.Source).
-			Msg("game runtime using explicitly enabled recovered fallback contracts")
-		return contracts, nil
-	}
-
 	return gameapi.RuntimeContracts{}, dbapeiron.ErrRequiredUnavailable(
-		"game runtime contracts require db-apeiron; set DB_APEIRON_ENDPOINT or explicitly set ALLOW_RECOVERED_RUNTIME_FALLBACK=true for recovery-only boot",
+		"game runtime contracts require db-apeiron; set DB_APEIRON_ENDPOINT and keep DB_APEIRON_STARTUP_REQUIRED=true",
 	)
 }
 

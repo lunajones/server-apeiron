@@ -20,7 +20,6 @@ type Config struct {
 	Navigation NavigationConfig
 	AI         AIConfig
 	Validation ValidationConfig
-	Runtime    RuntimeConfig
 }
 
 type AppConfig struct {
@@ -95,10 +94,6 @@ type AIConfig struct {
 
 type ValidationConfig struct {
 	MovementValidation bool
-}
-
-type RuntimeConfig struct {
-	AllowRecoveredRuntimeFallback bool
 }
 
 func LoadConfig() (*Config, error) {
@@ -227,14 +222,6 @@ func LoadConfig() (*Config, error) {
 	if hasArg("MovementValidation") {
 		movementValidation = true
 	}
-	allowRecoveredRuntimeFallback, err := getOptionalBool("ALLOW_RECOVERED_RUNTIME_FALLBACK", false)
-	if err != nil {
-		return nil, err
-	}
-	if hasArg("AllowRecoveredRuntimeFallback") {
-		allowRecoveredRuntimeFallback = true
-	}
-
 	return &Config{
 		App: AppConfig{
 			Name:        getEnv("APP_NAME"),
@@ -296,9 +283,6 @@ func LoadConfig() (*Config, error) {
 		},
 		Validation: ValidationConfig{
 			MovementValidation: movementValidation,
-		},
-		Runtime: RuntimeConfig{
-			AllowRecoveredRuntimeFallback: allowRecoveredRuntimeFallback,
 		},
 	}, nil
 }

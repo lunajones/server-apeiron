@@ -303,21 +303,22 @@ The app boot path still initialized `gameapi.RecoveredRuntimeContracts()` before
 
 ## Implemented
 
-- Added `ALLOW_RECOVERED_RUNTIME_FALLBACK` / `-AllowRecoveredRuntimeFallback`.
-- `internal/app/lifecycle.go` now refuses to load game runtime contracts without DB unless the recovered fallback flag is explicitly enabled.
+- Removed `ALLOW_RECOVERED_RUNTIME_FALLBACK` / `-AllowRecoveredRuntimeFallback` as a boot path.
+- `internal/app/lifecycle.go` now refuses to load game runtime contracts without DB.
 - Complete strict DB loads are labeled `db_contracts`.
-- `gameapi.NewRuntimeWithOptions` no longer backfills missing contract groups from recovered runtime unless the source itself is an explicit recovered fallback source.
+- `gameapi.NewRuntimeWithOptions` no longer backfills missing contract groups from recovered runtime.
 - `RuntimeContracts.contractForAbility` and `skillContract` no longer invent missing contracts for strict DB sources.
+- `LoadRuntimeContractsFromDB` starts from an empty strict contract container, not from `RecoveredRuntimeContracts()`.
 
 ## Validated
 
-- `server-apeiron`: `go test ./...`
+- `server-apeiron`: `GOMAXPROCS=2 go test -p 1 ./...`
 - `server-apeiron`: `go build -o bin/game-server.exe ./cmd/game-server`
 
 ## Remaining Recovery Notes
 
 - `movement_reconciliation_contract` remains the per-action ownership category contract. The rich Unreal-facing profile is now tracked separately as `runtime_movement_reconciliation_profile`.
-- `internal/combat/player_skill_combat_system.go` still has fallback player attack profile paths and remains the next strict-fallback recovery target.
+- `RecoveredRuntimeContracts()` remains only as a test/recovery fixture for old unit scenarios. It is not reachable from app boot.
 
 # 2026-06-22 - DB-authoritative runtime movement reconciliation profile slice
 
@@ -352,6 +353,24 @@ The app boot path still initialized `gameapi.RecoveredRuntimeContracts()` before
 ## Finding
 
 The combat package already blocked recovered fallback profiles for Shield Bash, Shield Rush, and basic attack 3, but basic attack 1/2 and the generic `player_basic_attack` alias were not in that migrated-skill guard. If `AllowFallbackAttack` was enabled for recovery, those migrated combo stages could still fabricate a generic melee profile.
+
+Follow-up on 2026-06-22 removed the whole player attack profile fallback path instead of maintaining a per-skill blocklist.
+
+## Implemented
+
+- Removed `AllowFallbackAttack`.
+- Removed `fallbackPlayerAttackProfile`.
+- Missing skill/profile/hitbox runtime data now records `contract_missing` and returns the incomplete profile instead of fabricating damage, hitbox, cooldown, impact, source core, or target core data.
+- Removed the migrated-skill fallback guard and its tests because there is no longer a generic player attack fallback to guard.
+
+## Validated
+
+- `server-apeiron`: `GOMAXPROCS=2 go test -p 1 ./internal/combat`
+- `server-apeiron`: `GOMAXPROCS=2 go test -p 1 ./...`
+
+## Decision
+
+Combat profile values must come from DB-backed skill/profile/hitbox/impact/core data. If that data is missing, the system must surface the missing contract instead of making the attack appear functional.
 
 ## Implemented
 

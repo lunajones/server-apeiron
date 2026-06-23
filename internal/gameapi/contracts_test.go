@@ -118,6 +118,38 @@ func TestLoadRuntimeContractsFromDBRejectsMissingRequiredBinding(t *testing.T) {
 	}
 }
 
+func TestLoadRuntimeContractsFromDBDoesNotLeakRecoveredAbilityFallback(t *testing.T) {
+	source := fakeRuntimeContractSource{missingActions: map[string]bool{"dodge_v1_full_iframe": true}}
+	contracts := LoadRuntimeContractsFromDB(context.Background(), source, source)
+
+	err := contracts.ValidateRequiredCoverage(true)
+	if err == nil {
+		t.Fatal("expected missing DB movement action to fail strict coverage")
+	}
+	if !strings.Contains(err.Error(), "missing movement action dodge -> dodge_v1_full_iframe") {
+		t.Fatalf("coverage error = %v", err)
+	}
+	if got := contracts.ActionContracts["dodge"]; got.ID != "" {
+		t.Fatalf("DB loader leaked recovered dodge fallback: %#v", got)
+	}
+}
+
+func TestLoadRuntimeContractsFromDBDoesNotLeakRecoveredCombatModeFallback(t *testing.T) {
+	source := fakeRuntimeContractSource{missingCombatModes: true}
+	contracts := LoadRuntimeContractsFromDB(context.Background(), source, source)
+
+	err := contracts.ValidateRequiredCoverage(true)
+	if err == nil {
+		t.Fatal("expected missing DB combat mode slots to fail strict coverage")
+	}
+	if !strings.Contains(err.Error(), "missing weapon combat mode slots weaponkit_sword_shield") {
+		t.Fatalf("coverage error = %v", err)
+	}
+	if len(contracts.CombatModes) != 0 {
+		t.Fatalf("DB loader leaked recovered combat modes: %#v", contracts.CombatModes)
+	}
+}
+
 func TestDBRuntimeContractsDoNotInventMissingFallbacks(t *testing.T) {
 	contracts := RuntimeContracts{Source: "db_contracts"}
 
@@ -169,8 +201,9 @@ func TestMovementValidationRuntimeDoesNotSpawnCreature(t *testing.T) {
 }
 
 type fakeRuntimeContractSource struct {
-	missingActions map[string]bool
-	missingSkills  map[string]bool
+	missingActions     map[string]bool
+	missingSkills      map[string]bool
+	missingCombatModes bool
 }
 
 func (f fakeRuntimeContractSource) GetSkill(_ context.Context, req *dbv1.IdRequest, _ ...grpc.CallOption) (*dbv1.SkillResponse, error) {
@@ -255,7 +288,10 @@ func (f fakeRuntimeContractSource) GetSkillMovementActionBinding(_ context.Conte
 	}, nil
 }
 
-func (fakeRuntimeContractSource) GetWeaponCombatModeSlots(context.Context, *dbv1.IdRequest, ...grpc.CallOption) (*dbv1.WeaponCombatModeSlotsResponse, error) {
+func (f fakeRuntimeContractSource) GetWeaponCombatModeSlots(context.Context, *dbv1.IdRequest, ...grpc.CallOption) (*dbv1.WeaponCombatModeSlotsResponse, error) {
+	if f.missingCombatModes {
+		return &dbv1.WeaponCombatModeSlotsResponse{Found: false}, nil
+	}
 	return &dbv1.WeaponCombatModeSlotsResponse{
 		Found: true,
 		Slots: []*dbv1.WeaponCombatModeSlot{
@@ -413,8 +449,27 @@ func (fakeRuntimeContractSource) GetCreatureOrbitPolicy(_ context.Context, req *
 	}, nil
 }
 
-func (fakeRuntimeContractSource) GetCreatureEvasionPolicies(context.Context, *dbv1.IdRequest, ...grpc.CallOption) (*dbv1.CreatureEvasionPoliciesResponse, error) {
-	return &dbv1.CreatureEvasionPoliciesResponse{Found: false}, nil
+func (fakeRuntimeContractSource) GetCreatureEvasionPolicies(_ context.Context, req *dbv1.IdRequest, _ ...grpc.CallOption) (*dbv1.CreatureEvasionPoliciesResponse, error) {
+	if req.GetId() != "contract_wolf_pack_harasser_v1" {
+		return &dbv1.CreatureEvasionPoliciesResponse{Found: false}, nil
+	}
+	return &dbv1.CreatureEvasionPoliciesResponse{
+		Found: true,
+		Policies: []*dbv1.CreatureEvasionPolicy{
+			{
+				Id:                      "evasion_wolf_harasser_dodge_v1",
+				BehaviorContractId:      req.GetId(),
+				DodgeSkillId:            "wolf_dodge",
+				MaxChainCount:           4,
+				StaminaCostMultiplier:   0.5,
+				RetreatChanceMultiplier: 0.7,
+				LateralBias:             0.8,
+				BackstepBias:            0.2,
+				PressureThreshold:       0.55,
+				CooldownMs:              260,
+			},
+		},
+	}, nil
 }
 
 func (fakeRuntimeContractSource) GetCreatureSkillSetupPolicies(context.Context, *dbv1.IdRequest, ...grpc.CallOption) (*dbv1.CreatureSkillSetupPoliciesResponse, error) {
