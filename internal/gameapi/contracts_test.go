@@ -72,6 +72,34 @@ func TestStrictRuntimeCoverageRejectsSkillWithoutMovementPhasePolicies(t *testin
 	}
 }
 
+func TestStrictRuntimeCoverageRejectsIncompleteMovementActionContract(t *testing.T) {
+	contracts := RecoveryFixtureRuntimeContracts()
+	action := contracts.ActionContracts["player_shield_rush"]
+	action.PhaseWindowPolicy = ""
+	action.PredictionErrorPolicy = ""
+	action.RootMotionOwner = ""
+	action.ContactPolicy = ""
+	contracts.ActionContracts["player_shield_rush"] = action
+	skill := contracts.SkillContracts["player_shield_rush"]
+	skill.MovementAction = action
+	contracts.SkillContracts["player_shield_rush"] = skill
+
+	err := contracts.ValidateRequiredCoverage(true)
+	if err == nil {
+		t.Fatal("ValidateRequiredCoverage accepted incomplete skill movement action contract")
+	}
+	for _, want := range []string{
+		"skill movement player_shield_rush phase window policy",
+		"skill movement player_shield_rush prediction error policy",
+		"skill movement player_shield_rush root motion owner",
+		"skill movement player_shield_rush contact policy",
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("missing blocker %q in %v", want, err)
+		}
+	}
+}
+
 func TestStrictRuntimeCoverageAllowsNonDamagingMovementSkillWithoutHitbox(t *testing.T) {
 	contracts := RecoveryFixtureRuntimeContracts()
 	skill := contracts.SkillContracts["wolf_dodge"]

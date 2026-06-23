@@ -539,6 +539,9 @@ func (c RuntimeContracts) ValidateRequiredCoverage(strictLoadedSource bool) erro
 		if contract.ReconciliationContractID == "" {
 			missing = append(missing, fmt.Sprintf("movement action %s reconciliation", ability.abilityKey))
 		}
+		if strictLoadedSource {
+			missing = append(missing, validateMovementActionRuntimeContract("movement action "+ability.abilityKey, contract, false)...)
+		}
 	}
 	for _, skillID := range requiredRuntimeSkillIDs() {
 		skill, ok := c.SkillContracts[skillID]
@@ -571,6 +574,7 @@ func (c RuntimeContracts) ValidateRequiredCoverage(strictLoadedSource bool) erro
 			missing = append(missing, "skill action manifest "+skillID)
 		}
 		if strictLoadedSource {
+			missing = append(missing, validateMovementActionRuntimeContract("skill movement "+skillID, skill.MovementAction, true)...)
 			missing = append(missing, validateRuntimeSkillContract(skillID, skill)...)
 		}
 	}
@@ -629,6 +633,40 @@ func (c RuntimeContracts) ValidateRequiredCoverage(strictLoadedSource bool) erro
 		return fmt.Errorf("runtime contract coverage incomplete: %s", strings.Join(missing, "; "))
 	}
 	return nil
+}
+
+func validateMovementActionRuntimeContract(label string, contract MovementActionRuntimeContract, skillOwned bool) []string {
+	var missing []string
+	if contract.ID == "" {
+		missing = append(missing, label+" id")
+	}
+	if contract.AbilityKey == "" {
+		missing = append(missing, label+" ability key")
+	}
+	if contract.ActionType == "" {
+		missing = append(missing, label+" action type")
+	}
+	if movement.ActionDuration(contract) <= 0 {
+		missing = append(missing, label+" duration")
+	}
+	if contract.ReconciliationContractID == "" && contract.ReconciliationCategory == "" {
+		missing = append(missing, label+" reconciliation")
+	}
+	if contract.PhaseWindowPolicy == "" {
+		missing = append(missing, label+" phase window policy")
+	}
+	if contract.PredictionErrorPolicy == "" {
+		missing = append(missing, label+" prediction error policy")
+	}
+	if skillOwned {
+		if contract.RootMotionOwner == "" {
+			missing = append(missing, label+" root motion owner")
+		}
+		if contract.ContactPolicy == "" {
+			missing = append(missing, label+" contact policy")
+		}
+	}
+	return missing
 }
 
 func validateRuntimeSkillContract(skillID string, skill SkillRuntimeContract) []string {
