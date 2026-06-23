@@ -154,7 +154,14 @@ func combatOutcomeReason(result DamageResult) string {
 	}
 }
 
-func impactResponseProfileForEntity(target any) string {
+func ImpactResponseProfileForEntity(target any) string {
+	if provider, ok := target.(interface {
+		ImpactResponseProfile() string
+	}); ok && provider != nil {
+		if profile := provider.ImpactResponseProfile(); profile != "" {
+			return profile
+		}
+	}
 	entity, ok := target.(interface {
 		EntityType() domainentity.EntityType
 	})

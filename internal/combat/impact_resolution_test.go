@@ -97,10 +97,10 @@ func TestImpactResponseProfileUsesTargetKind(t *testing.T) {
 	creature := combatEntity(31, "test", 0, 0)
 	creature.entityType = "creature"
 
-	if profile := impactResponseProfileForEntity(player); profile != "flesh_blood_red" {
+	if profile := ImpactResponseProfileForEntity(player); profile != "flesh_blood_red" {
 		t.Fatalf("player impact response = %q, want flesh_blood_red", profile)
 	}
-	if profile := impactResponseProfileForEntity(creature); profile != "creature_flesh_blood_red" {
+	if profile := ImpactResponseProfileForEntity(creature); profile != "creature_flesh_blood_red" {
 		t.Fatalf("creature impact response = %q, want creature_flesh_blood_red", profile)
 	}
 }

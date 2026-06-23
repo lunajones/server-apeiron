@@ -45,7 +45,7 @@ func Run(ctx context.Context, cfg *config.Config) error {
 func loadGameRuntimeContracts(ctx context.Context, cfg *config.Config, dbClient *dbapeiron.Client) (gameapi.RuntimeContracts, error) {
 	if dbClient != nil {
 		loadCtx, cancel := context.WithTimeout(ctx, cfg.DBApeiron.RequestTimeout)
-		contracts := gameapi.LoadRuntimeContractsFromDB(loadCtx, dbClient.Skills, dbClient.Profiles)
+		contracts := gameapi.LoadRuntimeContractsFromDB(loadCtx, dbClient.Skills, dbClient.Profiles, dbClient.Creatures)
 		cancel()
 		if err := contracts.ValidateRequiredCoverage(true); err != nil {
 			return gameapi.RuntimeContracts{}, err

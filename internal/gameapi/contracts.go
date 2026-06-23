@@ -36,6 +36,10 @@ type ProfileContractSource interface {
 	GetCreatureSkillBehaviorBindings(context.Context, *dbv1.IdRequest, ...grpc.CallOption) (*dbv1.CreatureSkillBehaviorBindingsResponse, error)
 }
 
+type CreatureContractSource interface {
+	GetCreatureRuntimeData(context.Context, *dbv1.IdRequest, ...grpc.CallOption) (*dbv1.CreatureRuntimeDataResponse, error)
+}
+
 type RuntimeContracts struct {
 	Source string
 
@@ -111,6 +115,8 @@ type WolfRuntimePolicy struct {
 	ContractID                     string
 	ContractHash                   string
 	CapabilityID                   string
+	TemplateID                     string
+	ImpactResponseProfile          string
 	DesiredRangeCM                 float64
 	ChaseRangeCM                   float64
 	LungeRangeCM                   float64
@@ -262,7 +268,7 @@ func requiredRuntimeSkillIDs() []string {
 	return out
 }
 
-func LoadRuntimeContractsFromDB(ctx context.Context, skills ContractSource, profiles ProfileContractSource) RuntimeContracts {
+func LoadRuntimeContractsFromDB(ctx context.Context, skills ContractSource, profiles ProfileContractSource, creatures CreatureContractSource) RuntimeContracts {
 	contracts := emptyDBRuntimeContracts()
 
 	if resp, err := profiles.GetRuntimeMovementReconciliationProfile(ctx, &dbv1.IdRequest{Id: runtimeMovementReconciliationProfileID}); err == nil && resp.GetFound() {
@@ -294,6 +300,7 @@ func LoadRuntimeContractsFromDB(ctx context.Context, skills ContractSource, prof
 	}
 
 	loadCombatRuntimeContracts(ctx, profiles, &contracts)
+	loadCreatureTemplateRuntimeContracts(ctx, creatures, &contracts)
 	loadWolfBrainRuntimeContracts(ctx, profiles, &contracts)
 
 	if setupResp, err := profiles.GetCreatureSkillSetupPolicies(ctx, &dbv1.IdRequest{Id: contracts.WolfPolicy.ContractID}); err == nil && setupResp.GetFound() {
@@ -350,7 +357,34 @@ func emptyDBRuntimeContracts() RuntimeContracts {
 		},
 		WolfPolicy: WolfRuntimePolicy{
 			ContractID: wolfRuntimeContractID,
+			TemplateID: "steppe_wolf",
 		},
+	}
+}
+
+func loadCreatureTemplateRuntimeContracts(ctx context.Context, creatures CreatureContractSource, contracts *RuntimeContracts) {
+	if contracts == nil {
+		return
+	}
+	templateID := contracts.WolfPolicy.TemplateID
+	if templateID == "" {
+		templateID = "steppe_wolf"
+		contracts.WolfPolicy.TemplateID = templateID
+	}
+	if creatures == nil {
+		contracts.LoadIssues = append(contracts.LoadIssues, "missing creature data source "+templateID)
+		return
+	}
+	resp, err := creatures.GetCreatureRuntimeData(ctx, &dbv1.IdRequest{Id: templateID})
+	if err != nil || !resp.GetFound() || resp.GetTemplate() == nil {
+		contracts.LoadIssues = append(contracts.LoadIssues, "missing creature runtime template "+templateID)
+		return
+	}
+	template := resp.GetTemplate()
+	contracts.WolfPolicy.TemplateID = template.GetId()
+	contracts.WolfPolicy.ImpactResponseProfile = strings.TrimSpace(template.GetImpactResponseProfile())
+	if contracts.WolfPolicy.ImpactResponseProfile == "" {
+		contracts.LoadIssues = append(contracts.LoadIssues, "missing creature impact response profile "+templateID)
 	}
 }
 
@@ -669,6 +703,12 @@ func (c RuntimeContracts) wolfBrainPolicyBlockers(strictLoadedSource bool) []str
 		missing = append(missing, "wolf runtime policy")
 	}
 	if strictLoadedSource {
+		if c.WolfPolicy.TemplateID == "" {
+			missing = append(missing, "wolf template id")
+		}
+		if c.WolfPolicy.ImpactResponseProfile == "" {
+			missing = append(missing, "wolf impact response profile")
+		}
 		if c.WolfPolicy.TargetOpportunityPolicyID == "" {
 			missing = append(missing, "wolf target opportunity policy")
 		}
@@ -1091,6 +1131,8 @@ func RecoveryFixtureRuntimeContracts() RuntimeContracts {
 			ContractID:                     wolfRuntimeContractID,
 			ContractHash:                   wolfRuntimeContractID,
 			CapabilityID:                   "wolf_pack_harasser",
+			TemplateID:                     "steppe_wolf",
+			ImpactResponseProfile:          "creature_flesh_blood_red",
 			DesiredRangeCM:                 420,
 			ChaseRangeCM:                   760,
 			LungeRangeCM:                   220,

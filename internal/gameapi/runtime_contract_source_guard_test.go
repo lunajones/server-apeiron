@@ -179,7 +179,7 @@ func TestRecoveryFixtureRuntimeIsExplicitDevTestOptIn(t *testing.T) {
 }
 
 func TestDBRuntimeSourcePromotesOnlyAfterStrictCompleteLoad(t *testing.T) {
-	complete := LoadRuntimeContractsFromDB(context.Background(), fakeRuntimeContractSource{}, fakeRuntimeContractSource{})
+	complete := LoadRuntimeContractsFromDB(context.Background(), fakeRuntimeContractSource{}, fakeRuntimeContractSource{}, fakeRuntimeContractSource{})
 	if complete.Source != runtimeContractSourceDB {
 		t.Fatalf("complete DB load source = %q, want %q; issues=%#v", complete.Source, runtimeContractSourceDB, complete.LoadIssues)
 	}
@@ -191,6 +191,7 @@ func TestDBRuntimeSourcePromotesOnlyAfterStrictCompleteLoad(t *testing.T) {
 		context.Background(),
 		fakeRuntimeContractSource{missingSkills: map[string]bool{"player_shield_rush": true}},
 		fakeRuntimeContractSource{missingSkills: map[string]bool{"player_shield_rush": true}},
+		fakeRuntimeContractSource{},
 	)
 	if incomplete.Source == runtimeContractSourceDB {
 		t.Fatalf("incomplete DB load promoted to complete source: %#v", incomplete.LoadIssues)

@@ -85,6 +85,7 @@ type entityState struct {
 	skillState            string
 	aggroState            string
 	aggression            float64
+	impactResponseProfile string
 	lastSequence          uint64
 	lastClientTick        uint64
 	processedCommandIDs   map[string]struct{}
@@ -262,11 +263,12 @@ func (r *Runtime) GetSnapshot(ctx context.Context, req *gamev1.SnapshotRequest) 
 	}
 	now := time.Now()
 	r.refreshActionRuntimeStatesLocked(now)
-	r.runPendingSkillImpactSchedulesLocked(now)
+	impactEvents := r.damageEventsFromImpactsLocked(r.runPendingSkillImpactSchedulesLocked(now))
 	out := &gamev1.SnapshotResponse{
 		Tick:        r.serverTickLocked(),
 		Region:      regionRef(),
 		Entities:    make([]*gamev1.SnapshotEntity, 0, len(r.entities)),
+		Events:      impactEvents,
 		CommandAcks: r.drainAcksLocked(req.GetContext().GetSessionId()),
 	}
 	for _, entity := range r.entities {
@@ -543,23 +545,24 @@ func (r *Runtime) ensurePlayerLocked(playerID string) *entityState {
 		return player
 	}
 	entity := &entityState{
-		id:            r.nextRuntimeIDLocked(),
-		entityType:    "player",
-		regionID:      defaultRegionID,
-		templateID:    "player_sword_shield",
-		archetype:     "sword_shield",
-		visualID:      "player",
-		position:      vector{x: -2500, y: 1900, z: 98},
-		yaw:           0,
-		health:        100,
-		maxHealth:     100,
-		stamina:       100,
-		maxStamina:    100,
-		posture:       100,
-		maxPosture:    100,
-		movementState: "grounded",
-		combatState:   "ready",
-		skillState:    "idle",
+		id:                    r.nextRuntimeIDLocked(),
+		entityType:            "player",
+		regionID:              defaultRegionID,
+		templateID:            "player_sword_shield",
+		archetype:             "sword_shield",
+		visualID:              "player",
+		position:              vector{x: -2500, y: 1900, z: 98},
+		yaw:                   0,
+		health:                100,
+		maxHealth:             100,
+		stamina:               100,
+		maxStamina:            100,
+		posture:               100,
+		maxPosture:            100,
+		movementState:         "grounded",
+		combatState:           "ready",
+		skillState:            "idle",
+		impactResponseProfile: "flesh_blood_red",
 	}
 	entity.locomotion = r.locomotion("grounded", "idle", "", "idle", entity.position, entity.position, 0)
 	entity.combatMode = swordShieldCombatMode("mode_sword_shield_bulwark", r.contracts.CombatModes)
@@ -594,6 +597,7 @@ func (r *Runtime) ensureWolfLocked(player *entityState) *entityState {
 		skillState:            "idle",
 		aggroState:            "engaged",
 		aggression:            0.75,
+		impactResponseProfile: strings.TrimSpace(r.contracts.WolfPolicy.ImpactResponseProfile),
 		creatureCooldownUntil: map[string]time.Time{},
 	}
 	if r.contracts.WolfPolicy.MaxStamina > 0 {

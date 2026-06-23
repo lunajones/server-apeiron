@@ -74,7 +74,7 @@ func TestRuntimeContractRequirementsDriveRequiredSkillAndMovementLists(t *testin
 }
 
 func TestRuntimeRequirementStatusValuesExposeRequiredContractReadiness(t *testing.T) {
-	contracts := LoadRuntimeContractsFromDB(context.Background(), fakeRuntimeContractSource{}, fakeRuntimeContractSource{})
+	contracts := LoadRuntimeContractsFromDB(context.Background(), fakeRuntimeContractSource{}, fakeRuntimeContractSource{}, fakeRuntimeContractSource{})
 	status := requirementStatusValues(contracts)
 
 	for _, key := range []string{
@@ -264,7 +264,7 @@ func TestRecoveryFixtureCombatModesKeepBulwarkAndVanguardSeparate(t *testing.T) 
 
 func TestLoadRuntimeContractsFromDBUsesRequiredSkillBindings(t *testing.T) {
 	source := fakeRuntimeContractSource{}
-	contracts := LoadRuntimeContractsFromDB(context.Background(), source, source)
+	contracts := LoadRuntimeContractsFromDB(context.Background(), source, source, source)
 	if err := contracts.ValidateRequiredCoverage(true); err != nil {
 		t.Fatalf("db contract coverage failed: %v", err)
 	}
@@ -353,7 +353,7 @@ func TestLoadRuntimeContractsFromDBDoesNotLeakRecoveredCombatFallback(t *testing
 		missingCombatCoreProfiles: map[string]bool{playerCombatCoreProfileID: true},
 		missingDefenseContracts:   map[string]bool{playerGuardDefenseContractID: true},
 	}
-	contracts := LoadRuntimeContractsFromDB(context.Background(), source, source)
+	contracts := LoadRuntimeContractsFromDB(context.Background(), source, source, source)
 
 	err := contracts.ValidateRequiredCoverage(true)
 	if err == nil {
@@ -375,7 +375,7 @@ func TestLoadRuntimeContractsFromDBDoesNotLeakRecoveredCombatFallback(t *testing
 
 func TestLoadRuntimeContractsFromDBRejectsMissingRequiredBinding(t *testing.T) {
 	source := fakeRuntimeContractSource{missingSkills: map[string]bool{"maul": true}}
-	contracts := LoadRuntimeContractsFromDB(context.Background(), source, source)
+	contracts := LoadRuntimeContractsFromDB(context.Background(), source, source, source)
 
 	err := contracts.ValidateRequiredCoverage(true)
 	if err == nil {
@@ -388,7 +388,7 @@ func TestLoadRuntimeContractsFromDBRejectsMissingRequiredBinding(t *testing.T) {
 
 func TestLoadRuntimeContractsFromDBDoesNotLeakRecoveredAbilityFallback(t *testing.T) {
 	source := fakeRuntimeContractSource{missingActions: map[string]bool{"dodge_v1_full_iframe": true}}
-	contracts := LoadRuntimeContractsFromDB(context.Background(), source, source)
+	contracts := LoadRuntimeContractsFromDB(context.Background(), source, source, source)
 
 	err := contracts.ValidateRequiredCoverage(true)
 	if err == nil {
@@ -404,7 +404,7 @@ func TestLoadRuntimeContractsFromDBDoesNotLeakRecoveredAbilityFallback(t *testin
 
 func TestLoadRuntimeContractsFromDBDoesNotLeakRecoveredCombatModeFallback(t *testing.T) {
 	source := fakeRuntimeContractSource{missingCombatModes: true}
-	contracts := LoadRuntimeContractsFromDB(context.Background(), source, source)
+	contracts := LoadRuntimeContractsFromDB(context.Background(), source, source, source)
 
 	err := contracts.ValidateRequiredCoverage(true)
 	if err == nil {
@@ -1034,6 +1034,21 @@ func (fakeRuntimeContractSource) GetCreatureBehaviorRuntimeContract(_ context.Co
 			StaminaPolicyJson:         `{"max":100,"dodgeCostMultiplier":0.50,"regenPerSecond":12}`,
 			TargetOpportunityPolicyId: "opportunity_wolf_harasser_v1",
 			OrbitPolicyId:             "orbit_wolf_harasser_combat_walk_v1",
+		},
+	}, nil
+}
+
+func (fakeRuntimeContractSource) GetCreatureRuntimeData(_ context.Context, req *dbv1.IdRequest, _ ...grpc.CallOption) (*dbv1.CreatureRuntimeDataResponse, error) {
+	if req.GetId() != "steppe_wolf" {
+		return &dbv1.CreatureRuntimeDataResponse{Found: false}, nil
+	}
+	return &dbv1.CreatureRuntimeDataResponse{
+		Found: true,
+		Template: &dbv1.CreatureTemplate{
+			Id:                    "steppe_wolf",
+			Name:                  "Steppe Wolf",
+			Archetype:             "beast",
+			ImpactResponseProfile: "creature_flesh_blood_red",
 		},
 	}, nil
 }

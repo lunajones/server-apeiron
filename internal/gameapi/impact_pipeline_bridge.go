@@ -80,6 +80,13 @@ func (e *runtimeEntityCombatAdapter) EntityType() domainentity.EntityType {
 	}
 }
 
+func (e *runtimeEntityCombatAdapter) ImpactResponseProfile() string {
+	if e == nil || e.state == nil {
+		return ""
+	}
+	return strings.TrimSpace(e.state.impactResponseProfile)
+}
+
 func (e *runtimeEntityCombatAdapter) Position() domainmath.Position {
 	if e == nil || e.state == nil {
 		return domainmath.Position{}
@@ -154,14 +161,23 @@ func (r *Runtime) resolveRuntimeSkillImpact(source *entityState, target *entityS
 		return runtimeSkillImpact{}, false
 	}
 	return runtimeSkillImpact{
-		SourceID:       source.id,
-		TargetID:       target.id,
-		SkillID:        skill.SkillID,
-		DamageApplied:  result.FinalDamage,
-		PostureApplied: result.PostureDamage,
-		Blocked:        result.Blocked,
-		Parried:        result.Parried,
+		SourceID:              source.id,
+		TargetID:              target.id,
+		SkillID:               skill.SkillID,
+		ImpactType:            runtimeImpactType(skill, profile),
+		ImpactResponseProfile: combat.ImpactResponseProfileForEntity(targetEntity),
+		DamageApplied:         result.FinalDamage,
+		PostureApplied:        result.PostureDamage,
+		Blocked:               result.Blocked,
+		Parried:               result.Parried,
 	}, true
+}
+
+func runtimeImpactType(skill SkillRuntimeContract, profile *dbv1.SkillHitboxProfile) string {
+	if profile != nil && strings.TrimSpace(profile.GetHitboxShape()) != "" {
+		return strings.TrimSpace(profile.GetHitboxShape())
+	}
+	return "physical"
 }
 
 func runtimeCombatHitResult(skill SkillRuntimeContract, profile *dbv1.SkillHitboxProfile, target *entityState, start vector, dir vector) hitbox.HitResult {

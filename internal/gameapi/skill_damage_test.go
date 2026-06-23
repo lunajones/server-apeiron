@@ -158,6 +158,50 @@ func TestRuntimePendingImpactRunnerCatchesSkippedHitboxWindow(t *testing.T) {
 	}
 }
 
+func TestSnapshotEmitsDamageEventWithImpactResponseProfile(t *testing.T) {
+	t.Parallel()
+
+	runtime := NewRuntimeWithContracts(RecoveryFixtureRuntimeContracts())
+	sessionID := "runtime-impact-event-profile"
+	attachRuntimePlayer(t, runtime, sessionID)
+	player := runtime.ensurePlayerLocked("local_player")
+	wolf := runtime.ensureWolfLocked(player)
+	wolf.position = vector{x: player.position.x + 120, y: player.position.y, z: player.position.z}
+
+	contract := runtime.contracts.skillContract("player_basic_attack_1")
+	startedAt := time.Now().Add(-time.Duration(skillImpactEvaluationElapsedMS(contract)+20) * time.Millisecond)
+	runtime.enqueueSkillImpactScheduleLocked(skillImpactScheduleFromActionInstance(
+		player,
+		contract,
+		"test-impact-event-profile",
+		startedAt,
+		player.position,
+		vector{x: wolf.position.x, y: wolf.position.y, z: wolf.position.z},
+		vector{x: 1, y: 0},
+		skillImpactEvaluationElapsedMS(contract)+20,
+	))
+
+	snapshot, err := runtime.GetSnapshot(context.Background(), &gamev1.SnapshotRequest{
+		Context: &gamev1.RequestContext{SessionId: sessionID},
+	})
+	if err != nil {
+		t.Fatalf("GetSnapshot failed: %v", err)
+	}
+	if len(snapshot.GetEvents()) == 0 {
+		t.Fatal("snapshot did not emit damage event")
+	}
+	event := snapshot.GetEvents()[0]
+	if event.GetType() != gamev1.SnapshotEventType_ENTITY_EVENT_TYPE_DAMAGE_APPLIED {
+		t.Fatalf("event type = %s", event.GetType())
+	}
+	if got := event.GetMetadata()["impact_response_profile"]; got != "creature_flesh_blood_red" {
+		t.Fatalf("impact response profile metadata = %q", got)
+	}
+	if got := event.GetMetadata()["feedback_authority"]; got != "server_damage_event" {
+		t.Fatalf("feedback authority = %q", got)
+	}
+}
+
 func TestRuntimeSkillImpactHonorsDirectionalBlock(t *testing.T) {
 	t.Parallel()
 

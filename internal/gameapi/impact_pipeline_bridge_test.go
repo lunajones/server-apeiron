@@ -63,3 +63,28 @@ func TestRuntimeSkillImpactUsesCombatPipelineIframe(t *testing.T) {
 		t.Fatalf("iframe hit changed posture: got %.1f want %.1f", wolf.posture, beforePosture)
 	}
 }
+
+func TestRuntimeSkillImpactCarriesTargetImpactResponseProfile(t *testing.T) {
+	t.Parallel()
+
+	runtime := NewRuntimeWithContracts(RecoveryFixtureRuntimeContracts())
+	sessionID := "runtime-skill-impact-response-profile"
+	attachRuntimePlayer(t, runtime, sessionID)
+	player := runtime.ensurePlayerLocked("local_player")
+	wolf := runtime.ensureWolfLocked(player)
+	wolf.position = vector{x: player.position.x + 120, y: player.position.y, z: player.position.z}
+	wolf.impactResponseProfile = "creature_flesh_blood_red"
+
+	contract := runtime.contracts.skillContract("player_basic_attack_1")
+	profile := contract.Hitboxes[0]
+	impact, ok := runtime.resolveRuntimeSkillImpact(player, wolf, contract, profile, player.position, vector{x: 1, y: 0})
+	if !ok {
+		t.Fatal("expected player impact resolution")
+	}
+	if impact.ImpactResponseProfile != "creature_flesh_blood_red" {
+		t.Fatalf("impact response profile = %q", impact.ImpactResponseProfile)
+	}
+	if impact.ImpactType == "" {
+		t.Fatal("impact type was not populated")
+	}
+}

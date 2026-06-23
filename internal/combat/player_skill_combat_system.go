@@ -681,7 +681,7 @@ func (s *RegionPlayerSkillCombatSystem) cast(ctx context.Context, region *region
 			DamageType:                  profile.Skill.GetDamageType(),
 			ElementalType:               profile.Skill.GetElementalType(),
 			ImpactType:                  profile.Impact.GetImpactType(),
-			TargetImpactResponseProfile: impactResponseProfileForEntity(target),
+			TargetImpactResponseProfile: ImpactResponseProfileForEntity(target),
 			Tick:                        tick,
 			Killed:                      result.Killed,
 		})
@@ -1388,7 +1388,7 @@ func (s *RegionPlayerSkillCombatSystem) resolvePlayerSkillAction(ctx context.Con
 			DamageType:                  profile.Skill.GetDamageType(),
 			ElementalType:               profile.Skill.GetElementalType(),
 			ImpactType:                  profile.Impact.GetImpactType(),
-			TargetImpactResponseProfile: impactResponseProfileForEntity(target),
+			TargetImpactResponseProfile: ImpactResponseProfileForEntity(target),
 			Tick:                        tick,
 			Killed:                      result.Killed,
 		})
