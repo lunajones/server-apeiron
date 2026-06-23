@@ -937,8 +937,12 @@ func validateRuntimeSkillContract(skillID string, skill SkillRuntimeContract) []
 	if !hasTemporal {
 		missing = append(missing, "skill temporal motion profile "+skillID)
 	}
-	if skillContactPolicyRequiresControlEffect(skill.ContactPolicy) && len(enabledSkillControlEffects(skill.ControlEffects)) == 0 {
+	controlEffects := enabledSkillControlEffects(skill.ControlEffects)
+	if skillContactPolicyRequiresControlEffect(skill.ContactPolicy) && len(controlEffects) == 0 {
 		missing = append(missing, "skill impact control effect "+skillID)
+	}
+	for _, effect := range controlEffects {
+		missing = append(missing, validateSkillControlEffectContract(skillID, effect)...)
 	}
 	return missing
 }
@@ -963,6 +967,40 @@ func enabledSkillControlEffects(effects []*dbv1.SkillControlEffect) []*dbv1.Skil
 		out = append(out, effect)
 	}
 	return out
+}
+
+func validateSkillControlEffectContract(skillID string, effect *dbv1.SkillControlEffect) []string {
+	if effect == nil || !effect.GetEnabled() {
+		return nil
+	}
+	effectID := strings.TrimSpace(effect.GetId())
+	if effectID == "" {
+		effectID = strings.TrimSpace(effect.GetStatusEffectId())
+	}
+	if effectID == "" {
+		effectID = "unnamed"
+	}
+	prefix := "skill control effect " + skillID + "/" + effectID + " "
+	var missing []string
+	if strings.TrimSpace(effect.GetControlType()) == "" {
+		missing = append(missing, prefix+"control type")
+	}
+	if strings.TrimSpace(effect.GetReleasePolicyId()) == "" {
+		missing = append(missing, prefix+"release policy")
+	}
+	if strings.TrimSpace(effect.GetDirectionPolicy()) == "" {
+		missing = append(missing, prefix+"direction policy")
+	}
+	if effect.GetDurationMs() <= 0 {
+		missing = append(missing, prefix+"duration")
+	}
+	if effect.GetDistanceCm() <= 0 {
+		missing = append(missing, prefix+"distance")
+	}
+	if effect.GetSpeedCmS() <= 0 {
+		missing = append(missing, prefix+"speed")
+	}
+	return missing
 }
 
 func validateCombatCoreProfile(profileID string, profile *dbv1.CombatCoreProfile) []string {

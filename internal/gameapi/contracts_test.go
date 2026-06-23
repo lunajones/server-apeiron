@@ -157,6 +157,46 @@ func TestStrictRuntimeCoverageRejectsPushContactSkillWithoutControlEffect(t *tes
 	}
 }
 
+func TestStrictRuntimeCoverageRejectsIncompleteControlEffectMotion(t *testing.T) {
+	contracts := RecoveryFixtureRuntimeContracts()
+	skill := contracts.SkillContracts["player_shield_rush"]
+	if len(skill.ControlEffects) == 0 {
+		t.Fatal("fixture Shield Rush should have a control effect")
+	}
+	effect := *skill.ControlEffects[0]
+	effect.ControlType = ""
+	effect.ReleasePolicyId = ""
+	effect.DirectionPolicy = ""
+	effect.DurationMs = 0
+	effect.DistanceCm = 0
+	effect.SpeedCmS = 0
+	skill.ControlEffects = []*dbv1.SkillControlEffect{&effect}
+	if skill.Impact != nil {
+		copy := *skill.Impact
+		copy.ControlEffects = skill.ControlEffects
+		skill.Impact = &copy
+	}
+	contracts.SkillContracts["player_shield_rush"] = skill
+
+	err := contracts.ValidateRequiredCoverage(true)
+	if err == nil {
+		t.Fatal("ValidateRequiredCoverage accepted incomplete control effect motion")
+	}
+	for _, want := range []string{
+		"skill control effect player_shield_rush/",
+		"control type",
+		"release policy",
+		"direction policy",
+		"duration",
+		"distance",
+		"speed",
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("missing blocker %q in %v", want, err)
+		}
+	}
+}
+
 func TestStrictRuntimeCoverageRejectsIncompleteMovementActionContract(t *testing.T) {
 	contracts := RecoveryFixtureRuntimeContracts()
 	action := contracts.ActionContracts["player_shield_rush"]
