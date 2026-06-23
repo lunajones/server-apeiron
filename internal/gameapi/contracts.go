@@ -454,38 +454,74 @@ func (c RuntimeContracts) ValidateRequiredCoverage(strictLoadedSource bool) erro
 
 func validateRuntimeMovementReconciliationProfile(profile *gamev1.MovementReconciliationProfile) []string {
 	var missing []string
+	if profile == nil {
+		return []string{"runtime movement reconciliation profile"}
+	}
 	if profile.GetProfileId() == "" {
 		missing = append(missing, "runtime movement profile id")
 	}
-	if profile.GetMaxSpeed() <= 0 {
-		missing = append(missing, "runtime movement max speed")
+	required := []struct {
+		name  string
+		value float64
+	}{
+		{"runtime movement max speed", profile.GetMaxSpeed()},
+		{"runtime movement sprint multiplier", profile.GetSprintSpeedMultiplier()},
+		{"runtime movement acceleration", profile.GetAcceleration()},
+		{"runtime movement deceleration", profile.GetDeceleration()},
+		{"runtime movement ground friction", profile.GetGroundFriction()},
+		{"runtime movement air acceleration", profile.GetAirAcceleration()},
+		{"runtime movement jump height", profile.GetJumpHeight()},
+		{"runtime movement jump duration", float64(profile.GetJumpDurationMs())},
+		{"runtime movement rotation yaw", profile.GetRotationRateYaw()},
+		{"runtime movement gravity scale", profile.GetGravityScale()},
+		{"runtime movement braking friction factor", profile.GetBrakingFrictionFactor()},
+		{"runtime movement max slope", profile.GetMaxSlopeDeg()},
+		{"runtime movement step height", profile.GetStepHeight()},
+		{"runtime movement base deadzone", profile.GetBaseDeadzone()},
+		{"runtime movement grounded deadzone factor", profile.GetGroundedSpeedDeadzoneFactor()},
+		{"runtime movement grounded deadzone min", profile.GetGroundedSpeedDeadzoneMin()},
+		{"runtime movement grounded deadzone max", profile.GetGroundedSpeedDeadzoneMax()},
+		{"runtime movement grounded transition deadzone", profile.GetGroundedTransitionDeadzoneMin()},
+		{"runtime movement sustain deadzone", profile.GetMoveSustainDeadzone()},
+		{"runtime movement sustain transition deadzone", profile.GetMoveSustainTransitionDeadzone()},
+		{"runtime movement airborne deadzone", profile.GetAirborneDeadzone()},
+		{"runtime movement leap recent deadzone", profile.GetLeapRecentDeadzone()},
+		{"runtime movement leap airborne snapshot deadzone", profile.GetLeapAirborneSnapshotDeadzone()},
+		{"runtime movement leap landing deadzone factor", profile.GetLeapLandingDeadzoneFactor()},
+		{"runtime movement leap landing deadzone min", profile.GetLeapLandingDeadzoneMin()},
+		{"runtime movement leap landing deadzone max", profile.GetLeapLandingDeadzoneMax()},
+		{"runtime movement leap landing clamp ignore deadzone", profile.GetLeapLandingClampIgnoreDeadzone()},
+		{"runtime movement leap landing soft snap deadzone", profile.GetLeapLandingSoftSnapDeadzone()},
+		{"runtime movement dodge recent deadzone", profile.GetDodgeRecentDeadzone()},
+		{"runtime movement dodge active deadzone", profile.GetDodgeActiveDeadzone()},
+		{"runtime movement dodge exit deadzone factor", profile.GetDodgeExitDeadzoneFactor()},
+		{"runtime movement dodge exit deadzone min", profile.GetDodgeExitDeadzoneMin()},
+		{"runtime movement dodge exit deadzone max", profile.GetDodgeExitDeadzoneMax()},
+		{"runtime movement post action grounded deadzone", profile.GetPostActionGroundedDeadzone()},
+		{"runtime movement correction max step", profile.GetCorrectionMaxStep()},
+		{"runtime movement hard snap distance", profile.GetHardSnapDistance()},
+		{"runtime movement severe desync distance", profile.GetSevereDesyncDistance()},
+		{"runtime movement visual smoothing", float64(profile.GetVisualSmoothingMs())},
+		{"runtime movement visual smoothing max distance", profile.GetVisualSmoothingMaxDistance()},
+		{"runtime movement remote visual interpolation", float64(profile.GetRemoteVisualInterpolationMs())},
+		{"runtime movement remote visual max extrapolation", float64(profile.GetRemoteVisualMaxExtrapolationMs())},
+		{"runtime movement remote visual hard snap distance", profile.GetRemoteVisualHardSnapDistance()},
+		{"runtime movement dodge carry handoff", float64(profile.GetDodgeCarryHandoffMs())},
+		{"runtime movement leap landing correction grace", float64(profile.GetLeapLandingCorrectionGraceMs())},
+		{"runtime movement leap grounded carry handoff", float64(profile.GetLeapGroundedCarryHandoffMs())},
+		{"runtime movement turn resubmit dot threshold", profile.GetMovementTurnResubmitDotThreshold()},
+		{"runtime movement turn resubmit min interval", float64(profile.GetMovementTurnResubmitMinIntervalMs())},
+		{"runtime movement submit interval", float64(profile.GetMovementSubmitIntervalMs())},
+		{"runtime movement snapshot poll interval", float64(profile.GetSnapshotPollIntervalMs())},
+		{"runtime movement strafe multiplier", profile.GetStrafeSpeedMultiplier()},
+		{"runtime movement backpedal multiplier", profile.GetBackpedalSpeedMultiplier()},
+		{"runtime movement strafe sprint multiplier", profile.GetStrafeSprintSpeedMultiplier()},
+		{"runtime movement backpedal sprint multiplier", profile.GetBackpedalSprintSpeedMultiplier()},
 	}
-	if profile.GetSprintSpeedMultiplier() <= 0 {
-		missing = append(missing, "runtime movement sprint multiplier")
-	}
-	if profile.GetAcceleration() <= 0 {
-		missing = append(missing, "runtime movement acceleration")
-	}
-	if profile.GetDeceleration() <= 0 {
-		missing = append(missing, "runtime movement deceleration")
-	}
-	if profile.GetMovementSubmitIntervalMs() <= 0 {
-		missing = append(missing, "runtime movement submit interval")
-	}
-	if profile.GetSnapshotPollIntervalMs() <= 0 {
-		missing = append(missing, "runtime movement snapshot poll interval")
-	}
-	if profile.GetStrafeSpeedMultiplier() <= 0 {
-		missing = append(missing, "runtime movement strafe multiplier")
-	}
-	if profile.GetBackpedalSpeedMultiplier() <= 0 {
-		missing = append(missing, "runtime movement backpedal multiplier")
-	}
-	if profile.GetStrafeSprintSpeedMultiplier() <= 0 {
-		missing = append(missing, "runtime movement strafe sprint multiplier")
-	}
-	if profile.GetBackpedalSprintSpeedMultiplier() <= 0 {
-		missing = append(missing, "runtime movement backpedal sprint multiplier")
+	for _, field := range required {
+		if field.value <= 0 {
+			missing = append(missing, field.name)
+		}
 	}
 	return missing
 }
@@ -1109,6 +1145,7 @@ func recoveredMovementProfile() *gamev1.MovementReconciliationProfile {
 		GroundedSpeedDeadzoneFactor:       0.08,
 		GroundedSpeedDeadzoneMin:          35,
 		GroundedSpeedDeadzoneMax:          90,
+		GroundedTransitionDeadzoneMin:     34,
 		MoveSustainDeadzone:               45,
 		MoveSustainTransitionDeadzone:     65,
 		AirborneDeadzone:                  120,
@@ -1117,6 +1154,8 @@ func recoveredMovementProfile() *gamev1.MovementReconciliationProfile {
 		LeapLandingDeadzoneFactor:         0.12,
 		LeapLandingDeadzoneMin:            80,
 		LeapLandingDeadzoneMax:            180,
+		LeapLandingClampIgnoreDeadzone:    145,
+		LeapLandingSoftSnapDeadzone:       145,
 		DodgeRecentDeadzone:               90,
 		DodgeActiveDeadzone:               90,
 		DodgeExitDeadzoneFactor:           0.12,
@@ -1131,6 +1170,9 @@ func recoveredMovementProfile() *gamev1.MovementReconciliationProfile {
 		RemoteVisualInterpolationMs:       100,
 		RemoteVisualMaxExtrapolationMs:    100,
 		RemoteVisualHardSnapDistance:      600,
+		DodgeCarryHandoffMs:               120,
+		LeapLandingCorrectionGraceMs:      120,
+		LeapGroundedCarryHandoffMs:        70,
 		MovementTurnResubmitDotThreshold:  0.92,
 		MovementTurnResubmitMinIntervalMs: 33,
 		MovementSubmitIntervalMs:          33,
