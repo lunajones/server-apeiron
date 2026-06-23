@@ -308,6 +308,73 @@ func TestGroundedMoveSpeedPreservesDirectionalCaps(t *testing.T) {
 	_ = player
 }
 
+func TestRuntimeCommandReplayDoesNotReapplyMovement(t *testing.T) {
+	runtime := NewRuntimeWithOptions(RecoveryFixtureRuntimeContracts(), RuntimeOptions{MovementValidation: true})
+	sessionID := "runtime-command-replay"
+	if _, err := runtime.OpenSession(context.Background(), &gamev1.OpenSessionRequest{
+		Context: &gamev1.RequestContext{SessionId: sessionID},
+	}); err != nil {
+		t.Fatalf("OpenSession failed: %v", err)
+	}
+	if _, err := runtime.AttachPlayer(context.Background(), &gamev1.AttachPlayerRequest{
+		Context:  &gamev1.RequestContext{SessionId: sessionID},
+		PlayerId: "local_player",
+	}); err != nil {
+		t.Fatalf("AttachPlayer failed: %v", err)
+	}
+	player := runtime.ensurePlayerLocked("local_player")
+
+	cmd := testRuntimeMoveCommand(sessionID, 1, gamev1Vector(1, 0, 0), 1, false, nil)
+	if ack, err := runtime.SubmitCommand(context.Background(), cmd); err != nil || !ack.GetAccepted() {
+		t.Fatalf("first move ack=%v err=%v", ack, err)
+	}
+	afterFirst := player.position
+	duplicateAck, err := runtime.SubmitCommand(context.Background(), cmd)
+	if err != nil {
+		t.Fatalf("duplicate move failed: %v", err)
+	}
+	if !duplicateAck.GetAccepted() || duplicateAck.GetMetadata()["command_replay_state"] != "duplicate_command_id" {
+		t.Fatalf("duplicate ack = %#v", duplicateAck)
+	}
+	if player.position != afterFirst {
+		t.Fatalf("duplicate command reapplied movement: got %#v want %#v", player.position, afterFirst)
+	}
+}
+
+func TestRuntimeStaleSequenceDoesNotReapplyMovement(t *testing.T) {
+	runtime := NewRuntimeWithOptions(RecoveryFixtureRuntimeContracts(), RuntimeOptions{MovementValidation: true})
+	sessionID := "runtime-command-stale"
+	if _, err := runtime.OpenSession(context.Background(), &gamev1.OpenSessionRequest{
+		Context: &gamev1.RequestContext{SessionId: sessionID},
+	}); err != nil {
+		t.Fatalf("OpenSession failed: %v", err)
+	}
+	if _, err := runtime.AttachPlayer(context.Background(), &gamev1.AttachPlayerRequest{
+		Context:  &gamev1.RequestContext{SessionId: sessionID},
+		PlayerId: "local_player",
+	}); err != nil {
+		t.Fatalf("AttachPlayer failed: %v", err)
+	}
+	player := runtime.ensurePlayerLocked("local_player")
+
+	if ack, err := runtime.SubmitCommand(context.Background(), testRuntimeMoveCommand(sessionID, 2, gamev1Vector(1, 0, 0), 1, false, nil)); err != nil || !ack.GetAccepted() {
+		t.Fatalf("fresh move ack=%v err=%v", ack, err)
+	}
+	afterFresh := player.position
+	stale := testRuntimeMoveCommand(sessionID, 1, gamev1Vector(0, 1, 0), 1, false, nil)
+	stale.CommandId = "move-stale-new-id"
+	staleAck, err := runtime.SubmitCommand(context.Background(), stale)
+	if err != nil {
+		t.Fatalf("stale move failed: %v", err)
+	}
+	if staleAck.GetAccepted() || staleAck.GetRejectionCode() != "stale_command" {
+		t.Fatalf("stale ack = %#v", staleAck)
+	}
+	if player.position != afterFresh {
+		t.Fatalf("stale command reapplied movement: got %#v want %#v", player.position, afterFresh)
+	}
+}
+
 func TestRuntimeSprintStrafeYawInversionInterleavedWithSkills(t *testing.T) {
 	t.Parallel()
 

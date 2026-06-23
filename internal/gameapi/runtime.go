@@ -85,6 +85,8 @@ type entityState struct {
 	aggression            float64
 	lastSequence          uint64
 	lastClientTick        uint64
+	processedCommandIDs   map[string]struct{}
+	processedCommandOrder []string
 	locomotion            *gamev1.LocomotionState
 	skillRuntime          *gamev1.SkillRuntimeState
 	actionInstance        *actionruntime.Instance
@@ -268,14 +270,32 @@ func (r *Runtime) SubmitCommand(ctx context.Context, cmd *gamev1.PlayerCommand) 
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	r.tick++
 	player := r.playerForCommandLocked(cmd)
 	if player == nil {
+		r.tick++
 		ack := r.ackLocked(cmd, nil, false, "player_not_attached", "player is not attached")
 		r.queueAckLocked(cmd.GetContext().GetSessionId(), ack)
 		return ack, nil
 	}
+	if duplicate, stale, reason := playerCommandReplayState(player, cmd); duplicate || stale {
+		code := ""
+		accepted := true
+		message := "duplicate command ignored"
+		if stale {
+			code = "stale_command"
+			accepted = false
+			message = reason
+		}
+		ack := r.ackLocked(cmd, player, accepted, code, message)
+		if ack.Metadata == nil {
+			ack.Metadata = map[string]string{}
+		}
+		ack.Metadata["command_replay_state"] = reason
+		r.queueAckLocked(cmd.GetContext().GetSessionId(), ack)
+		return ack, nil
+	}
 
+	r.tick++
 	now := time.Now()
 	r.refreshActionRuntimeStatesLocked(now)
 	player.lastSequence = cmd.GetSequence()
@@ -329,8 +349,66 @@ func (r *Runtime) SubmitCommand(ctx context.Context, cmd *gamev1.PlayerCommand) 
 	}
 
 	ack := r.ackLocked(cmd, player, true, "", "accepted")
+	rememberPlayerCommand(player, cmd)
 	r.queueAckLocked(cmd.GetContext().GetSessionId(), ack)
 	return ack, nil
+}
+
+func playerCommandReplayState(player *entityState, cmd *gamev1.PlayerCommand) (duplicate bool, stale bool, reason string) {
+	if player == nil || cmd == nil {
+		return false, false, ""
+	}
+	key := playerCommandReplayKey(cmd)
+	if key != "" && player.processedCommandIDs != nil {
+		if _, seen := player.processedCommandIDs[key]; seen {
+			return true, false, "duplicate_command_id"
+		}
+	}
+	sequence := cmd.GetSequence()
+	if sequence > 0 && player.lastSequence > 0 && sequence <= player.lastSequence {
+		return false, true, fmt.Sprintf("sequence %d is not newer than last accepted sequence %d", sequence, player.lastSequence)
+	}
+	return false, false, ""
+}
+
+func rememberPlayerCommand(player *entityState, cmd *gamev1.PlayerCommand) {
+	if player == nil || cmd == nil {
+		return
+	}
+	key := playerCommandReplayKey(cmd)
+	if key == "" {
+		return
+	}
+	if player.processedCommandIDs == nil {
+		player.processedCommandIDs = map[string]struct{}{}
+	}
+	if _, exists := player.processedCommandIDs[key]; exists {
+		return
+	}
+	player.processedCommandIDs[key] = struct{}{}
+	player.processedCommandOrder = append(player.processedCommandOrder, key)
+	const maxRememberedPlayerCommands = 128
+	if len(player.processedCommandOrder) <= maxRememberedPlayerCommands {
+		return
+	}
+	removeCount := len(player.processedCommandOrder) - maxRememberedPlayerCommands
+	for _, oldKey := range player.processedCommandOrder[:removeCount] {
+		delete(player.processedCommandIDs, oldKey)
+	}
+	player.processedCommandOrder = append([]string(nil), player.processedCommandOrder[removeCount:]...)
+}
+
+func playerCommandReplayKey(cmd *gamev1.PlayerCommand) string {
+	if cmd == nil {
+		return ""
+	}
+	if commandID := strings.TrimSpace(cmd.GetCommandId()); commandID != "" {
+		return commandID
+	}
+	if cmd.GetSequence() == 0 {
+		return ""
+	}
+	return fmt.Sprintf("%s:%d", cmd.GetType().String(), cmd.GetSequence())
 }
 
 func (r *Runtime) canApplyMovementActionContract(abilityKey string, contract MovementActionRuntimeContract) (bool, string, string) {
