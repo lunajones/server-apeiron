@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"server-apeiron/internal/combat/damagegroup"
 	"server-apeiron/internal/movement"
 )
 
@@ -30,59 +31,38 @@ func (r *Runtime) enqueueSkillImpactScheduleLocked(schedule skillImpactSchedule)
 		return false
 	}
 	if r.impacts == nil {
-		r.impacts = make(map[string]skillImpactSchedule)
+		r.impacts = damagegroup.NewRuntime[skillImpactSchedule]()
 	}
-	if schedule.Source.resolvedSkillImpacts != nil {
-		if _, resolved := schedule.Source.resolvedSkillImpacts[key]; resolved {
-			return false
-		}
-	}
-	if _, exists := r.impacts[key]; exists {
-		return false
-	}
-	r.impacts[key] = schedule
-	return true
+	return r.impacts.Enqueue(damageGroupScheduleFromSkillImpact(key, schedule))
 }
 
 func (r *Runtime) runPendingSkillImpactSchedulesLocked(now time.Time) []runtimeSkillImpact {
-	if r == nil || len(r.impacts) == 0 {
+	if r == nil || r.impacts == nil || r.impacts.PendingCount() == 0 {
 		return nil
 	}
-	impacts := make([]runtimeSkillImpact, 0, len(r.impacts))
-	for key, schedule := range r.impacts {
-		if schedule.Source == nil || schedule.Source.health <= 0 {
-			delete(r.impacts, key)
-			continue
+	impacts := []runtimeSkillImpact{}
+	r.impacts.Run(now, func(schedule damagegroup.Schedule[skillImpactSchedule]) damagegroup.Schedule[skillImpactSchedule] {
+		payload := schedule.Payload
+		payload.PreviousMS = schedule.PreviousMS
+		payload.ElapsedMS = schedule.ElapsedMS
+		if payload.TrackSource {
+			payload.Start, payload.End, payload.Direction = skillImpactScheduleTrace(payload)
 		}
-		previousMS := schedule.ElapsedMS
-		schedule.ElapsedMS = skillImpactScheduleElapsedMS(schedule, now)
-		schedule.PreviousMS = previousMS
-		if schedule.TrackSource {
-			schedule.Start, schedule.End, schedule.Direction = skillImpactScheduleTrace(schedule)
+		schedule.Payload = payload
+		return schedule
+	}, func(schedule damagegroup.Schedule[skillImpactSchedule]) bool {
+		payload := schedule.Payload
+		if payload.Source == nil || payload.Source.health <= 0 {
+			return true
 		}
-		evaluationMS, crossedWindow := skillImpactScheduleEvaluationElapsedMS(schedule)
-		if !crossedWindow {
-			if skillImpactScheduleExpired(schedule) {
-				delete(r.impacts, key)
-			} else {
-				r.impacts[key] = schedule
-			}
-			continue
-		}
-		schedule.ElapsedMS = evaluationMS
-		resolved := r.resolveSkillImpactScheduleLocked(schedule)
-		schedule.ElapsedMS = skillImpactScheduleElapsedMS(schedule, now)
+		payload.ElapsedMS = schedule.ElapsedMS
+		resolved := r.resolveSkillImpactScheduleLocked(payload)
 		if len(resolved) > 0 {
 			impacts = append(impacts, resolved...)
-			delete(r.impacts, key)
-			continue
+			return true
 		}
-		if skillImpactScheduleExpired(schedule) {
-			delete(r.impacts, key)
-			continue
-		}
-		r.impacts[key] = schedule
-	}
+		return false
+	})
 	return impacts
 }
 
@@ -97,19 +77,13 @@ func (r *Runtime) resolveSkillImpactScheduleLocked(schedule skillImpactSchedule)
 	if key == "" {
 		return nil
 	}
-	if schedule.Source.resolvedSkillImpacts != nil {
-		if _, resolved := schedule.Source.resolvedSkillImpacts[key]; resolved {
-			return nil
-		}
+	if r.impacts != nil && r.impacts.IsResolved(key) {
+		return nil
 	}
 	impacts := r.applySkillImpactAt(schedule.Source, schedule.Skill, schedule.Start, schedule.End, schedule.Direction, schedule.ElapsedMS)
 	if len(impacts) == 0 {
 		return nil
 	}
-	if schedule.Source.resolvedSkillImpacts == nil {
-		schedule.Source.resolvedSkillImpacts = map[string]struct{}{}
-	}
-	schedule.Source.resolvedSkillImpacts[key] = struct{}{}
 	return impacts
 }
 
@@ -139,6 +113,34 @@ func skillImpactScheduleFromActionInstance(source *entityState, skill SkillRunti
 		RequireTime: true,
 		TrackSource: true,
 	}
+}
+
+func damageGroupScheduleFromSkillImpact(key string, schedule skillImpactSchedule) damagegroup.Schedule[skillImpactSchedule] {
+	return damagegroup.Schedule[skillImpactSchedule]{
+		Key:         key,
+		StartedAt:   schedule.StartedAt,
+		ElapsedMS:   schedule.ElapsedMS,
+		PreviousMS:  schedule.PreviousMS,
+		RequireTime: schedule.RequireTime,
+		Windows:     skillImpactScheduleWindows(schedule.Skill),
+		Payload:     schedule,
+	}
+}
+
+func skillImpactScheduleWindows(skill SkillRuntimeContract) []damagegroup.Window {
+	windows := make([]damagegroup.Window, 0, len(skill.Hitboxes))
+	for _, profile := range skill.Hitboxes {
+		if profile == nil {
+			continue
+		}
+		startMS := float64(profile.GetHitboxStartMs())
+		endMS := float64(profile.GetHitboxEndMs())
+		if endMS <= startMS {
+			endMS = startMS
+		}
+		windows = append(windows, damagegroup.Window{StartMS: startMS, EndMS: endMS})
+	}
+	return windows
 }
 
 func skillImpactScheduleElapsedMS(schedule skillImpactSchedule, now time.Time) float64 {

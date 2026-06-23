@@ -13,6 +13,7 @@ import (
 	creatureai "server-apeiron/internal/ai"
 	combatpipeline "server-apeiron/internal/combat"
 	"server-apeiron/internal/combat/actionruntime"
+	"server-apeiron/internal/combat/damagegroup"
 	"server-apeiron/internal/config"
 	"server-apeiron/internal/domain/ids"
 	domainmath "server-apeiron/internal/domain/math"
@@ -48,7 +49,7 @@ type Runtime struct {
 	options   RuntimeOptions
 	aiSystem  *creatureai.RegionBrainSystem
 	impact    *combatpipeline.ImpactResolutionPipeline
-	impacts   map[string]skillImpactSchedule
+	impacts   *damagegroup.Runtime[skillImpactSchedule]
 }
 
 type RuntimeOptions struct {
@@ -95,7 +96,6 @@ type entityState struct {
 	combatMode            *gamev1.CombatModeState
 	creatureAI            *gamev1.CreatureAIState
 	creatureCooldownUntil map[string]time.Time
-	resolvedSkillImpacts  map[string]struct{}
 
 	// actionLockedUntil marks an owned movement action (leap/dodge) the player cannot
 	// interrupt with a skill/basic. Restores the chat 6 #3 rule: no skill while
@@ -185,7 +185,7 @@ func NewRuntimeWithOptions(contracts RuntimeContracts, options RuntimeOptions) *
 		options:   options,
 		aiSystem:  creatureai.NewRegionBrainSystem(),
 		impact:    combatpipeline.NewImpactResolutionPipeline(nil, nil, nil, nil),
-		impacts:   make(map[string]skillImpactSchedule),
+		impacts:   damagegroup.NewRuntime[skillImpactSchedule](),
 	}
 }
 
