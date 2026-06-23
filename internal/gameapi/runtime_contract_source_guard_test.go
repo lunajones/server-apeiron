@@ -82,6 +82,72 @@ func TestDefaultRuntimeIsUnconfiguredAndNeverLeaksRecoveryFixture(t *testing.T) 
 	}
 }
 
+func TestDefaultRuntimeRejectsMoveInsteadOfPublishingResolverDefaults(t *testing.T) {
+	runtime := NewRuntime()
+	session, err := runtime.OpenSession(context.Background(), &gamev1.OpenSessionRequest{
+		Context: &gamev1.RequestContext{SessionId: "default_move_guard", AccountId: "default_move_guard"},
+	})
+	if err != nil {
+		t.Fatalf("OpenSession failed: %v", err)
+	}
+	if _, err := runtime.AttachPlayer(context.Background(), &gamev1.AttachPlayerRequest{
+		Context:  &gamev1.RequestContext{SessionId: session.GetSessionId(), AccountId: "default_move_guard"},
+		PlayerId: "default_move_guard_player",
+	}); err != nil {
+		t.Fatalf("AttachPlayer failed: %v", err)
+	}
+
+	player := runtime.players["default_move_guard_player"]
+	start := player.position
+	ack, err := runtime.SubmitCommand(context.Background(), testRuntimeMoveCommand(session.GetSessionId(), 1, gamev1Vector(1, 0, 0), 1, true, nil))
+	if err != nil {
+		t.Fatalf("SubmitCommand failed: %v", err)
+	}
+	if ack.GetAccepted() {
+		t.Fatalf("default runtime accepted move without DB movement contract: %#v", ack)
+	}
+	if ack.GetRejectionCode() != "missing_movement_contract" {
+		t.Fatalf("default runtime move rejection = %q, want missing_movement_contract", ack.GetRejectionCode())
+	}
+	if player.position != start {
+		t.Fatalf("default runtime moved player despite missing move contract: start=%#v current=%#v", start, player.position)
+	}
+	if player.locomotion != nil && player.locomotion.GetAction() == "move" {
+		t.Fatalf("default runtime published resolver-default move locomotion: %#v", player.locomotion)
+	}
+}
+
+func TestRecoveryFixtureRuntimeAcceptsMoveOnlyThroughExplicitMoveContract(t *testing.T) {
+	runtime := NewRuntimeWithContracts(RecoveryFixtureRuntimeContracts())
+	session, err := runtime.OpenSession(context.Background(), &gamev1.OpenSessionRequest{
+		Context: &gamev1.RequestContext{SessionId: "fixture_move_guard", AccountId: "fixture_move_guard"},
+	})
+	if err != nil {
+		t.Fatalf("OpenSession failed: %v", err)
+	}
+	if _, err := runtime.AttachPlayer(context.Background(), &gamev1.AttachPlayerRequest{
+		Context:  &gamev1.RequestContext{SessionId: session.GetSessionId(), AccountId: "fixture_move_guard"},
+		PlayerId: "fixture_move_guard_player",
+	}); err != nil {
+		t.Fatalf("AttachPlayer failed: %v", err)
+	}
+
+	ack, err := runtime.SubmitCommand(context.Background(), testRuntimeMoveCommand(session.GetSessionId(), 1, gamev1Vector(1, 0, 0), 1, true, nil))
+	if err != nil {
+		t.Fatalf("SubmitCommand failed: %v", err)
+	}
+	if !ack.GetAccepted() {
+		t.Fatalf("fixture runtime rejected DB-equivalent move contract: %#v", ack)
+	}
+	player := runtime.players["fixture_move_guard_player"]
+	if player.locomotion == nil || player.locomotion.GetAbilityKey() != "move" {
+		t.Fatalf("fixture runtime did not publish move locomotion from explicit contract: %#v", player.locomotion)
+	}
+	if player.locomotion.GetActionContractId() != "grounded_move_v1" {
+		t.Fatalf("move locomotion contract id = %q, want grounded_move_v1", player.locomotion.GetActionContractId())
+	}
+}
+
 func TestRecoveryFixtureRuntimeIsExplicitDevTestOptIn(t *testing.T) {
 	contracts := RecoveryFixtureRuntimeContracts()
 	if contracts.Source != runtimeContractSourceRecoveryFixture {

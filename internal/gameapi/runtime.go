@@ -325,6 +325,11 @@ func (r *Runtime) SubmitCommand(ctx context.Context, cmd *gamev1.PlayerCommand) 
 
 	switch cmd.GetType() {
 	case gamev1.CommandType_COMMAND_TYPE_MOVE:
+		if ok, code, message := r.canApplyMovementActionContract("move", r.contracts.contractForAbility("move")); !ok {
+			ack := r.ackLocked(cmd, player, false, code, message)
+			r.queueAckLocked(cmd.GetContext().GetSessionId(), ack)
+			return ack, nil
+		}
 		r.applyMove(player, cmd)
 	case gamev1.CommandType_COMMAND_TYPE_TURN:
 		r.applyTurn(player, cmd)
@@ -427,7 +432,7 @@ func (r *Runtime) canApplyMovementActionContract(abilityKey string, contract Mov
 	if movement.ActionDuration(contract) <= 0 {
 		return false, "invalid_movement_contract", "movement action contract has no duration: " + abilityKey
 	}
-	if movement.ActionDistance(contract, 0) <= 0 && contract.ActionType != "turn" {
+	if movement.ActionDistance(contract, 0) <= 0 && abilityKey != "move" && contract.ActionType != "turn" {
 		return false, "invalid_movement_contract", "movement action contract has no distance: " + abilityKey
 	}
 	return true, "", ""
