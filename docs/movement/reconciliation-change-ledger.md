@@ -181,3 +181,36 @@ The gameapi path now speaks the same action-instance language as the reconstruct
 ### Guardrail
 
 Future command gating must build on the action instance/channel model. Do not bring back ad hoc "locked" state strings or per-skill cooldown branches in the gameapi runtime.
+
+## 2026-06-22 - Runtime Reconciliation Profile Made Authoritative End To End
+
+### Symptom
+
+The Unreal client still had a rich `FApeironMovementReconciliationProfile` initialized with
+client fallback values, and several reconciliation paths used positive-or fallback literals.
+That meant a missing DB/server field could look valid in the client and only show up later as
+rubberbanding, correction tuning weirdness, or a mismatch between server and local movement.
+
+### Change
+
+- Unreal `FApeironMovementReconciliationProfile` now carries runtime validation metadata.
+- Unreal snapshot parsing validates the raw `movement_reconciliation` JSON field list before
+  treating the profile as authoritative.
+- Unreal rejects incomplete/fallback reconciliation profiles in normal correction paths instead
+  of silently applying default values.
+- DB `runtime_movement_reconciliation_profile` seed/migration now owns the handoff/landing fields
+  that were previously zero and therefore client-fallback-owned.
+- Server `ValidateRequiredCoverage` now validates the full Unreal-facing rich movement profile.
+
+### Effect
+
+Missing or partially reconstructed reconciliation profile data should fail loudly in DB/server/client
+tests or logs, not become a hidden movement tuning value in the client. The C++ defaults remain only
+as inert initialization/editor safety, not as normal gameplay authority.
+
+### Guardrail
+
+Any new movement/reconciliation field must be added in one slice across DB migration, DB seed,
+proto/repository mapping, server runtime validation, Unreal parsing, and Unreal profile validation.
+Do not add new `PositiveOr(..., literal)` gameplay behavior unless the literal is provably a
+non-runtime safety default and missing authoritative data is logged or rejected.
