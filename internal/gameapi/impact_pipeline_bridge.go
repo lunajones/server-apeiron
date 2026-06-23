@@ -2,6 +2,7 @@ package gameapi
 
 import (
 	"context"
+	"strconv"
 	"strings"
 	"time"
 
@@ -160,6 +161,18 @@ func (r *Runtime) resolveRuntimeSkillImpact(source *entityState, target *entityS
 	})
 	if err != nil {
 		return runtimeSkillImpact{}, false
+	}
+	if target.entityType == "player" && apeironDodgeDebugEnabled() {
+		r.logDodgeDebugStateLocked("impact_resolved_against_player", target, map[string]string{
+			"source_id": strconv.FormatUint(source.id, 10),
+			"skill_id":  skill.SkillID,
+			"damage":    strconv.FormatFloat(result.FinalDamage, 'f', 3, 64),
+			"posture":   strconv.FormatFloat(result.PostureDamage, 'f', 3, 64),
+			"blocked":   strconv.FormatBool(result.Blocked),
+			"parried":   strconv.FormatBool(result.Parried),
+			"evaded":    strconv.FormatBool(result.Evaded),
+			"reason":    result.Reason,
+		})
 	}
 	appliedControl := runtimeSkillAppliedControlEffect(skill.ControlEffects, result.StatusApplied)
 	if appliedControl != nil {

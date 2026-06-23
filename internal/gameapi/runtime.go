@@ -366,17 +366,29 @@ func (r *Runtime) SubmitCommand(ctx context.Context, cmd *gamev1.PlayerCommand) 
 		}
 		r.applyTurn(player, cmd)
 	case gamev1.CommandType_COMMAND_TYPE_DODGE:
+		r.logDodgeDebugStateLocked("submit_dodge_before_validation", player, map[string]string{
+			"command_id":  cmd.GetCommandId(),
+			"sequence":    strconv.FormatUint(cmd.GetSequence(), 10),
+			"client_tick": strconv.FormatUint(cmd.GetClientTick(), 10),
+		})
 		if ok, code, message := r.canApplyMovementActionContract("dodge", r.contracts.contractForAbility("dodge")); !ok {
+			r.logDodgeDebugStateLocked("submit_dodge_rejected_contract", player, map[string]string{"code": code, "message": message})
 			ack := r.ackLocked(cmd, player, false, code, message)
 			r.queueAckLocked(cmd.GetContext().GetSessionId(), ack)
 			return ack, nil
 		}
 		if ok, code, message := r.spendPlayerDodgeStaminaLocked(player); !ok {
+			r.logDodgeDebugStateLocked("submit_dodge_rejected_stamina", player, map[string]string{"code": code, "message": message})
 			ack := r.ackLocked(cmd, player, false, code, message)
 			r.queueAckLocked(cmd.GetContext().GetSessionId(), ack)
 			return ack, nil
 		}
 		r.applyImpulse(player, cmd, r.contracts.contractForAbility("dodge"))
+		r.logDodgeDebugStateLocked("submit_dodge_after_apply", player, map[string]string{
+			"command_id":  cmd.GetCommandId(),
+			"sequence":    strconv.FormatUint(cmd.GetSequence(), 10),
+			"client_tick": strconv.FormatUint(cmd.GetClientTick(), 10),
+		})
 	case gamev1.CommandType_COMMAND_TYPE_LEAP:
 		if ok, code, message := r.canApplyMovementActionContract("jump", r.contracts.contractForAbility("jump")); !ok {
 			ack := r.ackLocked(cmd, player, false, code, message)
@@ -1351,6 +1363,17 @@ func (r *Runtime) applyTurn(player *entityState, cmd *gamev1.PlayerCommand) {
 }
 
 func (r *Runtime) applyImpulse(player *entityState, cmd *gamev1.PlayerCommand, contract MovementActionRuntimeContract) {
+	nowTime := time.Now()
+	r.logDodgeDebugStateLocked("owned_locomotion_begin_before_clear", player, map[string]string{
+		"requested_action":  contract.ActionType,
+		"requested_ability": contract.AbilityKey,
+	})
+	r.beginOwnedLocomotionActionLocked(player, nowTime)
+	r.logDodgeDebugStateLocked("owned_locomotion_begin_after_clear", player, map[string]string{
+		"requested_action":  contract.ActionType,
+		"requested_ability": contract.AbilityKey,
+	})
+
 	dir := vector{x: 1}
 	if cmd.GetDodge() != nil {
 		dir = normalize(fromProto(cmd.GetDodge().GetDirection()))
@@ -1380,7 +1403,7 @@ func (r *Runtime) applyImpulse(player *entityState, cmd *gamev1.PlayerCommand, c
 		Sequence:          cmd.GetSequence(),
 		ClientTick:        cmd.GetClientTick(),
 		MotionSource:      "owned_locomotion",
-		StartedAt:         time.Now(),
+		StartedAt:         nowTime,
 		StartPosition:     start,
 		ProjectedPosition: fromDomainVector(fullMotion.Projected),
 		Direction:         dir,
@@ -1403,8 +1426,31 @@ func (r *Runtime) applyImpulse(player *entityState, cmd *gamev1.PlayerCommand, c
 	if lockMS <= 0 {
 		lockMS = 300
 	}
-	player.actionLockedUntil = time.Now().Add(time.Duration(lockMS) * time.Millisecond)
+	player.actionLockedUntil = nowTime.Add(time.Duration(lockMS) * time.Millisecond)
 	player.actionLockReason = "active_locomotion:" + contract.ActionType
+	r.logDodgeDebugStateLocked("owned_locomotion_apply_complete", player, map[string]string{
+		"requested_action":  contract.ActionType,
+		"requested_ability": contract.AbilityKey,
+		"lock_ms":           strconv.FormatInt(int64(lockMS), 10),
+	})
+}
+
+func (r *Runtime) beginOwnedLocomotionActionLocked(player *entityState, now time.Time) {
+	if player == nil {
+		return
+	}
+	r.cancelEntityActionImpactScheduleLocked(player)
+	player.actionInstance = nil
+	player.skillRuntime = nil
+	player.creatureActiveSetupPolicyID = ""
+	player.actionHandoffUntil = time.Time{}
+	player.actionHandoffAction = ""
+	if player.actionMotion != nil && player.actionMotion.MotionSource != "owned_locomotion" {
+		player.actionMotion = nil
+	}
+	player.skillState = "idle"
+	player.combatState = "ready"
+	_ = now
 }
 
 // skillActionLockedLocked reports whether the player is mid-leap/dodge (an owned
@@ -1795,11 +1841,21 @@ func (r *Runtime) completeActionMotionLocked(entity *entityState, motion *action
 			entity.locomotion.LastUpdatedTick = r.tick
 		}
 	case "owned_locomotion":
+		r.logDodgeDebugStateLocked("owned_locomotion_complete_before_clear", entity, map[string]string{
+			"completed_action":  motion.Contract.ActionType,
+			"completed_ability": motion.Contract.AbilityKey,
+		})
 		entity.movementState = "grounded"
 		entity.skillState = "idle"
 		entity.combatState = "ready"
+		entity.skillRuntime = nil
+		entity.actionInstance = nil
 		entity.actionLockedUntil = time.Time{}
 		entity.actionLockReason = ""
+		r.logDodgeDebugStateLocked("owned_locomotion_complete_after_clear", entity, map[string]string{
+			"completed_action":  motion.Contract.ActionType,
+			"completed_ability": motion.Contract.AbilityKey,
+		})
 	}
 }
 

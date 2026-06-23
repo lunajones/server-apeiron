@@ -557,3 +557,46 @@ Do not let `AttachPlayer` revive expired owned-root state. Reattach may preserve
 server action, but an expired action plus expired handoff must become complete before the next local
 client run. Client-side authoritative action checks must use effective remaining time, not only the
 phase label, because old snapshots can otherwise act like permanent locks.
+
+## 2026-06-23 - Dodge Runtime Trace Toggle
+
+### Symptom
+
+Manual PIE still reports dodge sometimes losing player control after M1/basic attacks and sometimes
+after being hit during dodge. The visible failure is not only rubberbanding: the client can appear to
+complete a dodge, then later movement/skill input snaps the player back or leaves movement blocked.
+
+### Hypothesis Matrix
+
+- Client prediction overrun: possible, because the local dodge can continue or carry after the server
+  has already ended/grounded the action.
+- Server stale action state: possible, because prior fixes proved expired owned-root state can
+  survive attach/replay boundaries.
+- Damage pipeline breaking iframe/action root: possible, because the user reproduced stuck dodge
+  after hits during dodge and reported dodge iframe not always applying.
+- M1/basic action handoff contaminating dodge: possible, because the user reproduced M1 then dodge
+  losing control.
+- Tuning/deadzone problem: rejected for this round. The goal is to expose authority mismatch, not
+  mask it.
+
+### Change
+
+- Added server toggle `APEIRON_DODGE_DEBUG`.
+- Added server dodge state trace around submit validation, stamina rejection, owned-locomotion begin,
+  owned-locomotion completion, and damage impact resolution against the player.
+- Added client toggle `-ApeironDodgeDebug` / `bLogDodgeFlow`.
+- Added client dodge trace around input rejection, submit before/after prediction, local prediction
+  start/tick/stop, authoritative dodge snapshots, grounded snapshots after dodge, movement suppression,
+  move_stop, and first normal movement after dodge.
+
+### Tests
+
+- `go build ./...` in `server-apeiron` passed.
+- `PlainTestMapEditor Win64 Development` Unreal build succeeded with `-NoHotReload`.
+
+### Guardrail
+
+This is diagnostic-only observability plus the existing owned-locomotion isolation path. Do not use
+the resulting logs to justify deadzones, hidden smoothing, disabled lateral movement, or client-only
+rollback. The next runtime fix must identify which authority still owns dodge after it should have
+released, or why the server rejects/damages during an iframe window.
