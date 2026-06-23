@@ -15,18 +15,21 @@ const (
 )
 
 type runtimeSkillImpact struct {
-	SourceID              uint64
-	TargetID              uint64
-	SkillID               string
-	ImpactType            string
-	ImpactResponseProfile string
-	StatusApplied         []string
-	ControlType           string
-	ControlReleasePolicy  string
-	DamageApplied         float64
-	PostureApplied        float64
-	Blocked               bool
-	Parried               bool
+	SourceID               uint64
+	TargetID               uint64
+	SkillID                string
+	ImpactType             string
+	ImpactResponseProfile  string
+	StatusApplied          []string
+	ControlType            string
+	ControlReleasePolicy   string
+	ControlDistanceCM      float64
+	ControlSpeedCMS        float64
+	ControlDirectionPolicy string
+	DamageApplied          float64
+	PostureApplied         float64
+	Blocked                bool
+	Parried                bool
 }
 
 type runtimeSkillImpactCandidate struct {

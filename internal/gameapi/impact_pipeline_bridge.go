@@ -166,19 +166,23 @@ func (r *Runtime) resolveRuntimeSkillImpact(source *entityState, target *entityS
 		r.applyRuntimeImpactControlMotionLocked(source, target, dir, appliedControl, now)
 	}
 	controlType, releasePolicy := runtimeSkillImpactControlMetadata(appliedControl)
+	controlDistance, controlSpeed, controlDirection := runtimeSkillImpactControlMotionMetadata(appliedControl)
 	return runtimeSkillImpact{
-		SourceID:              source.id,
-		TargetID:              target.id,
-		SkillID:               skill.SkillID,
-		ImpactType:            runtimeImpactType(skill, profile),
-		ImpactResponseProfile: combat.ImpactResponseProfileForEntity(targetEntity),
-		StatusApplied:         append([]string(nil), result.StatusApplied...),
-		ControlType:           controlType,
-		ControlReleasePolicy:  releasePolicy,
-		DamageApplied:         result.FinalDamage,
-		PostureApplied:        result.PostureDamage,
-		Blocked:               result.Blocked,
-		Parried:               result.Parried,
+		SourceID:               source.id,
+		TargetID:               target.id,
+		SkillID:                skill.SkillID,
+		ImpactType:             runtimeImpactType(skill, profile),
+		ImpactResponseProfile:  combat.ImpactResponseProfileForEntity(targetEntity),
+		StatusApplied:          append([]string(nil), result.StatusApplied...),
+		ControlType:            controlType,
+		ControlReleasePolicy:   releasePolicy,
+		ControlDistanceCM:      controlDistance,
+		ControlSpeedCMS:        controlSpeed,
+		ControlDirectionPolicy: controlDirection,
+		DamageApplied:          result.FinalDamage,
+		PostureApplied:         result.PostureDamage,
+		Blocked:                result.Blocked,
+		Parried:                result.Parried,
 	}, true
 }
 
@@ -269,6 +273,14 @@ func runtimeSkillImpactControlMetadata(effect *dbv1.SkillControlEffect) (string,
 		return "", ""
 	}
 	return strings.TrimSpace(effect.GetControlType()), strings.TrimSpace(effect.GetReleasePolicyId())
+}
+
+func runtimeSkillImpactControlMotionMetadata(effect *dbv1.SkillControlEffect) (float64, float64, string) {
+	if effect == nil {
+		return 0, 0, ""
+	}
+	contract := runtimeImpactControlActionContract(effect)
+	return contract.DistanceCM, contract.BaseSpeedCMS, strings.TrimSpace(effect.GetDirectionPolicy())
 }
 
 func (r *Runtime) runtimeCombatCoreProfile(entity *entityState) *dbv1.CombatCoreProfile {
