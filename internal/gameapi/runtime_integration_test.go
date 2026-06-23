@@ -13,7 +13,7 @@ import (
 func TestRuntimeLocomotionTransitionKeepsReconciliationFields(t *testing.T) {
 	t.Parallel()
 
-	runtime := NewRuntimeWithOptions(RecoveredRuntimeContracts(), RuntimeOptions{MovementValidation: true})
+	runtime := NewRuntimeWithOptions(RecoveryFixtureRuntimeContracts(), RuntimeOptions{MovementValidation: true})
 	sessionID := "runtime-integration-turn-skill"
 
 	openCtx := &gamev1.OpenSessionRequest{Context: &gamev1.RequestContext{SessionId: sessionID}}
@@ -109,7 +109,7 @@ func TestRuntimeLocomotionTransitionKeepsReconciliationFields(t *testing.T) {
 func TestRuntimeTurnWithMissingLocomotionSeedsTurnContract(t *testing.T) {
 	t.Parallel()
 
-	runtime := NewRuntimeWithOptions(RecoveredRuntimeContracts(), RuntimeOptions{MovementValidation: true})
+	runtime := NewRuntimeWithOptions(RecoveryFixtureRuntimeContracts(), RuntimeOptions{MovementValidation: true})
 	sessionID := "runtime-integration-turn-fallback"
 	if _, err := runtime.OpenSession(context.Background(), &gamev1.OpenSessionRequest{
 		Context: &gamev1.RequestContext{SessionId: sessionID},
@@ -193,7 +193,7 @@ func TestRuntimeRejectsDodgeAndLeapWhenMovementContractIsMissing(t *testing.T) {
 		t.Run(scenario.name, func(t *testing.T) {
 			t.Parallel()
 
-			contracts := RecoveredRuntimeContracts()
+			contracts := RecoveryFixtureRuntimeContracts()
 			delete(contracts.ActionContracts, scenario.abilityKey)
 			runtime := NewRuntimeWithOptions(contracts, RuntimeOptions{MovementValidation: true})
 			sessionID := "runtime-integration-missing-contract-" + scenario.name
@@ -231,7 +231,7 @@ func TestRuntimeRejectsDodgeAndLeapWhenMovementContractIsMissing(t *testing.T) {
 func TestRuntimeRejectsSkillWhenRuntimeContractIsMissing(t *testing.T) {
 	t.Parallel()
 
-	contracts := RecoveredRuntimeContracts()
+	contracts := RecoveryFixtureRuntimeContracts()
 	delete(contracts.SkillContracts, "player_shield_rush")
 	delete(contracts.ActionContracts, "player_shield_rush")
 	runtime := NewRuntimeWithOptions(contracts, RuntimeOptions{MovementValidation: true})
@@ -268,7 +268,7 @@ func TestRuntimeRejectsSkillWhenRuntimeContractIsMissing(t *testing.T) {
 func TestGroundedMoveSpeedPreservesDirectionalCaps(t *testing.T) {
 	t.Parallel()
 
-	runtime := NewRuntimeWithContracts(RecoveredRuntimeContracts())
+	runtime := NewRuntimeWithContracts(RecoveryFixtureRuntimeContracts())
 	player := runtime.ensurePlayerLocked("local_player")
 	profile := runtime.contracts.MovementProfile
 	if profile == nil {
@@ -311,7 +311,7 @@ func TestGroundedMoveSpeedPreservesDirectionalCaps(t *testing.T) {
 func TestRuntimeSprintStrafeYawInversionInterleavedWithSkills(t *testing.T) {
 	t.Parallel()
 
-	runtime := NewRuntimeWithOptions(RecoveredRuntimeContracts(), RuntimeOptions{MovementValidation: true})
+	runtime := NewRuntimeWithOptions(RecoveryFixtureRuntimeContracts(), RuntimeOptions{MovementValidation: true})
 	sessionID := "runtime-integration-sprint-strafe-skill"
 
 	if _, err := runtime.OpenSession(context.Background(), &gamev1.OpenSessionRequest{
@@ -429,7 +429,7 @@ func TestRuntimeSprintStrafeYawInversionInterleavedWithSkills(t *testing.T) {
 func TestRuntimeTurnOnlyDoesNotReplaceActiveMoveLocomotion(t *testing.T) {
 	t.Parallel()
 
-	runtime := NewRuntimeWithOptions(RecoveredRuntimeContracts(), RuntimeOptions{MovementValidation: true})
+	runtime := NewRuntimeWithOptions(RecoveryFixtureRuntimeContracts(), RuntimeOptions{MovementValidation: true})
 	sessionID := "runtime-integration-turn-only"
 
 	if _, err := runtime.OpenSession(context.Background(), &gamev1.OpenSessionRequest{
@@ -479,7 +479,7 @@ func TestRuntimeTurnOnlyDoesNotReplaceActiveMoveLocomotion(t *testing.T) {
 func TestRuntimeShiftStrafeYawInversionKeepsMoveReconciled(t *testing.T) {
 	t.Parallel()
 
-	runtime := NewRuntimeWithOptions(RecoveredRuntimeContracts(), RuntimeOptions{MovementValidation: true})
+	runtime := NewRuntimeWithOptions(RecoveryFixtureRuntimeContracts(), RuntimeOptions{MovementValidation: true})
 	sessionID := "runtime-integration-shift-stride-yaw"
 
 	if _, err := runtime.OpenSession(context.Background(), &gamev1.OpenSessionRequest{
@@ -588,7 +588,7 @@ func TestRuntimeShiftStrafeYawInversionKeepsMoveReconciled(t *testing.T) {
 func TestRuntimeShiftRunRepeatedBasicAttackPresses(t *testing.T) {
 	t.Parallel()
 
-	runtime := NewRuntimeWithOptions(RecoveredRuntimeContracts(), RuntimeOptions{MovementValidation: true})
+	runtime := NewRuntimeWithOptions(RecoveryFixtureRuntimeContracts(), RuntimeOptions{MovementValidation: true})
 	sessionID := "runtime-integration-shift-run-basic-presses"
 
 	if _, err := runtime.OpenSession(context.Background(), &gamev1.OpenSessionRequest{
@@ -683,7 +683,7 @@ func TestRuntimeShiftRunRepeatedBasicAttackPresses(t *testing.T) {
 func TestRuntimeShiftRunRepeatedShieldSkillsReturnForwardMove(t *testing.T) {
 	t.Parallel()
 
-	runtime := NewRuntimeWithOptions(RecoveredRuntimeContracts(), RuntimeOptions{MovementValidation: true})
+	runtime := NewRuntimeWithOptions(RecoveryFixtureRuntimeContracts(), RuntimeOptions{MovementValidation: true})
 	sessionID := "runtime-integration-shift-run-r-f"
 	if _, err := runtime.OpenSession(context.Background(), &gamev1.OpenSessionRequest{
 		Context: &gamev1.RequestContext{SessionId: sessionID},
@@ -749,7 +749,7 @@ func TestRuntimeShiftRunRepeatedShieldSkillsReturnForwardMove(t *testing.T) {
 func TestRuntimeCastPublishesActionInstanceAckMetadata(t *testing.T) {
 	t.Parallel()
 
-	runtime := NewRuntimeWithOptions(RecoveredRuntimeContracts(), RuntimeOptions{MovementValidation: true})
+	runtime := NewRuntimeWithOptions(RecoveryFixtureRuntimeContracts(), RuntimeOptions{MovementValidation: true})
 	sessionID := "runtime-integration-action-instance-ack"
 	if _, err := runtime.OpenSession(context.Background(), &gamev1.OpenSessionRequest{
 		Context: &gamev1.RequestContext{SessionId: sessionID},
@@ -787,7 +787,7 @@ func TestRuntimeCastPublishesActionInstanceAckMetadata(t *testing.T) {
 func TestRuntimeSnapshotAdvancesAndCompletesActionInstance(t *testing.T) {
 	t.Parallel()
 
-	runtime := NewRuntimeWithOptions(RecoveredRuntimeContracts(), RuntimeOptions{MovementValidation: true})
+	runtime := NewRuntimeWithOptions(RecoveryFixtureRuntimeContracts(), RuntimeOptions{MovementValidation: true})
 	sessionID := "runtime-integration-action-instance-snapshot"
 	if _, err := runtime.OpenSession(context.Background(), &gamev1.OpenSessionRequest{
 		Context: &gamev1.RequestContext{SessionId: sessionID},
@@ -844,7 +844,7 @@ func TestRuntimeSnapshotAdvancesAndCompletesActionInstance(t *testing.T) {
 func TestRuntimeGroundedSkillMotionProgressesBySnapshotAndOwnsRoot(t *testing.T) {
 	t.Parallel()
 
-	runtime := NewRuntimeWithOptions(RecoveredRuntimeContracts(), RuntimeOptions{MovementValidation: true})
+	runtime := NewRuntimeWithOptions(RecoveryFixtureRuntimeContracts(), RuntimeOptions{MovementValidation: true})
 	sessionID := "runtime-integration-skill-root-motion"
 	if _, err := runtime.OpenSession(context.Background(), &gamev1.OpenSessionRequest{
 		Context: &gamev1.RequestContext{SessionId: sessionID},
@@ -953,7 +953,7 @@ func TestRuntimePostSkillHandoffReturnsSprintStrafeForCurrentBulwarkSkills(t *te
 		t.Run(skillID, func(t *testing.T) {
 			t.Parallel()
 
-			runtime := NewRuntimeWithOptions(RecoveredRuntimeContracts(), RuntimeOptions{MovementValidation: true})
+			runtime := NewRuntimeWithOptions(RecoveryFixtureRuntimeContracts(), RuntimeOptions{MovementValidation: true})
 			sessionID := "runtime-integration-post-skill-handoff-" + skillID
 			if _, err := runtime.OpenSession(context.Background(), &gamev1.OpenSessionRequest{
 				Context: &gamev1.RequestContext{SessionId: sessionID},

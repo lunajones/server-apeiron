@@ -183,8 +183,8 @@ The recovered game API must not keep movement, skill movement, and wolf behavior
 
 Current source-of-truth order:
 
-1. `db-apeiron` gRPC contract endpoints, when `DB_APEIRON_ENDPOINT` is configured and ready.
-2. `gameapi.RecoveredRuntimeContracts()` only as explicit recovery fallback so the game can still boot while DB is offline or still being reconstructed.
+1. `db-apeiron` gRPC contract endpoints, with strict coverage validation, for normal app boot.
+2. `gameapi.RecoveryFixtureRuntimeContracts()` only as a dev/test reconstruction fixture. It must not boot the normal game server while DB is offline or incomplete.
 
 ## Implemented
 
@@ -299,7 +299,7 @@ The historical rubberbanding work repeatedly failed when movement authority was 
 
 ## Finding
 
-The app boot path still initialized `gameapi.RecoveredRuntimeContracts()` before trying DB-backed runtime contracts. That meant a missing DB endpoint or partial recovered startup could look playable while using recovery-only values for movement, skill movement, wolf policy, and combat mode slots.
+The app boot path still initialized `gameapi.RecoveryFixtureRuntimeContracts()` before trying DB-backed runtime contracts. That meant a missing DB endpoint or partial recovered startup could look playable while using recovery-only values for movement, skill movement, wolf policy, and combat mode slots.
 
 ## Implemented
 
@@ -308,7 +308,7 @@ The app boot path still initialized `gameapi.RecoveredRuntimeContracts()` before
 - Complete strict DB loads are labeled `db_contracts`.
 - `gameapi.NewRuntimeWithOptions` no longer backfills missing contract groups from recovered runtime.
 - `RuntimeContracts.contractForAbility` and `skillContract` no longer invent missing contracts for strict DB sources.
-- `LoadRuntimeContractsFromDB` starts from an empty strict contract container, not from `RecoveredRuntimeContracts()`.
+- `LoadRuntimeContractsFromDB` starts from an empty strict contract container, not from `RecoveryFixtureRuntimeContracts()`.
 
 ## Validated
 
@@ -318,13 +318,13 @@ The app boot path still initialized `gameapi.RecoveredRuntimeContracts()` before
 ## Remaining Recovery Notes
 
 - `movement_reconciliation_contract` remains the per-action ownership category contract. The rich Unreal-facing profile is now tracked separately as `runtime_movement_reconciliation_profile`.
-- `RecoveredRuntimeContracts()` remains only as a test/recovery fixture for old unit scenarios. It is not reachable from app boot.
+- `RecoveryFixtureRuntimeContracts()` remains only as a test/recovery fixture for old unit scenarios. It is not reachable from app boot.
 
 # 2026-06-22 - DB-authoritative runtime movement reconciliation profile slice
 
 ## Finding
 
-`gameapi.RecoveredRuntimeContracts()` still owned the rich `MovementReconciliationProfile` values sent in player snapshots. DB had `movement_reconciliation_contract`, but that table only describes per-action reconciliation ownership and cannot represent the full Unreal-facing profile fields such as grounded deadzones, leap/dodge handoff tolerances, submit intervals, visual smoothing, and strafe/backpedal sprint multipliers.
+`gameapi.RecoveryFixtureRuntimeContracts()` still owned the rich `MovementReconciliationProfile` values sent in player snapshots. DB had `movement_reconciliation_contract`, but that table only describes per-action reconciliation ownership and cannot represent the full Unreal-facing profile fields such as grounded deadzones, leap/dodge handoff tolerances, submit intervals, visual smoothing, and strafe/backpedal sprint multipliers.
 
 ## Implemented
 

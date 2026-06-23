@@ -399,7 +399,7 @@ normalize runtime schema (`028_temporal_melee_hitbox.sql` como modelo final) · 
 contract api.
 
 A própria recuperação confirmou: **`internal/movement/resolver.go` não existe** (P0); fallbacks ainda
-alcançáveis (`RecoveredRuntimeContracts`, AttackProfile); muitos arquivos winfr têm nome certo mas
+alcançáveis (`RecoveryFixtureRuntimeContracts`, AttackProfile); muitos arquivos winfr têm nome certo mas
 conteúdo corrompido. Template reutilizável: `docs/recovery/continuous-recovery-request-template.md`.
 
 > Este HEAD **compila**, mas é a base da recuperação — **não** a versão final. A reconstrução

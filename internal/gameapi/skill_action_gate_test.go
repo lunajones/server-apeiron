@@ -14,7 +14,7 @@ import (
 func TestSkillRejectedDuringLeap(t *testing.T) {
 	t.Parallel()
 
-	runtime := NewRuntimeWithOptions(RecoveredRuntimeContracts(), RuntimeOptions{MovementValidation: true})
+	runtime := NewRuntimeWithOptions(RecoveryFixtureRuntimeContracts(), RuntimeOptions{MovementValidation: true})
 	sessionID := "runtime-skill-gate"
 
 	if _, err := runtime.OpenSession(context.Background(), &gamev1.OpenSessionRequest{
@@ -59,7 +59,7 @@ func TestSkillRejectedDuringLeap(t *testing.T) {
 func TestSkillRejectedDuringGroundedSkillRootMotion(t *testing.T) {
 	t.Parallel()
 
-	runtime := NewRuntimeWithOptions(RecoveredRuntimeContracts(), RuntimeOptions{MovementValidation: true})
+	runtime := NewRuntimeWithOptions(RecoveryFixtureRuntimeContracts(), RuntimeOptions{MovementValidation: true})
 	sessionID := "runtime-grounded-skill-gate"
 
 	if _, err := runtime.OpenSession(context.Background(), &gamev1.OpenSessionRequest{

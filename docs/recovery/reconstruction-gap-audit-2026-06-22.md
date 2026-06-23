@@ -51,7 +51,7 @@ Current recovered code evidence:
 - `internal/gameapi/runtime.go` does not backfill missing runtime contract groups from recovered runtime.
 - `internal/gameapi/contracts.go` labels complete strict DB loads as `db_contracts`.
 - `db-apeiron.runtime_movement_reconciliation_profile` is now the source for the rich Unreal-facing movement reconciliation profile.
-- `LoadRuntimeContractsFromDB` starts from an empty strict container instead of `RecoveredRuntimeContracts()`.
+- `LoadRuntimeContractsFromDB` starts from an empty strict container instead of `RecoveryFixtureRuntimeContracts()`.
 
 Risk:
 - Remaining risk is direct test/reconstruction fixture use, not app boot. Keep production paths DB-required.

@@ -601,7 +601,10 @@ func runtimeMovementReconciliationProfileFromDB(profile *dbv1.RuntimeMovementRec
 	}
 }
 
-func RecoveredRuntimeContracts() RuntimeContracts {
+// RecoveryFixtureRuntimeContracts is a dev/test reconstruction fixture. Normal app
+// boot must load DB-backed contracts through LoadRuntimeContractsFromDB and strict
+// coverage validation; do not call this from production startup.
+func RecoveryFixtureRuntimeContracts() RuntimeContracts {
 	contracts := RuntimeContracts{
 		Source:          "recovered_runtime_fallback",
 		MovementProfile: recoveredMovementProfile(),

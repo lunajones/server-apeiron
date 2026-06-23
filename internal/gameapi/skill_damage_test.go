@@ -27,7 +27,7 @@ func TestLoadSkillRuntimeContractMapsDBDamage(t *testing.T) {
 // canonical base/posture damage from db-apeiron seed 013 (damage-pipeline brick 2a).
 // When the DB skill proto exposes damage (brick 2b), this should be sourced from the DB.
 func TestRecoveredPlayerSkillsCarrySeedDamage(t *testing.T) {
-	contracts := RecoveredRuntimeContracts()
+	contracts := RecoveryFixtureRuntimeContracts()
 
 	cases := map[string]struct {
 		damage  float64
@@ -54,7 +54,7 @@ func TestRecoveredPlayerSkillsCarrySeedDamage(t *testing.T) {
 func TestRuntimeSkillImpactAppliesDBContractDamage(t *testing.T) {
 	t.Parallel()
 
-	runtime := NewRuntimeWithContracts(RecoveredRuntimeContracts())
+	runtime := NewRuntimeWithContracts(RecoveryFixtureRuntimeContracts())
 	sessionID := "runtime-skill-impact-damage"
 	attachRuntimePlayer(t, runtime, sessionID)
 	player := runtime.ensurePlayerLocked("local_player")
@@ -80,7 +80,7 @@ func TestRuntimeSkillImpactAppliesDBContractDamage(t *testing.T) {
 func TestRuntimeSkillImpactHonorsDirectionalBlock(t *testing.T) {
 	t.Parallel()
 
-	runtime := NewRuntimeWithContracts(RecoveredRuntimeContracts())
+	runtime := NewRuntimeWithContracts(RecoveryFixtureRuntimeContracts())
 	sessionID := "runtime-skill-impact-block"
 	attachRuntimePlayer(t, runtime, sessionID)
 	player := runtime.ensurePlayerLocked("local_player")
@@ -104,7 +104,7 @@ func TestRuntimeSkillImpactHonorsDirectionalBlock(t *testing.T) {
 func TestRuntimeSkillImpactMissesOutsideHitbox(t *testing.T) {
 	t.Parallel()
 
-	runtime := NewRuntimeWithContracts(RecoveredRuntimeContracts())
+	runtime := NewRuntimeWithContracts(RecoveryFixtureRuntimeContracts())
 	sessionID := "runtime-skill-impact-miss"
 	attachRuntimePlayer(t, runtime, sessionID)
 	player := runtime.ensurePlayerLocked("local_player")

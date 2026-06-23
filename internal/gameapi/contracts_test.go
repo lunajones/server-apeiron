@@ -11,8 +11,8 @@ import (
 	"google.golang.org/grpc"
 )
 
-func TestRecoveredRuntimeContractsExposeRequiredSkillContracts(t *testing.T) {
-	contracts := RecoveredRuntimeContracts()
+func TestRecoveryFixtureRuntimeContractsExposeRequiredSkillContracts(t *testing.T) {
+	contracts := RecoveryFixtureRuntimeContracts()
 	if err := contracts.ValidateRequiredCoverage(false); err != nil {
 		t.Fatalf("recovered contract coverage failed: %v", err)
 	}
@@ -33,8 +33,8 @@ func TestRecoveredRuntimeContractsExposeRequiredSkillContracts(t *testing.T) {
 	}
 }
 
-func TestRecoveredRuntimeContractsExposeCreatureSkillContracts(t *testing.T) {
-	contracts := RecoveredRuntimeContracts()
+func TestRecoveryFixtureRuntimeContractsExposeCreatureSkillContracts(t *testing.T) {
+	contracts := RecoveryFixtureRuntimeContracts()
 	for _, skillID := range []string{"bite", "lunge", "wolf_dodge", "maul"} {
 		skill := contracts.skillContract(skillID)
 		if !skill.Enabled {
@@ -168,7 +168,7 @@ func TestDBRuntimeContractsDoNotInventMissingFallbacks(t *testing.T) {
 }
 
 func TestWolfMaulPublishesSelectedSkillMovementContract(t *testing.T) {
-	runtime := NewRuntimeWithContracts(RecoveredRuntimeContracts())
+	runtime := NewRuntimeWithContracts(RecoveryFixtureRuntimeContracts())
 	player := runtime.ensurePlayerLocked("local_player")
 	wolf := runtime.ensureWolfLocked(player)
 
@@ -191,7 +191,7 @@ func TestWolfMaulPublishesSelectedSkillMovementContract(t *testing.T) {
 }
 
 func TestWolfBrainDoesNotRepeatSkillWhileCooldownIsActive(t *testing.T) {
-	runtime := NewRuntimeWithContracts(RecoveredRuntimeContracts())
+	runtime := NewRuntimeWithContracts(RecoveryFixtureRuntimeContracts())
 	player := runtime.ensurePlayerLocked("local_player")
 	wolf := runtime.ensureWolfLocked(player)
 
@@ -212,7 +212,7 @@ func TestWolfBrainDoesNotRepeatSkillWhileCooldownIsActive(t *testing.T) {
 }
 
 func TestMovementValidationRuntimeDoesNotSpawnCreature(t *testing.T) {
-	runtime := NewRuntimeWithOptions(RecoveredRuntimeContracts(), RuntimeOptions{MovementValidation: true})
+	runtime := NewRuntimeWithOptions(RecoveryFixtureRuntimeContracts(), RuntimeOptions{MovementValidation: true})
 	player := runtime.ensurePlayerLocked("local_player")
 	if player == nil {
 		t.Fatal("player was not created")
