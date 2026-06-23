@@ -53,6 +53,21 @@ type RuntimeContracts struct {
 	WolfPolicy      WolfRuntimePolicy
 	CombatModes     []*gamev1.CombatModeSlot
 	LoadIssues      []string
+
+	// PlayerImpactResponseProfile is the player hit-material/VFX response, mirroring the
+	// wolf's creature_template.impact_response_profile (loaded into WolfPolicy). The DB
+	// source (a player material/equipment profile) is the follow-up; empty falls back to
+	// "flesh_blood_red" via playerImpactResponse() so current behavior is preserved.
+	PlayerImpactResponseProfile string
+}
+
+// playerImpactResponse returns the player's contract-driven impact response profile, or
+// the canonical default when no profile is configured.
+func (c RuntimeContracts) playerImpactResponse() string {
+	if p := strings.TrimSpace(c.PlayerImpactResponseProfile); p != "" {
+		return p
+	}
+	return "flesh_blood_red"
 }
 
 type RuntimeContractCoverageReport struct {

@@ -564,7 +564,7 @@ func (r *Runtime) ensurePlayerLocked(playerID string) *entityState {
 		movementState:         "grounded",
 		combatState:           "ready",
 		skillState:            "idle",
-		impactResponseProfile: "flesh_blood_red",
+		impactResponseProfile: r.contracts.playerImpactResponse(),
 	}
 	entity.locomotion = r.locomotion("grounded", "idle", "", "idle", entity.position, entity.position, 0)
 	entity.combatMode = swordShieldCombatMode("mode_sword_shield_bulwark", r.contracts.CombatModes)
