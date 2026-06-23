@@ -141,10 +141,10 @@ func TestDevFixturePlayerShieldKitMatchesCanonicalMotionGeometry(t *testing.T) {
 		},
 		{
 			skillID:      "player_basic_attack_3",
-			distanceCM:   126,
-			baseSpeedCMS: 203.2,
+			distanceCM:   252,
+			baseSpeedCMS: 406.4,
 			sweepShape:   "capsule_strip",
-			lengths:      []float64{60, 100, 126},
+			lengths:      []float64{120, 200, 252},
 			offsetsX:     []float64{0, 0, 0},
 			offsetsY:     []float64{0, 0, 0},
 			radii:        []float64{42, 42, 42},
@@ -603,7 +603,7 @@ func TestLoadRuntimeContractsFromDBUsesRequiredSkillBindings(t *testing.T) {
 	if contracts.WolfPolicy.RepeatSkillPenaltyWindowMS != 1200 || contracts.WolfPolicy.RepeatSkillPenaltyMultiplier != 0.65 {
 		t.Fatalf("wolf repeat policy = window %d multiplier %.2f", contracts.WolfPolicy.RepeatSkillPenaltyWindowMS, contracts.WolfPolicy.RepeatSkillPenaltyMultiplier)
 	}
-	if contracts.WolfPolicy.DesiredRangeCM != 420 || contracts.WolfPolicy.OrbitSpeedCMS != 300 || contracts.WolfPolicy.ChaseSpeedCMS != 620 {
+	if contracts.WolfPolicy.DesiredRangeCM != 560 || contracts.WolfPolicy.OrbitSpeedCMS != 150 || contracts.WolfPolicy.ChaseSpeedCMS != 310 {
 		t.Fatalf("wolf range/speed policy = desired %.0f orbit %.0f chase %.0f", contracts.WolfPolicy.DesiredRangeCM, contracts.WolfPolicy.OrbitSpeedCMS, contracts.WolfPolicy.ChaseSpeedCMS)
 	}
 	if contracts.WolfPolicy.DodgeCommittedThreatMultiplier != 1.12 || contracts.WolfPolicy.VulnerableBiteMultiplier != 1.16 || contracts.WolfPolicy.TacticalDestinationDistanceCM != 180 {
@@ -1381,7 +1381,7 @@ func (fakeRuntimeContractSource) GetCreatureBehaviorRuntimeContract(_ context.Co
 		Contract: &dbv1.CreatureBehaviorRuntimeContract{
 			Id:                        req.GetId(),
 			CreatureTemplateId:        "steppe_wolf",
-			RangePolicyJson:           `{"desiredRangeCm":420,"chaseRangeCm":760,"retreatRangeCm":220,"orbitSpeedCmS":300,"chaseSpeedCmS":620,"lungeSpeedCmS":760,"maulSpeedCmS":690,"retreatSpeedCmS":520}`,
+			RangePolicyJson:           `{"desiredRangeCm":560,"chaseRangeCm":860,"retreatRangeCm":340,"orbitSpeedCmS":150,"chaseSpeedCmS":310,"lungeSpeedCmS":380,"maulSpeedCmS":345,"retreatSpeedCmS":260}`,
 			PressurePolicyJson:        `{"repeatSkillPenaltyMultiplier":0.65,"dodgeUnderPressure":true,"maulCounterUnderPressure":true,"maulCounterChance":0.22,"dodgeRetreatMultiplier":0.70,"globalDodgeMultiplier":0.85,"commitThreatWeight":0.28,"closingThreatWeight":0.18,"defensiveBiteWeight":0.14,"fleeingLungeWeight":0.20,"lowResourceRiskFloor":0.16,"dodgeCommittedThreatMultiplier":1.12,"vulnerableBiteMultiplier":1.16,"vulnerableMaulMultiplier":1.10,"tacticalDestinationDistanceCm":180}`,
 			StaminaPolicyJson:         `{"max":100,"dodgeCostMultiplier":0.50,"regenPerSecond":12}`,
 			TargetOpportunityPolicyId: "opportunity_wolf_harasser_v1",
@@ -1441,11 +1441,11 @@ func (fakeRuntimeContractSource) GetCreatureOrbitPolicy(_ context.Context, req *
 			BehaviorContractId:             "contract_wolf_pack_harasser_v1",
 			OrbitLocomotionMode:            "combat_walk",
 			OrbitSpeedScale:                0.75,
-			MinOrbitDurationMs:             700,
-			SideSwitchCooldownMs:           900,
+			MinOrbitDurationMs:             2600,
+			SideSwitchCooldownMs:           2600,
 			AllowSideSwitchWhenTargetFaces: true,
 			PreferLongSideCommit:           true,
-			SideFlipChanceMultiplier:       0.35,
+			SideFlipChanceMultiplier:       0.55,
 			LockSideDuringSetup:            true,
 		},
 	}, nil
@@ -1553,8 +1553,8 @@ func fakeMovementActionContract(id string, abilityKey string, actionType string,
 		durationMS = 620
 		activeMS = 260
 		recoveryMS = 180
-		distanceCM = 126
-		baseSpeedCMS = 203.2
+		distanceCM = 252
+		baseSpeedCMS = 406.4
 		contactPolicy = "carry_contact"
 	case "wolf_bite_melee_commit_v1":
 		durationMS = 520

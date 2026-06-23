@@ -686,7 +686,7 @@ func (r *Runtime) updateWolfPolicyLocked(wolf *entityState, player *entityState)
 	actionUpdate := r.applyCreatureActionRuntimeLocked(wolf, player, decision, selectedRuntime, start, nowTime)
 	resolvedMotion := creatureDecisionMotion{Start: start}
 	if !actionUpdate.RootMotionApplied {
-		resolvedMotion = resolveGroundedCreatureDecisionMotion(wolf, decision)
+		resolvedMotion = resolveGroundedCreatureDecisionMotion(wolf, player, decision)
 		applyCreatureDecisionMotion(wolf, player, decision, resolvedMotion)
 	} else {
 		resolvedMotion.Motion.Start = toDomainVector(start)

@@ -1324,15 +1324,15 @@ func DevFixtureRuntimeContracts() RuntimeContracts {
 			CapabilityID:                   "wolf_pack_harasser",
 			TemplateID:                     "steppe_wolf",
 			ImpactResponseProfile:          "creature_flesh_blood_red",
-			DesiredRangeCM:                 420,
-			ChaseRangeCM:                   760,
+			DesiredRangeCM:                 560,
+			ChaseRangeCM:                   860,
 			LungeRangeCM:                   220,
-			RetreatRangeCM:                 130,
-			OrbitSpeedCMS:                  300,
-			ChaseSpeedCMS:                  620,
-			LungeSpeedCMS:                  760,
-			MaulSpeedCMS:                   690,
-			RetreatSpeedCMS:                520,
+			RetreatRangeCM:                 340,
+			OrbitSpeedCMS:                  150,
+			ChaseSpeedCMS:                  310,
+			LungeSpeedCMS:                  380,
+			MaulSpeedCMS:                   345,
+			RetreatSpeedCMS:                260,
 			LungeWindupMS:                  3600,
 			LungeActiveEndMS:               3980,
 			LungeRecoveryMS:                520,
@@ -1375,11 +1375,11 @@ func DevFixtureRuntimeContracts() RuntimeContracts {
 			OrbitPolicyID:                  "orbit_wolf_harasser_combat_walk_v1",
 			OrbitLocomotionMode:            "combat_walk",
 			OrbitSpeedScale:                0.75,
-			MinOrbitDurationMS:             700,
-			SideSwitchCooldownMS:           900,
+			MinOrbitDurationMS:             2600,
+			SideSwitchCooldownMS:           2600,
 			AllowSideSwitchWhenTargetFaces: true,
 			PreferLongSideCommit:           true,
-			SideFlipChanceMultiplier:       0.35,
+			SideFlipChanceMultiplier:       0.55,
 			LockSideDuringSetup:            true,
 			RepeatSkillPenaltyWindowMS:     1200,
 			RepeatSkillPenaltyMultiplier:   0.65,
@@ -1412,7 +1412,7 @@ func DevFixtureRuntimeContracts() RuntimeContracts {
 	for _, skill := range []SkillRuntimeContract{
 		fixtureSkillContract("player_basic_attack_1", 84, 350, 140, 120),
 		fixtureSkillContract("player_basic_attack_2", 42, 370, 150, 120),
-		fixtureSkillContract("player_basic_attack_3", 126, 620, 260, 180),
+		fixtureSkillContract("player_basic_attack_3", 252, 620, 260, 180),
 		fixtureSkillContract("player_shield_bash", 95, 300, 170, 120),
 		fixtureSkillContract("player_shield_rush", 960, 1100, 720, 260),
 		fixtureCreatureSkillContract("bite", "wolf_bite_melee_commit_v1", "grounded_skill", "grounded_skill_action_reconciliation", "melee_contact", 0, 520, 220, 180, 120, 180, 900),
@@ -1551,7 +1551,7 @@ func fixturePlayerSkillHitboxes(skillID string) []*dbv1.SkillHitboxProfile {
 		profile.Length, profile.Angle, profile.Radius = 135, 90, 52
 	case "player_basic_attack_3":
 		profile.HitboxStartMs, profile.HitboxEndMs = 180, 440
-		profile.Length, profile.Angle, profile.Radius = 126, 95, 42
+		profile.Length, profile.Angle, profile.Radius = 252, 95, 42
 	case "player_shield_bash":
 		profile.HitboxStartMs, profile.HitboxEndMs = 110, 280
 		profile.Length, profile.Radius = 210, 95
@@ -1616,9 +1616,9 @@ func fixturePlayerSkillHitboxMotionSamples(skillID string) (string, string, []*d
 		}
 	case "player_basic_attack_3":
 		return "motion_player_basic_attack_3_shield_drive_v1", "capsule_strip", []*dbv1.SkillHitboxMotionSample{
-			fixtureHitboxMotionSample(0, 0.00, 0, 0, 95, 84, 0, 155, 42, 60, 0, 0),
-			fixtureHitboxMotionSample(1, 0.55, 0, 0, 95, 84, 0, 155, 42, 100, 0, 0),
-			fixtureHitboxMotionSample(2, 1.00, 0, 0, 95, 84, 0, 155, 42, 126, 0, 0),
+			fixtureHitboxMotionSample(0, 0.00, 0, 0, 95, 84, 0, 155, 42, 120, 0, 0),
+			fixtureHitboxMotionSample(1, 0.55, 0, 0, 95, 84, 0, 155, 42, 200, 0, 0),
+			fixtureHitboxMotionSample(2, 1.00, 0, 0, 95, 84, 0, 155, 42, 252, 0, 0),
 		}
 	case "player_shield_bash":
 		return "motion_player_shield_bash_front_push_v1", "capsule_strip", []*dbv1.SkillHitboxMotionSample{
@@ -1757,7 +1757,7 @@ func fixturePlayerSkillBaseSpeedCMS(skillID string) float64 {
 	case "player_basic_attack_2":
 		return 114
 	case "player_basic_attack_3":
-		return 203.2
+		return 406.4
 	case "player_shield_bash":
 		return 541
 	case "player_shield_rush":
@@ -1824,8 +1824,8 @@ func fixtureSkillControlEffect(skillID string) *dbv1.SkillControlEffect {
 			DurationMs:      180,
 			ControlType:     "push",
 			ReleasePolicyId: "carry_contact_forward_release",
-			DistanceCm:      126,
-			SpeedCmS:        fixtureControlSpeedCMS(126, 180),
+			DistanceCm:      252,
+			SpeedCmS:        fixtureControlSpeedCMS(252, 180),
 			DirectionPolicy: "source_forward",
 		}
 	case "player_shield_bash":

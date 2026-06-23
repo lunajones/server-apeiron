@@ -70,6 +70,7 @@ evidence to audit, not final authority. Normal gameplay must be DB/profile/contr
    - Done: 2026-06-23 slice added explicit creature movement envelope and contract-derived lunge presentation timings.
    - Done: 2026-06-23 slice added target perception/threat assessment to the creature brain and wired target velocity, block/parry/iframe, action commitment, stamina, and posture from `gameapi`.
    - Done: 2026-06-23 slice added creature root-motion contact response using contract policy plus hitbox geometry, preserving lunge passthrough and stopping maul before overlap.
+   - Done: 2026-06-23 slice retuned the wolf baseline from DB behavior contracts, slowed normal chase/orbit/retreat movement, widened the preferred combat ring, and made grounded tactical creature motion clamp to player/creature body contact instead of entering the player capsule.
    - Remaining: complete carry/control response parity and Unreal grounding validation.
 2. `P0`: Re-audit player movement / skill movement authority.
    - Verify no duplicate position authority, no stale recovery handoff, no normal input fighting skill movement.
@@ -78,6 +79,7 @@ evidence to audit, not final authority. Normal gameplay must be DB/profile/contr
    - Done: 2026-06-23 slice added dedicated `rubberband_guard_test.go` covering stationary M1/R/F, sprint-forward M1/R/F loops, aggressive yaw sprint-strafe, lateral sprint during skill root, leap/dodge lock pressure, and post-action handoff.
    - Done: 2026-06-23 slice made normal `MOVE` require an explicit movement action contract before applying position or publishing locomotion, matching dodge/leap/skill strictness.
    - Done: 2026-06-23 slice restored Shield Rush movement/control envelope across DB seeds, legacy compatibility row, server fixture contract, and tests; forward-distance player skill movement commits by horizontal player facing/aim before target/mouse anchors.
+   - Done: 2026-06-23 slice doubled M1-3 Shield Drive distance/range through DB skill, movement action contract, temporal hitbox samples, control profile fixture parity, and server/bootstrap tests instead of tuning Unreal locally.
 3. `P0`: Convert runtime fallback suspicion into hard proof.
    - Status: `PARTIAL`.
    - Done: runtime movement, skill movement, combat mode, combat core, and defense contracts now load through DB-backed runtime contracts with strict missing-contract validation; recovered guard/core values are confined to `RecoveryFixtureRuntimeContracts`.

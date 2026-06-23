@@ -285,6 +285,30 @@ func TestWolfMaulContactStopsBeforeOverlappingTargetUsingContractGeometry(t *tes
 	}
 }
 
+func TestGroundedCreatureTacticalMotionCannotEnterPlayerBody(t *testing.T) {
+	runtime := NewRuntimeWithContracts(DevFixtureRuntimeContracts())
+	player := runtime.ensurePlayerLocked("local_player")
+	wolf := runtime.ensureWolfLocked(player)
+	wolf.position = vector{x: player.position.x + 115, y: player.position.y, z: player.position.z}
+	start := wolf.position
+
+	resolved := resolveGroundedCreatureDecisionMotion(wolf, player, creatureai.Decision{
+		Action:         "chase",
+		MovementTactic: "chase",
+		Direction:      toDomainVector(vector{x: -1, y: 0, z: 0}),
+		SpeedCMPerSec:  620,
+	})
+	applyCreatureDecisionMotion(wolf, player, creatureai.Decision{Action: "chase"}, resolved)
+
+	minSeparation := runtimeEntityRadiusCM(wolf) + runtimeEntityRadiusCM(player)
+	if remaining := distance(wolf.position, player.position); remaining < minSeparation-0.001 {
+		t.Fatalf("grounded creature tactical motion overlapped player: remaining %.2f min %.2f start %.2f", remaining, minSeparation, distance(start, player.position))
+	}
+	if wolf.position.z != start.z {
+		t.Fatalf("grounded creature contact clamp changed z: %.2f -> %.2f", start.z, wolf.position.z)
+	}
+}
+
 func TestWolfMaulLateralCounterRootMotionUsesPolicyDirection(t *testing.T) {
 	runtime := NewRuntimeWithContracts(DevFixtureRuntimeContracts())
 	player := runtime.ensurePlayerLocked("local_player")
@@ -526,7 +550,7 @@ func TestGroundedCreatureDecisionMotionPreservesGroundPlane(t *testing.T) {
 		Direction:     domainmath.V3(1, 0, 4).Normalize(),
 	}
 
-	resolved := resolveGroundedCreatureDecisionMotion(creature, decision)
+	resolved := resolveGroundedCreatureDecisionMotion(creature, nil, decision)
 	projected := fromDomainVector(resolved.Motion.Projected)
 	velocity := fromDomainVector(resolved.Motion.Velocity)
 

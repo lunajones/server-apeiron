@@ -56,7 +56,7 @@ func TestFixturePlayerSkillsCarrySeedDamage(t *testing.T) {
 func TestRuntimeSkillImpactAppliesDBContractDamage(t *testing.T) {
 	t.Parallel()
 
-	runtime := NewRuntimeWithContracts(DevFixtureRuntimeContracts())
+	runtime := NewRuntimeWithOptions(DevFixtureRuntimeContracts(), RuntimeOptions{DisableCreatures: true})
 	sessionID := "runtime-skill-impact-damage"
 	attachRuntimePlayer(t, runtime, sessionID)
 	player := runtime.ensurePlayerLocked("local_player")
@@ -92,7 +92,7 @@ func TestRuntimeSkillImpactAppliesDBContractDamage(t *testing.T) {
 func TestRuntimePlayerSkillImpactSchedulerDedupesActionInstance(t *testing.T) {
 	t.Parallel()
 
-	runtime := NewRuntimeWithContracts(DevFixtureRuntimeContracts())
+	runtime := NewRuntimeWithOptions(DevFixtureRuntimeContracts(), RuntimeOptions{DisableCreatures: true})
 	sessionID := "runtime-player-impact-scheduler-dedupe"
 	attachRuntimePlayer(t, runtime, sessionID)
 	player := runtime.ensurePlayerLocked("local_player")
@@ -128,7 +128,7 @@ func TestRuntimePlayerSkillImpactSchedulerDedupesActionInstance(t *testing.T) {
 func TestRuntimePendingImpactRunnerCatchesSkippedHitboxWindow(t *testing.T) {
 	t.Parallel()
 
-	runtime := NewRuntimeWithContracts(DevFixtureRuntimeContracts())
+	runtime := NewRuntimeWithOptions(DevFixtureRuntimeContracts(), RuntimeOptions{DisableCreatures: true})
 	sessionID := "runtime-player-impact-scheduler-skipped-window"
 	attachRuntimePlayer(t, runtime, sessionID)
 	player := runtime.ensurePlayerLocked("local_player")
@@ -161,7 +161,7 @@ func TestRuntimePendingImpactRunnerCatchesSkippedHitboxWindow(t *testing.T) {
 func TestSnapshotEmitsDamageEventWithImpactResponseProfile(t *testing.T) {
 	t.Parallel()
 
-	runtime := NewRuntimeWithContracts(DevFixtureRuntimeContracts())
+	runtime := NewRuntimeWithOptions(DevFixtureRuntimeContracts(), RuntimeOptions{DisableCreatures: true})
 	sessionID := "runtime-impact-event-profile"
 	attachRuntimePlayer(t, runtime, sessionID)
 	player := runtime.ensurePlayerLocked("local_player")

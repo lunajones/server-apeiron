@@ -14,7 +14,7 @@ type creatureDecisionMotion struct {
 	Motion movement.MotionResult
 }
 
-func resolveGroundedCreatureDecisionMotion(creature *entityState, decision creatureai.Decision) creatureDecisionMotion {
+func resolveGroundedCreatureDecisionMotion(creature *entityState, target *entityState, decision creatureai.Decision) creatureDecisionMotion {
 	start := vector{}
 	if creature != nil {
 		start = creature.position
@@ -27,12 +27,36 @@ func resolveGroundedCreatureDecisionMotion(creature *entityState, decision creat
 	})
 	projected := fromDomainVector(motion.Projected)
 	projected.z = start.z
+	projected = clampCreatureTacticalProjectionToBodyContact(start, projected, creature, target)
 	velocity := fromDomainVector(motion.Velocity)
+	velocity = scale(vector{x: projected.x - start.x, y: projected.y - start.y, z: projected.z - start.z}, tickRate)
 	velocity.z = 0
 	motion.Projected = toDomainVector(projected)
 	motion.Velocity = toDomainVector(velocity)
 	motion.Direction = flattenDomainDirection(motion.Direction)
+	motion.DistanceCM = distance(start, projected)
+	motion.SpeedCMPerSecond = length(velocity)
 	return creatureDecisionMotion{Start: start, Motion: motion}
+}
+
+func clampCreatureTacticalProjectionToBodyContact(start vector, projected vector, creature *entityState, target *entityState) vector {
+	if creature == nil || target == nil {
+		return projected
+	}
+	minSeparation := runtimeEntityRadiusCM(creature) + runtimeEntityRadiusCM(target)
+	if minSeparation <= 0 || distance(projected, target.position) >= minSeparation {
+		return projected
+	}
+	away := normalize(vector{x: projected.x - target.position.x, y: projected.y - target.position.y})
+	if away == (vector{}) {
+		away = normalize(vector{x: start.x - target.position.x, y: start.y - target.position.y})
+	}
+	if away == (vector{}) {
+		away = yawVector(target.yaw + 180)
+	}
+	out := add(target.position, scale(away, minSeparation))
+	out.z = start.z
+	return out
 }
 
 func applyCreatureDecisionMotion(creature *entityState, target *entityState, decision creatureai.Decision, resolved creatureDecisionMotion) {
