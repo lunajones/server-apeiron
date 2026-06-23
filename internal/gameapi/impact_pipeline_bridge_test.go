@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	gamev1 "server-apeiron/gen/apeiron/game/v1"
 )
 
 func TestRuntimeSkillImpactUsesCombatPipelineParry(t *testing.T) {
@@ -124,10 +126,79 @@ func TestRuntimeSkillImpactAppliesContractControlEffects(t *testing.T) {
 	if wolf.actionMotion.Contract.DistanceCM != contract.ControlEffects[0].GetDistanceCm() {
 		t.Fatalf("target control distance = %.1f, want %.1f", wolf.actionMotion.Contract.DistanceCM, contract.ControlEffects[0].GetDistanceCm())
 	}
+	if wolf.actionMotion.MotionSource != "impact_control" {
+		t.Fatalf("target control motion source = %q", wolf.actionMotion.MotionSource)
+	}
 	startX := wolf.position.x
 	wolf.actionMotion.StartedAt = time.Now().Add(-time.Duration(contract.ControlEffects[0].GetDurationMs()/2) * time.Millisecond)
 	runtime.advanceActionMotionLocked(wolf, time.Now())
 	if wolf.position.x <= startX {
 		t.Fatalf("target control motion did not move forward: %.1f -> %.1f", startX, wolf.position.x)
+	}
+	wolf.actionMotion.StartedAt = time.Now().Add(-time.Duration(contract.ControlEffects[0].GetDurationMs()+20) * time.Millisecond)
+	runtime.advanceActionMotionLocked(wolf, time.Now())
+	if wolf.actionMotion != nil {
+		t.Fatalf("completed impact control left actionMotion active: %#v", wolf.actionMotion)
+	}
+	if wolf.skillState != "idle" || wolf.combatState != "ready" {
+		t.Fatalf("completed impact control left target state skill=%q combat=%q", wolf.skillState, wolf.combatState)
+	}
+	if wolf.locomotion == nil || wolf.locomotion.GetAction() != "post_impact_control" {
+		t.Fatalf("completed impact control did not publish post-control locomotion: %#v", wolf.locomotion)
+	}
+}
+
+func TestImpactControlInterruptsCreatureActionAndCancelsPendingDamage(t *testing.T) {
+	t.Parallel()
+
+	runtime := NewRuntimeWithContracts(RecoveryFixtureRuntimeContracts())
+	sessionID := "runtime-impact-control-interrupts-creature"
+	attachRuntimePlayer(t, runtime, sessionID)
+	player := runtime.ensurePlayerLocked("local_player")
+	wolf := runtime.ensureWolfLocked(player)
+	player.position = vector{x: 0, y: 0, z: 98}
+	wolf.position = vector{x: 120, y: 0, z: 98}
+
+	lunge := runtime.contracts.skillContract("lunge")
+	lungeStart := time.Now()
+	lungeInstance := runtime.newCreatureActionInstance(wolf, "lunge", lunge, wolf.position, lungeStart)
+	wolf.actionInstance = &lungeInstance
+	wolf.skillRuntime = &gamev1.SkillRuntimeState{
+		CurrentSkillId: "lunge",
+		State:          "active",
+		StartedAtMs:    lungeStart.UnixMilli(),
+	}
+	if !runtime.enqueueCreatureSkillImpactLocked(wolf, player, lunge, lungeStart) {
+		t.Fatal("failed to enqueue pending lunge impact")
+	}
+	if runtime.impacts == nil || runtime.impacts.PendingCount() != 1 {
+		t.Fatalf("pending lunge impact count = %d", runtime.impacts.PendingCount())
+	}
+
+	shieldRush := runtime.contracts.skillContract("player_shield_rush")
+	impact, ok := runtime.resolveRuntimeSkillImpact(player, wolf, shieldRush, shieldRush.Hitboxes[0], player.position, vector{x: 1, y: 0})
+	if !ok {
+		t.Fatal("expected Shield Rush impact")
+	}
+	if len(impact.StatusApplied) == 0 {
+		t.Fatalf("Shield Rush did not apply control: %#v", impact)
+	}
+	if wolf.actionInstance != nil {
+		t.Fatalf("impact control did not clear interrupted creature action instance: %#v", wolf.actionInstance)
+	}
+	if wolf.actionMotion == nil || wolf.actionMotion.MotionSource != "impact_control" {
+		t.Fatalf("impact control did not become target motion: %#v", wolf.actionMotion)
+	}
+	if runtime.impacts.PendingCount() != 0 {
+		t.Fatalf("interrupted lunge impact remained pending: %d", runtime.impacts.PendingCount())
+	}
+
+	healthBefore := player.health
+	impacts := runtime.runPendingSkillImpactSchedulesLocked(lungeStart.Add(4 * time.Second))
+	if len(impacts) != 0 {
+		t.Fatalf("interrupted lunge still resolved impacts: %#v", impacts)
+	}
+	if player.health != healthBefore {
+		t.Fatalf("interrupted lunge changed player health: %.1f -> %.1f", healthBefore, player.health)
 	}
 }

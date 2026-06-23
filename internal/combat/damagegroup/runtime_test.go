@@ -90,6 +90,40 @@ func TestRuntimeRejectsDuplicateAndResolvedKeys(t *testing.T) {
 	}
 }
 
+func TestRuntimeCancelRemovesPendingAndBlocksReenqueue(t *testing.T) {
+	runtime := NewRuntime[string]()
+	startedAt := time.UnixMilli(1000)
+	schedule := Schedule[string]{
+		Key:         "actor:skill:interrupted-instance",
+		StartedAt:   startedAt,
+		RequireTime: true,
+		Windows:     []Window{{StartMS: 100, EndMS: 200}},
+		Payload:     "lunge",
+	}
+	if !runtime.Enqueue(schedule) {
+		t.Fatal("enqueue rejected")
+	}
+	if !runtime.Cancel(schedule.Key) {
+		t.Fatal("cancel did not report pending schedule")
+	}
+	if runtime.PendingCount() != 0 {
+		t.Fatalf("pending count after cancel = %d", runtime.PendingCount())
+	}
+	if !runtime.IsResolved(schedule.Key) {
+		t.Fatal("canceled key was not remembered as resolved")
+	}
+	if runtime.Enqueue(schedule) {
+		t.Fatal("canceled key was accepted again")
+	}
+	resolved := runtime.Run(startedAt.Add(150*time.Millisecond), nil, func(Schedule[string]) bool {
+		t.Fatal("canceled schedule should not resolve")
+		return true
+	})
+	if len(resolved) != 0 {
+		t.Fatalf("resolved canceled schedules = %d", len(resolved))
+	}
+}
+
 func TestRuntimeRefreshCanUpdatePayloadBeforeResolve(t *testing.T) {
 	runtime := NewRuntime[string]()
 	startedAt := time.UnixMilli(1000)

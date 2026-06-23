@@ -23,6 +23,7 @@ func (r *Runtime) applyRuntimeImpactControlMotionLocked(source *entityState, tar
 	if dir == (vector{}) {
 		return
 	}
+	r.interruptTargetActionForImpactControlLocked(target, now)
 	fullMotion := movement.ResolveActionMotion(movement.ActionMotionInput{
 		Position:  toDomainVector(target.position),
 		Direction: toDomainVector(dir),
@@ -36,6 +37,7 @@ func (r *Runtime) applyRuntimeImpactControlMotionLocked(source *entityState, tar
 		CommandID:         effect.GetId(),
 		Sequence:          r.tick,
 		ClientTick:        r.tick,
+		MotionSource:      "impact_control",
 		StartedAt:         now,
 		StartPosition:     target.position,
 		ProjectedPosition: fromDomainVector(fullMotion.Projected),
@@ -58,6 +60,23 @@ func (r *Runtime) applyRuntimeImpactControlMotionLocked(source *entityState, tar
 	target.locomotion = locomotionFromContractWithOverrides(contract, "active", target.position, target.position, r.tick, r.tick, fullMotion.SpeedCMPerSecond, progress.DistanceCM)
 	target.locomotion.ActionDistanceTraveled = progress.DistanceCM
 	target.locomotion.ActionProjectedPosition = toProto(fromDomainVector(fullMotion.Projected))
+}
+
+func (r *Runtime) interruptTargetActionForImpactControlLocked(target *entityState, now time.Time) {
+	if r == nil || target == nil {
+		return
+	}
+	if target.actionInstance != nil {
+		r.cancelSkillImpactScheduleLocked(target, target.actionInstance.SkillID.String(), target.actionInstance.InstanceID, target.actionInstance.StartedAt)
+	}
+	target.actionInstance = nil
+	if target.actionMotion != nil && target.actionMotion.MotionSource != "impact_control" {
+		target.actionMotion = nil
+	}
+	if target.skillRuntime != nil {
+		target.skillRuntime.State = "interrupted"
+		target.skillRuntime.LastResolvedAtMs = now.UnixMilli()
+	}
 }
 
 func runtimeImpactControlActionContract(effect *dbv1.SkillControlEffect) MovementActionRuntimeContract {

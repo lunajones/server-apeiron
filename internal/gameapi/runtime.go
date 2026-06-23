@@ -110,6 +110,7 @@ type actionMotionState struct {
 	CommandID         string
 	Sequence          uint64
 	ClientTick        uint64
+	MotionSource      string
 	StartedAt         time.Time
 	StartPosition     vector
 	ProjectedPosition vector
@@ -1182,6 +1183,7 @@ func (r *Runtime) applyImpulse(player *entityState, cmd *gamev1.PlayerCommand, c
 		CommandID:         cmd.GetCommandId(),
 		Sequence:          cmd.GetSequence(),
 		ClientTick:        cmd.GetClientTick(),
+		MotionSource:      "owned_locomotion",
 		StartedAt:         time.Now(),
 		StartPosition:     start,
 		ProjectedPosition: fromDomainVector(fullMotion.Projected),
@@ -1259,6 +1261,7 @@ func (r *Runtime) applySkill(player *entityState, cmd *gamev1.PlayerCommand) {
 			CommandID:         cmd.GetCommandId(),
 			Sequence:          cmd.GetSequence(),
 			ClientTick:        cmd.GetClientTick(),
+			MotionSource:      "skill_root",
 			StartedAt:         nowTime,
 			StartPosition:     start,
 			ProjectedPosition: fromDomainVector(fullMotion.Projected),
@@ -1434,10 +1437,39 @@ func (r *Runtime) advanceActionMotionLocked(entity *entityState, now time.Time) 
 		} else {
 			entity.locomotion.ActionDistanceTraveled = distanceCM
 		}
+		r.completeActionMotionLocked(entity, motion)
 		entity.actionMotion = nil
 		return false
 	}
 	return true
+}
+
+func (r *Runtime) completeActionMotionLocked(entity *entityState, motion *actionMotionState) {
+	if entity == nil || motion == nil {
+		return
+	}
+	switch motion.MotionSource {
+	case "impact_control":
+		entity.movementState = "grounded"
+		if entity.entityType == "creature" {
+			entity.skillState = "idle"
+			entity.combatState = "ready"
+		} else {
+			entity.skillState = "idle"
+			entity.combatState = "ready"
+		}
+		entity.skillRuntime = nil
+		if entity.locomotion != nil {
+			entity.locomotion.MovementMode = "grounded"
+			entity.locomotion.Action = "post_impact_control"
+			entity.locomotion.Phase = "complete"
+			entity.locomotion.TargetSpeed = 0
+			entity.locomotion.EffectiveSpeed = 0
+			entity.locomotion.ActionProjectedPosition = toProto(entity.position)
+			entity.locomotion.ActionDistanceTraveled = distance(entity.position, motion.StartPosition)
+			entity.locomotion.LastUpdatedTick = r.tick
+		}
+	}
 }
 
 func blocksNormalInputDuringOwnedRoot(policy string) bool {

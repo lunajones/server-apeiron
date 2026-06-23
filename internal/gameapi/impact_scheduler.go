@@ -36,6 +36,17 @@ func (r *Runtime) enqueueSkillImpactScheduleLocked(schedule skillImpactSchedule)
 	return r.impacts.Enqueue(damageGroupScheduleFromSkillImpact(key, schedule))
 }
 
+func (r *Runtime) cancelSkillImpactScheduleLocked(source *entityState, skillID string, instanceID string, startedAt time.Time) bool {
+	if r == nil || r.impacts == nil {
+		return false
+	}
+	key := skillImpactScheduleKey(source, skillID, instanceID, startedAt)
+	if key == "" {
+		return false
+	}
+	return r.impacts.Cancel(key)
+}
+
 func (r *Runtime) runPendingSkillImpactSchedulesLocked(now time.Time) []runtimeSkillImpact {
 	if r == nil || r.impacts == nil || r.impacts.PendingCount() == 0 {
 		return nil

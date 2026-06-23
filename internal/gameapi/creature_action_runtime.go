@@ -222,6 +222,7 @@ func (r *Runtime) startCreatureSkillRootMotionLocked(creature *entityState, targ
 		SkillID:           decision.SelectedSkill,
 		CommandID:         instance.InstanceID,
 		Sequence:          instance.CommandSequence,
+		MotionSource:      "skill_root",
 		StartedAt:         rootStart,
 		StartPosition:     creature.position,
 		ProjectedPosition: fromDomainVector(fullMotion.Projected),

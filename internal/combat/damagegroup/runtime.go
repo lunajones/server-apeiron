@@ -95,6 +95,17 @@ func (r *Runtime[T]) IsResolved(key string) bool {
 	return ok
 }
 
+func (r *Runtime[T]) Cancel(key string) bool {
+	if r == nil || key == "" {
+		return false
+	}
+	r.ensure()
+	_, pending := r.pending[key]
+	delete(r.pending, key)
+	r.resolved[key] = struct{}{}
+	return pending
+}
+
 func (r *Runtime[T]) PendingCount() int {
 	if r == nil {
 		return 0
