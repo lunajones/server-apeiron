@@ -224,29 +224,27 @@ func requiredBaseMovementActions() []struct {
 	abilityKey string
 	contractID string
 } {
-	return []struct {
+	requirements := runtimeRequirementsByCategory(runtimeRequirementBaseMovementAction)
+	out := make([]struct {
 		abilityKey string
 		contractID string
-	}{
-		{"move", "grounded_move_v1"},
-		{"turn", "turn_v1_rate_limited_contextual"},
-		{"dodge", "dodge_v1_full_iframe"},
-		{"jump", "jump_v1_authoritative_grounded_handoff"},
+	}, 0, len(requirements))
+	for _, requirement := range requirements {
+		out = append(out, struct {
+			abilityKey string
+			contractID string
+		}{requirement.Key, requirement.ContractID})
 	}
+	return out
 }
 
 func requiredRuntimeSkillIDs() []string {
-	return []string{
-		"player_basic_attack_1",
-		"player_basic_attack_2",
-		"player_basic_attack_3",
-		"player_shield_bash",
-		"player_shield_rush",
-		"bite",
-		"lunge",
-		"wolf_dodge",
-		"maul",
+	requirements := runtimeRequirementsByCategory(runtimeRequirementSkill)
+	out := make([]string, 0, len(requirements))
+	for _, requirement := range requirements {
+		out = append(out, requirement.Key)
 	}
+	return out
 }
 
 func LoadRuntimeContractsFromDB(ctx context.Context, skills ContractSource, profiles ProfileContractSource) RuntimeContracts {

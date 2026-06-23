@@ -35,6 +35,70 @@ func TestRecoveryFixtureRuntimeContractsExposeRequiredSkillContracts(t *testing.
 	}
 }
 
+func TestRuntimeContractRequirementsDriveRequiredSkillAndMovementLists(t *testing.T) {
+	requiredSkills := requiredRuntimeSkillIDs()
+	for _, skillID := range []string{
+		"player_basic_attack_1",
+		"player_basic_attack_2",
+		"player_basic_attack_3",
+		"player_shield_bash",
+		"player_shield_rush",
+		"bite",
+		"lunge",
+		"wolf_dodge",
+		"maul",
+	} {
+		if !stringSliceContains(requiredSkills, skillID) {
+			t.Fatalf("runtime requirement manifest is missing skill %s: %#v", skillID, requiredSkills)
+		}
+	}
+
+	requiredActions := requiredBaseMovementActions()
+	for abilityKey, contractID := range map[string]string{
+		"move":  "grounded_move_v1",
+		"turn":  "turn_v1_rate_limited_contextual",
+		"dodge": "dodge_v1_full_iframe",
+		"jump":  "jump_v1_authoritative_grounded_handoff",
+	} {
+		var found bool
+		for _, got := range requiredActions {
+			if got.abilityKey == abilityKey && got.contractID == contractID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("runtime requirement manifest missing base movement action %s -> %s: %#v", abilityKey, contractID, requiredActions)
+		}
+	}
+}
+
+func TestRuntimeRequirementStatusValuesExposeRequiredContractReadiness(t *testing.T) {
+	contracts := LoadRuntimeContractsFromDB(context.Background(), fakeRuntimeContractSource{}, fakeRuntimeContractSource{})
+	status := requirementStatusValues(contracts)
+
+	for _, key := range []string{
+		"contracts.required.movement_profile.runtime_movement",
+		"contracts.required.base_movement_action.dodge",
+		"contracts.required.skill.player_shield_rush",
+		"contracts.required.skill.lunge",
+		"contracts.required.combat_core_profile.player",
+		"contracts.required.defense_contract.player_guard",
+		"contracts.required.weapon_kit.sword_shield",
+		"contracts.required.wolf_brain_policy.steppe_wolf",
+	} {
+		if !strings.HasPrefix(status[key], "ready:") {
+			t.Fatalf("requirement %s status = %q", key, status[key])
+		}
+	}
+
+	delete(contracts.SkillContracts, "player_shield_rush")
+	status = requirementStatusValues(contracts)
+	if status["contracts.required.skill.player_shield_rush"] != "missing" {
+		t.Fatalf("missing skill requirement status = %q", status["contracts.required.skill.player_shield_rush"])
+	}
+}
+
 func TestStrictRuntimeCoverageRejectsDamagingSkillWithoutTemporalHitbox(t *testing.T) {
 	contracts := RecoveryFixtureRuntimeContracts()
 	skill := contracts.SkillContracts["player_shield_rush"]
@@ -484,6 +548,15 @@ func coverageReportHasBlocker(report RuntimeContractCoverageReport, categoryName
 	return false
 }
 
+func stringSliceContains(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
+}
+
 func TestRuntimeReadinessAcceptsRecoveredFixtureForDevTests(t *testing.T) {
 	runtime := NewRuntimeWithContracts(RecoveryFixtureRuntimeContracts())
 	resp, err := runtime.Readiness(context.Background(), &gamev1.Empty{})
@@ -524,6 +597,9 @@ func TestRuntimeStatsExposeContractCoverageByCategory(t *testing.T) {
 	}
 	if got := fixtureResp.GetPhaseStatus()["contracts.surface.movement_action_contract"]; !strings.Contains(got, "final_authority") || !strings.Contains(got, "runtime_authority") {
 		t.Fatalf("movement action surface status = %q", got)
+	}
+	if got := fixtureResp.GetPhaseStatus()["contracts.required.skill.player_shield_rush"]; !strings.HasPrefix(got, "ready:") {
+		t.Fatalf("required skill status = %q", got)
 	}
 }
 
