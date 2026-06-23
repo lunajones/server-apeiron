@@ -837,7 +837,97 @@ func recoveredPlayerSkillHitboxes(skillID string) []*dbv1.SkillHitboxProfile {
 	default:
 		return nil
 	}
+	profile.MotionProfile = recoveredPlayerSkillHitboxMotionProfile(skillID)
+	profile.DamageGroupId = recoveredPlayerSkillHitboxDamageGroupID(skillID)
 	return []*dbv1.SkillHitboxProfile{profile}
+}
+
+func recoveredPlayerSkillHitboxDamageGroupID(skillID string) string {
+	switch skillID {
+	case "player_basic_attack_1":
+		return "player_basic_attack_1_damage"
+	case "player_basic_attack_2":
+		return "player_basic_attack_2_damage"
+	case "player_basic_attack_3":
+		return "player_basic_attack_3_damage"
+	case "player_shield_bash":
+		return "player_shield_bash_front_push"
+	case "player_shield_rush":
+		return "player_shield_rush_front_contact"
+	default:
+		return ""
+	}
+}
+
+func recoveredPlayerSkillHitboxMotionProfile(skillID string) *dbv1.SkillHitboxMotionProfile {
+	id, sweepShape, samples := recoveredPlayerSkillHitboxMotionSamples(skillID)
+	if id == "" || len(samples) == 0 {
+		return nil
+	}
+	return &dbv1.SkillHitboxMotionProfile{
+		Id:            id,
+		Enabled:       true,
+		MotionType:    "timeline_sweep",
+		TimeBasis:     "hitbox_window_normalized",
+		Interpolation: "linear",
+		SweepShape:    sweepShape,
+		DamageGroupId: recoveredPlayerSkillHitboxDamageGroupID(skillID),
+		Samples:       samples,
+	}
+}
+
+func recoveredPlayerSkillHitboxMotionSamples(skillID string) (string, string, []*dbv1.SkillHitboxMotionSample) {
+	switch skillID {
+	case "player_basic_attack_1":
+		return "motion_player_basic_attack_1_forward_v1", "capsule_strip", []*dbv1.SkillHitboxMotionSample{
+			recoveredHitboxMotionSample(0, 0.00, 35, 0, 90, 95, 0, 150, 48, 70, 0, 0),
+			recoveredHitboxMotionSample(1, 0.50, 85, 0, 90, 100, 0, 150, 50, 150, 0, 0),
+			recoveredHitboxMotionSample(2, 1.00, 130, 0, 90, 100, 0, 150, 50, 210, 0, 0),
+		}
+	case "player_basic_attack_2":
+		return "motion_player_basic_attack_2_right_to_left_v1", "arc_slice", []*dbv1.SkillHitboxMotionSample{
+			recoveredHitboxMotionSample(0, 0.00, 70, 35, 95, 0, 0, 150, 55, 155, -45, -15),
+			recoveredHitboxMotionSample(1, 0.50, 85, 0, 95, 0, 0, 150, 58, 165, -15, 15),
+			recoveredHitboxMotionSample(2, 1.00, 70, -35, 95, 0, 0, 150, 55, 155, 15, 45),
+		}
+	case "player_basic_attack_3":
+		return "motion_player_basic_attack_3_shield_drive_v1", "capsule_strip", []*dbv1.SkillHitboxMotionSample{
+			recoveredHitboxMotionSample(0, 0.00, 45, 0, 95, 120, 0, 155, 60, 90, 0, 0),
+			recoveredHitboxMotionSample(1, 0.55, 90, 0, 95, 120, 0, 155, 60, 175, 0, 0),
+			recoveredHitboxMotionSample(2, 1.00, 115, 0, 95, 120, 0, 155, 60, 210, 0, 0),
+		}
+	case "player_shield_bash":
+		return "motion_player_shield_bash_front_push_v1", "capsule_strip", []*dbv1.SkillHitboxMotionSample{
+			recoveredHitboxMotionSample(0, 0.00, 45, 0, 95, 190, 0, 160, 95, 95, 0, 0),
+			recoveredHitboxMotionSample(1, 0.50, 85, 0, 95, 190, 0, 160, 95, 160, 0, 0),
+			recoveredHitboxMotionSample(2, 1.00, 120, 0, 95, 190, 0, 160, 95, 210, 0, 0),
+		}
+	case "player_shield_rush":
+		return "motion_player_shield_rush_front_contact_v1", "capsule_strip", []*dbv1.SkillHitboxMotionSample{
+			recoveredHitboxMotionSample(0, 0.00, 45, 0, 100, 190, 0, 160, 96, 105, 0, 0),
+			recoveredHitboxMotionSample(1, 0.50, 105, 0, 100, 190, 0, 160, 96, 220, 0, 0),
+			recoveredHitboxMotionSample(2, 1.00, 145, 0, 100, 190, 0, 160, 96, 290, 0, 0),
+		}
+	default:
+		return "", "", nil
+	}
+}
+
+func recoveredHitboxMotionSample(index int32, t float64, offsetX, offsetY, offsetZ, sizeX, sizeY, sizeZ, radius, length, startAngleDeg, endAngleDeg float64) *dbv1.SkillHitboxMotionSample {
+	return &dbv1.SkillHitboxMotionSample{
+		SampleIndex:   index,
+		T:             t,
+		OffsetX:       offsetX,
+		OffsetY:       offsetY,
+		OffsetZ:       offsetZ,
+		SizeX:         sizeX,
+		SizeY:         sizeY,
+		SizeZ:         sizeZ,
+		Radius:        radius,
+		Length:        length,
+		StartAngleDeg: startAngleDeg,
+		EndAngleDeg:   endAngleDeg,
+	}
 }
 
 func curvePoint(t, value float64) movement.MovementActionCurvePoint {

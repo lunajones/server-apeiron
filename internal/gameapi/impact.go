@@ -32,6 +32,10 @@ type runtimeSkillImpactCandidate struct {
 }
 
 func (r *Runtime) applySkillImpact(source *entityState, skill SkillRuntimeContract, start, end, dir vector) []runtimeSkillImpact {
+	return r.applySkillImpactAt(source, skill, start, end, dir, skillImpactEvaluationElapsedMS(skill))
+}
+
+func (r *Runtime) applySkillImpactAt(source *entityState, skill SkillRuntimeContract, start, end, dir vector, elapsedMS float64) []runtimeSkillImpact {
 	if r == nil || source == nil || (skill.Damage <= 0 && skill.PostureDamage <= 0) {
 		return nil
 	}
@@ -48,7 +52,7 @@ func (r *Runtime) applySkillImpact(source *entityState, skill SkillRuntimeContra
 		if !runtimeSkillCanTarget(source, target) {
 			continue
 		}
-		profile, ok := skillRuntimeHitboxContains(skill, start, end, dir, target.position)
+		profile, ok := skillRuntimeHitboxContainsAt(skill, start, end, dir, target.position, elapsedMS)
 		if !ok {
 			continue
 		}
@@ -119,11 +123,15 @@ func runtimeSkillCanTarget(source *entityState, target *entityState) bool {
 }
 
 func skillRuntimeHitboxContains(skill SkillRuntimeContract, start, end, dir vector, target vector) (*dbv1.SkillHitboxProfile, bool) {
+	return skillRuntimeHitboxContainsAt(skill, start, end, dir, target, skillImpactEvaluationElapsedMS(skill))
+}
+
+func skillRuntimeHitboxContainsAt(skill SkillRuntimeContract, start, end, dir vector, target vector, elapsedMS float64) (*dbv1.SkillHitboxProfile, bool) {
 	for _, profile := range skill.Hitboxes {
 		if profile == nil {
 			continue
 		}
-		if skillHitboxProfileContains(skill, profile, start, end, dir, target) {
+		if skillHitboxProfileContainsAt(skill, profile, start, end, dir, target, elapsedMS) {
 			return profile, true
 		}
 	}
@@ -131,6 +139,10 @@ func skillRuntimeHitboxContains(skill SkillRuntimeContract, start, end, dir vect
 }
 
 func skillHitboxProfileContains(skill SkillRuntimeContract, profile *dbv1.SkillHitboxProfile, start, end, dir vector, target vector) bool {
+	return skillHitboxProfileContainsAt(skill, profile, start, end, dir, target, skillImpactEvaluationElapsedMS(skill))
+}
+
+func skillStaticHitboxProfileContains(skill SkillRuntimeContract, profile *dbv1.SkillHitboxProfile, start, end, dir vector, target vector) bool {
 	dir = normalize(dir)
 	if dir == (vector{}) {
 		return false
@@ -161,28 +173,11 @@ func skillHitboxProfileContains(skill SkillRuntimeContract, profile *dbv1.SkillH
 }
 
 func skillHitboxForwardReachCM(skill SkillRuntimeContract, profile *dbv1.SkillHitboxProfile) float64 {
-	reach := maxFloat64(profile.GetLength(), profile.GetRadius(), skillRangeToCM(skill.Range))
-	if motion := profile.GetMotionProfile(); motion != nil {
-		for _, sample := range motion.GetSamples() {
-			if sample == nil {
-				continue
-			}
-			reach = maxFloat64(reach, sample.GetOffsetX()+sample.GetLength(), sample.GetLength())
-		}
-	}
-	return reach
+	return maxFloat64(profile.GetLength(), profile.GetRadius(), skillRangeToCM(skill.Range))
 }
 
 func skillHitboxLaneHalfWidthCM(profile *dbv1.SkillHitboxProfile) float64 {
 	width := maxFloat64(profile.GetRadius(), profile.GetSizeX()/2, profile.GetSizeY()/2)
-	if motion := profile.GetMotionProfile(); motion != nil {
-		for _, sample := range motion.GetSamples() {
-			if sample == nil {
-				continue
-			}
-			width = maxFloat64(width, sample.GetRadius(), sample.GetSizeX()/2, sample.GetSizeY()/2)
-		}
-	}
 	if width <= 0 {
 		return defaultRecoveredImpactHalfLane
 	}
@@ -190,28 +185,6 @@ func skillHitboxLaneHalfWidthCM(profile *dbv1.SkillHitboxProfile) float64 {
 }
 
 func skillHitboxAngleWindow(profile *dbv1.SkillHitboxProfile) (float64, float64, bool) {
-	if motion := profile.GetMotionProfile(); motion != nil {
-		found := false
-		minAngle := 0.0
-		maxAngle := 0.0
-		for _, sample := range motion.GetSamples() {
-			if sample == nil || sample.GetStartAngleDeg() == sample.GetEndAngleDeg() {
-				continue
-			}
-			lo := math.Min(sample.GetStartAngleDeg(), sample.GetEndAngleDeg())
-			hi := math.Max(sample.GetStartAngleDeg(), sample.GetEndAngleDeg())
-			if !found || lo < minAngle {
-				minAngle = lo
-			}
-			if !found || hi > maxAngle {
-				maxAngle = hi
-			}
-			found = true
-		}
-		if found {
-			return minAngle, maxAngle, true
-		}
-	}
 	if angle := profile.GetAngle(); angle > 0 {
 		half := angle / 2
 		return -half, half, true
