@@ -1080,6 +1080,88 @@ func TestRuntimePostSkillHandoffReturnsSprintStrafeForCurrentBulwarkSkills(t *te
 	}
 }
 
+func TestRuntimeCombatModeSwitchKeepsBulwarkAndVanguardSlotsAuthoritative(t *testing.T) {
+	t.Parallel()
+
+	runtime := NewRuntimeWithOptions(RecoveryFixtureRuntimeContracts(), RuntimeOptions{MovementValidation: true})
+	sessionID := "runtime-integration-combat-mode-slots"
+	if _, err := runtime.OpenSession(context.Background(), &gamev1.OpenSessionRequest{
+		Context: &gamev1.RequestContext{SessionId: sessionID},
+	}); err != nil {
+		t.Fatalf("OpenSession failed: %v", err)
+	}
+	if _, err := runtime.AttachPlayer(context.Background(), &gamev1.AttachPlayerRequest{
+		Context:  &gamev1.RequestContext{SessionId: sessionID},
+		PlayerId: "local_player",
+	}); err != nil {
+		t.Fatalf("AttachPlayer failed: %v", err)
+	}
+	player := runtime.ensurePlayerLocked("local_player")
+
+	assertModeSlot := func(mode string, slot uint32, skillID string, enabled bool) {
+		t.Helper()
+		if player.combatMode == nil {
+			t.Fatal("combat mode state is nil")
+		}
+		for _, modeSlot := range player.combatMode.GetModeSlots() {
+			if modeSlot.GetCombatModeId() == mode && modeSlot.GetSlotIndex() == slot {
+				if modeSlot.GetSkillId() != skillID || modeSlot.GetEnabled() != enabled {
+					t.Fatalf("slot %s/%d = skill %q enabled=%v, want %q enabled=%v", mode, slot, modeSlot.GetSkillId(), modeSlot.GetEnabled(), skillID, enabled)
+				}
+				return
+			}
+		}
+		t.Fatalf("slot %s/%d missing from combat mode state: %#v", mode, slot, player.combatMode.GetModeSlots())
+	}
+
+	if got := player.combatMode.GetActiveCombatMode(); got != swordShieldBulwarkModeID {
+		t.Fatalf("startup mode = %q, want Bulwark", got)
+	}
+	assertModeSlot(swordShieldBulwarkModeID, 0, "player_basic_attack_1", true)
+	assertModeSlot(swordShieldBulwarkModeID, 2, "player_shield_bash", true)
+	assertModeSlot(swordShieldBulwarkModeID, 3, "player_shield_rush", true)
+	assertModeSlot(swordShieldVanguardModeID, 0, "", false)
+	assertModeSlot(swordShieldVanguardModeID, 2, "", false)
+	assertModeSlot(swordShieldVanguardModeID, 3, "", false)
+
+	switchAck, err := runtime.SubmitCommand(context.Background(), testRuntimeSwitchCombatModeCommand(sessionID, 1, swordShieldVanguardModeID))
+	if err != nil {
+		t.Fatalf("switch to Vanguard failed: %v", err)
+	}
+	if !switchAck.GetAccepted() {
+		t.Fatalf("switch to Vanguard rejected: %s %s", switchAck.GetRejectionCode(), switchAck.GetMessage())
+	}
+	if got := player.combatMode.GetActiveCombatMode(); got != swordShieldVanguardModeID {
+		t.Fatalf("active mode after switch = %q, want Vanguard", got)
+	}
+	if ack, err := runtime.SubmitCommand(context.Background(), testRuntimeCastSkillCommand(sessionID, 2, "player_basic_attack", gamev1Vector(1, 0, 0))); err != nil {
+		t.Fatalf("basic attack in Vanguard submit failed: %v", err)
+	} else if ack.GetAccepted() || ack.GetRejectionCode() != "empty_skill_slot" {
+		t.Fatalf("basic attack in empty Vanguard ack accepted=%v code=%q message=%q", ack.GetAccepted(), ack.GetRejectionCode(), ack.GetMessage())
+	}
+
+	switchBackAck, err := runtime.SubmitCommand(context.Background(), testRuntimeSwitchCombatModeCommand(sessionID, 3, swordShieldBulwarkModeID))
+	if err != nil {
+		t.Fatalf("switch back to Bulwark failed: %v", err)
+	}
+	if !switchBackAck.GetAccepted() {
+		t.Fatalf("switch back to Bulwark rejected: %s %s", switchBackAck.GetRejectionCode(), switchBackAck.GetMessage())
+	}
+	if got := player.combatMode.GetActiveCombatMode(); got != swordShieldBulwarkModeID {
+		t.Fatalf("active mode after switch back = %q, want Bulwark", got)
+	}
+	basicAck, err := runtime.SubmitCommand(context.Background(), testRuntimeCastSkillCommand(sessionID, 4, "player_basic_attack", gamev1Vector(1, 0, 0)))
+	if err != nil {
+		t.Fatalf("basic attack after Bulwark restore failed: %v", err)
+	}
+	if !basicAck.GetAccepted() {
+		t.Fatalf("basic attack after Bulwark restore rejected: %s %s", basicAck.GetRejectionCode(), basicAck.GetMessage())
+	}
+	if player.skillRuntime == nil || player.skillRuntime.GetCurrentSkillId() != "player_basic_attack_1" {
+		t.Fatalf("Bulwark basic attack did not resolve to M1 stage 1: %#v", player.skillRuntime)
+	}
+}
+
 func testRuntimeMoveCommand(
 	sessionID string,
 	sequence uint64,
@@ -1136,6 +1218,22 @@ func testRuntimeCastSkillCommand(sessionID string, sequence uint64, skillID stri
 			CastSkill: &gamev1.CastSkillCommand{
 				SkillId:      skillID,
 				AimDirection: aimDirection,
+			},
+		},
+	}
+}
+
+func testRuntimeSwitchCombatModeCommand(sessionID string, sequence uint64, modeID string) *gamev1.PlayerCommand {
+	return &gamev1.PlayerCommand{
+		Context:              &gamev1.RequestContext{SessionId: sessionID},
+		CommandId:            fmt.Sprintf("switch-mode-%d", sequence),
+		Sequence:             sequence,
+		Type:                 gamev1.CommandType_COMMAND_TYPE_SWITCH_COMBAT_MODE,
+		ClientTick:           sequence,
+		ClientActionSequence: sequence,
+		Payload: &gamev1.PlayerCommand_SwitchCombatMode{
+			SwitchCombatMode: &gamev1.SwitchCombatModeCommand{
+				TargetCombatModeId: modeID,
 			},
 		},
 	}
