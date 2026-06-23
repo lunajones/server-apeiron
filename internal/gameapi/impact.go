@@ -26,7 +26,6 @@ type runtimeSkillImpact struct {
 type runtimeSkillImpactCandidate struct {
 	target   *entityState
 	distCM   float64
-	blocked  bool
 	profile  *dbv1.SkillHitboxProfile
 	priority int32
 }
@@ -56,20 +55,9 @@ func (r *Runtime) applySkillImpactAt(source *entityState, skill SkillRuntimeCont
 		if !ok {
 			continue
 		}
-		hitTravelDir := normalize(vector{x: target.position.x - start.x, y: target.position.y - start.y})
-		if hitTravelDir == (vector{}) {
-			hitTravelDir = dir
-		}
-		blocked := skill.Blockable && resolveDirectionalBlock(
-			target.combatState == "blocking",
-			toDomainVector(hitTravelDir),
-			toDomainVector(yawVector(target.yaw)),
-			0,
-		)
 		candidates = append(candidates, runtimeSkillImpactCandidate{
 			target:   target,
 			distCM:   distance(start, target.position),
-			blocked:  blocked,
 			profile:  profile,
 			priority: profile.GetPriority(),
 		})
@@ -89,20 +77,12 @@ func (r *Runtime) applySkillImpactAt(source *entityState, skill SkillRuntimeCont
 			break
 		}
 		target := candidate.target
-		impact := runtimeSkillImpact{
-			SourceID:       source.id,
-			TargetID:       target.id,
-			SkillID:        skill.SkillID,
-			PostureApplied: skill.PostureDamage,
-			Blocked:        candidate.blocked,
+		impact, ok := r.resolveRuntimeSkillImpact(source, target, skill, candidate.profile, start, dir)
+		if !ok {
+			continue
 		}
-		if candidate.blocked {
-			target.posture = clampMin(target.posture-skill.PostureDamage, 0)
-		} else {
-			target.health = clampMin(target.health-skill.Damage, 0)
-			target.posture = clampMin(target.posture-skill.PostureDamage, 0)
-			impact.DamageApplied = skill.Damage
-		}
+		target.health = clampMin(target.health-impact.DamageApplied, 0)
+		target.posture = clampMin(target.posture-impact.PostureApplied, 0)
 		impacts = append(impacts, impact)
 	}
 	return impacts

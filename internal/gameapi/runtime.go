@@ -11,6 +11,7 @@ import (
 
 	gamev1 "server-apeiron/gen/apeiron/game/v1"
 	creatureai "server-apeiron/internal/ai"
+	combatpipeline "server-apeiron/internal/combat"
 	"server-apeiron/internal/combat/actionruntime"
 	"server-apeiron/internal/config"
 	"server-apeiron/internal/domain/ids"
@@ -46,6 +47,7 @@ type Runtime struct {
 	contracts RuntimeContracts
 	options   RuntimeOptions
 	aiSystem  *creatureai.RegionBrainSystem
+	impact    *combatpipeline.ImpactResolutionPipeline
 }
 
 type RuntimeOptions struct {
@@ -179,6 +181,7 @@ func NewRuntimeWithOptions(contracts RuntimeContracts, options RuntimeOptions) *
 		contracts: contracts,
 		options:   options,
 		aiSystem:  creatureai.NewRegionBrainSystem(),
+		impact:    combatpipeline.NewImpactResolutionPipeline(nil, nil, nil, nil),
 	}
 }
 
