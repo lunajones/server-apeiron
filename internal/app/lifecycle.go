@@ -31,6 +31,26 @@ func Run(ctx context.Context, cfg *config.Config) error {
 	}
 	log.Info().Str("source", runtimeContracts.Source).Msg("game runtime contracts loaded")
 
+	// North Star E2: make the loaded runtime contract coverage visible at boot so
+	// missing/incomplete contract slices are diagnosable from the log without reading
+	// seed files. Read-only over the report Codex's coverage tracking already produces.
+	coverage := runtimeContracts.CoverageReport(true)
+	for _, category := range coverage.Categories {
+		if category.Ready {
+			log.Info().Str("category", category.Name).Msg("runtime contract category ready")
+		} else {
+			log.Warn().
+				Str("category", category.Name).
+				Str("blockers", strings.Join(category.Blockers, "; ")).
+				Msg("runtime contract category incomplete")
+		}
+	}
+	log.Info().
+		Str("source", coverage.Source).
+		Bool("ready", coverage.Ready).
+		Int("categories", len(coverage.Categories)).
+		Msg("runtime contract coverage report")
+
 	runtimeOptions := gameapi.RuntimeOptions{
 		MovementValidation: cfg.Validation.MovementValidation,
 		DisableCreatures:   !cfg.AI.CreatureRuntimeEnabled,
