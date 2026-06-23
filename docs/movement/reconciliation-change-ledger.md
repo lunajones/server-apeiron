@@ -317,3 +317,43 @@ Do not reintroduce generic grounded carry on dodge `exit_handoff` unless the ser
 publishes a positive `landing_exit_speed`. Dodge is an owned root action: client prediction may
 mirror the contract, but the end of the action must be released by the authoritative handoff, not
 by residual local velocity.
+
+## 2026-06-23 - Dodge Local Root Prediction Uses Contract Sweep
+
+### Symptom
+
+After the infinite slide fix, manual PIE showed dodge no longer trembling or rubberbanding, but the
+local cylinder appeared to stay still during the dodge. When movement resumed, the cylinder snapped
+forward by roughly half a body length.
+
+### Cause
+
+The server was advancing the authoritative dodge position, but Unreal local dodge prediction was
+velocity-only while normal movement input is intentionally suppressed during the owned dodge root.
+That meant the client could acknowledge and later reconcile the server position without visibly
+moving the local root during the dodge window.
+
+### Change
+
+- Unreal cached/ACK dodge contracts now pass `HorizontalDistanceCm` into
+  `ApplyAuthoritativeDodgeContract`.
+- Local dodge prediction stores contract distance, applied distance, and prediction velocity.
+- `TickLocalDodgePrediction` now applies swept root displacement with
+  `SafeMoveUpdatedComponent`, driven by the same normalized movement curve integration used by
+  skill movement.
+- The previous zero-speed authoritative `exit_handoff` remains in place, so the dodge still ends
+  without residual slide.
+- Focused Unreal validation now submits a stationary dodge and fails if the local root does not
+  move during the dodge observation window.
+
+### Tests
+
+- `PlainTestMapEditor Win64 Development` Unreal build succeeded with `-NoHotReload`.
+- Focused automated Unreal validation passed:
+  `focused=dodge=1 dodge_cm=431.9 stationary_basic=6 rf=4/4 interleaved_basic=16 slow_curve=4 root_suppressed=0`.
+
+### Guardrail
+
+Do not make owned dodge root rely only on local velocity while movement input is suppressed. The
+client presentation must advance root position from the DB movement action contract, and the server
+must remain the authority for the final handoff.
