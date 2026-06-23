@@ -52,29 +52,41 @@ func applyCreatureDecisionMotion(creature *entityState, target *entityState, dec
 	}
 }
 
-func (r *Runtime) publishWolfLocomotionLocked(wolf *entityState, decision creatureai.Decision, contract SkillRuntimeContract, resolved creatureDecisionMotion, now time.Time) {
+func (r *Runtime) publishWolfLocomotionLocked(wolf *entityState, decision creatureai.Decision, contract SkillRuntimeContract, actionUpdate creatureActionRuntimeUpdate, resolved creatureDecisionMotion, now time.Time) {
 	if wolf == nil {
 		return
 	}
-	locoContract := r.contracts.contractForAbility(decision.SelectedSkill)
-	if creatureai.PublishesSkill(decision.Action) && contract.MovementAction.ID != "" {
+	locoContract := r.contracts.contractForAbility("move")
+	action := decision.MovementTactic
+	abilityKey := "move"
+	if action == "" {
+		action = "move"
+	}
+	if creatureai.PublishesSkill(decision.Action) && actionUpdate.RootMotionApplied && contract.MovementAction.ID != "" {
 		locoContract = contract.MovementAction
+		action = decision.Action
+		abilityKey = decision.SelectedSkill
 	}
 	wolf.locomotion = locomotionFromContractWithOverrides(locoContract, "active", resolved.Start, wolf.position, r.tick, 0, resolved.Motion.SpeedCMPerSecond, resolved.Motion.DistanceCM)
 	wolf.locomotion.MovementMode = "grounded"
-	wolf.locomotion.Action = decision.Action
-	wolf.locomotion.AbilityKey = decision.SelectedSkill
-	if creatureai.PublishesSkill(decision.Action) {
+	wolf.locomotion.Action = action
+	wolf.locomotion.AbilityKey = abilityKey
+	if creatureai.PublishesSkill(decision.Action) && actionUpdate.RootMotionApplied {
 		wolf.locomotion.Phase = creatureActionLocomotionPhase(wolf, now)
 		applyActionInstanceLocomotionTiming(wolf.locomotion, wolf.actionInstance, now)
 	}
 }
 
-func (r *Runtime) publishWolfAIStateLocked(wolf *entityState, decision creatureai.Decision, policy WolfRuntimePolicy, contract SkillRuntimeContract, rangeCM float64, lungeMinRangeCM float64, lungeMaxRangeCM float64) {
+func (r *Runtime) publishWolfAIStateLocked(wolf *entityState, decision creatureai.Decision, policy WolfRuntimePolicy, contract SkillRuntimeContract, actionUpdate creatureActionRuntimeUpdate, rangeCM float64, lungeMinRangeCM float64, lungeMaxRangeCM float64) {
 	if wolf == nil {
 		return
 	}
-	movementPresentation := creatureSkillMovementPresentationFromContract(contract)
+	movementPresentation := creatureSkillMovementPresentation{}
+	skillMovementType := ""
+	if actionUpdate.RootMotionApplied && contract.MovementAction.ID != "" {
+		movementPresentation = creatureSkillMovementPresentationFromContract(contract)
+		skillMovementType = contract.MovementAction.ActionType
+	}
 	wolf.creatureAI = &gamev1.CreatureAIState{
 		MovementTactic:                        decision.MovementTactic,
 		CombatTactic:                          decision.CombatTactic,
@@ -103,7 +115,7 @@ func (r *Runtime) publishWolfAIStateLocked(wolf *entityState, decision creaturea
 		SkillActiveEndMs:                      contract.WindupMS + contract.ActiveMS,
 		SkillRecoveryMs:                       contract.RecoveryMS,
 		SkillActionLockMs:                     contract.WindupMS + contract.ActiveMS + contract.RecoveryMS,
-		SkillMovementType:                     contract.MovementAction.ActionType,
+		SkillMovementType:                     skillMovementType,
 		SkillMovementStartMs:                  movementPresentation.MovementStartMS,
 		SkillMovementDurationMs:               movementPresentation.MovementDuration,
 		SkillMovementDistanceCm:               movementPresentation.MovementDistance,

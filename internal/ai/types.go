@@ -87,6 +87,7 @@ type Input struct {
 	TargetPosition          domainmath.Position
 	TargetFacingYaw         float64
 	ActiveSkillID           string
+	ActiveSetupPolicyID     string
 	ActiveSkillElapsedTicks uint64
 	LineOfSight             bool
 	Pressure                float64

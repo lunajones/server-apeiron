@@ -65,38 +65,39 @@ type sessionState struct {
 }
 
 type entityState struct {
-	id                    uint64
-	entityType            string
-	regionID              string
-	templateID            string
-	archetype             string
-	visualID              string
-	position              vector
-	velocity              vector
-	yaw                   float64
-	health                float64
-	maxHealth             float64
-	stamina               float64
-	maxStamina            float64
-	posture               float64
-	maxPosture            float64
-	movementState         string
-	combatState           string
-	skillState            string
-	aggroState            string
-	aggression            float64
-	impactResponseProfile string
-	lastSequence          uint64
-	lastClientTick        uint64
-	processedCommandIDs   map[string]struct{}
-	processedCommandOrder []string
-	locomotion            *gamev1.LocomotionState
-	skillRuntime          *gamev1.SkillRuntimeState
-	actionInstance        *actionruntime.Instance
-	actionMotion          *actionMotionState
-	combatMode            *gamev1.CombatModeState
-	creatureAI            *gamev1.CreatureAIState
-	creatureCooldownUntil map[string]time.Time
+	id                          uint64
+	entityType                  string
+	regionID                    string
+	templateID                  string
+	archetype                   string
+	visualID                    string
+	position                    vector
+	velocity                    vector
+	yaw                         float64
+	health                      float64
+	maxHealth                   float64
+	stamina                     float64
+	maxStamina                  float64
+	posture                     float64
+	maxPosture                  float64
+	movementState               string
+	combatState                 string
+	skillState                  string
+	aggroState                  string
+	aggression                  float64
+	impactResponseProfile       string
+	lastSequence                uint64
+	lastClientTick              uint64
+	processedCommandIDs         map[string]struct{}
+	processedCommandOrder       []string
+	locomotion                  *gamev1.LocomotionState
+	skillRuntime                *gamev1.SkillRuntimeState
+	actionInstance              *actionruntime.Instance
+	actionMotion                *actionMotionState
+	combatMode                  *gamev1.CombatModeState
+	creatureAI                  *gamev1.CreatureAIState
+	creatureCooldownUntil       map[string]time.Time
+	creatureActiveSetupPolicyID string
 
 	// actionLockedUntil marks an owned movement action (leap/dodge) the player cannot
 	// interrupt with a skill/basic. Restores the chat 6 #3 rule: no skill while
@@ -501,7 +502,7 @@ func splitCoverageBlockers(err error) []string {
 func (r *Runtime) RuntimeStats(ctx context.Context, _ *gamev1.Empty) (*gamev1.RuntimeStatsResponse, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	phaseStatus := map[string]string{"runtime": "recovered_in_memory"}
+	phaseStatus := map[string]string{"runtime": "in_memory_vertical_slice"}
 	if r.contracts.Source != "" {
 		phaseStatus["contract_source"] = r.contracts.Source
 	}
@@ -607,22 +608,19 @@ func (r *Runtime) ensureWolfLocked(player *entityState) *entityState {
 	}
 	wolf.locomotion = r.locomotion("grounded", "orbit", "run", "active", wolf.position, wolf.position, 0)
 	wolf.creatureAI = &gamev1.CreatureAIState{
-		MovementTactic:          "flank",
-		CombatTactic:            "harass",
-		Commitment:              "probing",
-		CapabilityId:            r.contracts.WolfPolicy.CapabilityID,
-		ContractId:              r.contracts.WolfPolicy.ContractID,
-		ContractHash:            r.contracts.WolfPolicy.ContractHash,
-		OrbitSide:               "left",
-		LastReason:              "recovered_runtime_seed",
-		BehaviorFamily:          "beast_harasser",
-		CombatRole:              "duelist",
-		DesiredRangeCm:          r.contracts.WolfPolicy.DesiredRangeCM,
-		ActualRangeCm:           distance(wolf.position, player.position),
-		SelectedSkillId:         "bite",
-		ProfileSource:           "db_contract_recovery_pending",
-		SkillMovementType:       "leap",
-		SkillMovementDistanceCm: r.contracts.WolfPolicy.LungeDistanceCM,
+		MovementTactic: "flank",
+		CombatTactic:   "harass",
+		Commitment:     "probing",
+		CapabilityId:   r.contracts.WolfPolicy.CapabilityID,
+		ContractId:     r.contracts.WolfPolicy.ContractID,
+		ContractHash:   r.contracts.WolfPolicy.ContractHash,
+		OrbitSide:      "left",
+		LastReason:     "spawned_from_db_contracts",
+		BehaviorFamily: "beast_harasser",
+		CombatRole:     "duelist",
+		DesiredRangeCm: r.contracts.WolfPolicy.DesiredRangeCM,
+		ActualRangeCm:  distance(wolf.position, player.position),
+		ProfileSource:  r.contracts.Source,
 	}
 	r.entities[wolf.id] = wolf
 	return wolf
@@ -671,6 +669,7 @@ func (r *Runtime) updateWolfPolicyLocked(wolf *entityState, player *entityState)
 		TargetPosition:          toDomainVector(player.position),
 		TargetFacingYaw:         player.yaw,
 		ActiveSkillID:           activeSkill,
+		ActiveSetupPolicyID:     wolf.creatureActiveSetupPolicyID,
 		ActiveSkillElapsedTicks: activeSkillElapsedTicks,
 		LineOfSight:             true,
 		Pressure:                wolf.aggression,
@@ -696,8 +695,8 @@ func (r *Runtime) updateWolfPolicyLocked(wolf *entityState, player *entityState)
 		resolvedMotion.Motion.DistanceCM = distance(start, wolf.position)
 		resolvedMotion.Motion.SpeedCMPerSecond = length(wolf.velocity)
 	}
-	r.publishWolfLocomotionLocked(wolf, decision, selectedRuntime, resolvedMotion, nowTime)
-	r.publishWolfAIStateLocked(wolf, decision, policy, selectedRuntime, rangeCM, lungeMinRangeCM, lungeMaxRangeCM)
+	r.publishWolfLocomotionLocked(wolf, decision, selectedRuntime, actionUpdate, resolvedMotion, nowTime)
+	r.publishWolfAIStateLocked(wolf, decision, policy, selectedRuntime, actionUpdate, rangeCM, lungeMinRangeCM, lungeMaxRangeCM)
 	if actionUpdate.Active && wolf.locomotion != nil {
 		wolf.locomotion.Phase = string(actionUpdate.Phase)
 		applyActionInstanceLocomotionTiming(wolf.locomotion, wolf.actionInstance, nowTime)

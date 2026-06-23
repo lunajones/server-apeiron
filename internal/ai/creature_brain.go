@@ -31,10 +31,10 @@ func (b *Brain) Decide(input Input) Decision {
 		movementTactic := action
 		commitment := "committed"
 		reason := "active_skill_continuation"
-		setup := setupPolicyForSkill(b.Policy, input.ActiveSkillID)
+		setup := setupPolicyForContinuation(b.Policy, input.ActiveSkillID, input.ActiveSetupPolicyID)
 		dir, speed := movementForAction(action, b.Policy, toTarget, right, b.Memory.OrbitSide)
 		setupPolicyID := ""
-		if setup.ID != "" && setup.LockSideDuringSetup && input.ActiveSkillElapsedTicks < setup.MaxSetupTicks {
+		if setup.ID != "" && input.ActiveSkillElapsedTicks < setup.MaxSetupTicks {
 			dir, speed = movementForSetup(setup, b.Policy, toTarget, right, b.Memory.OrbitSide)
 			decisionPhase = "setup"
 			movementTactic = setup.MovementTactic

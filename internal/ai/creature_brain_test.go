@@ -59,6 +59,29 @@ func TestBrainKeepsLungeSetupMovementDuringWindup(t *testing.T) {
 	}
 }
 
+func TestBrainKeepsChosenSetupPolicyDuringActiveWindup(t *testing.T) {
+	brain := NewBrain(testPolicy())
+	active := brain.Decide(Input{
+		Tick:                    42,
+		CreaturePosition:        domainmath.V3(0, 0, 0),
+		TargetPosition:          domainmath.V3(900, 0, 0),
+		ActiveSkillID:           "lunge",
+		ActiveSetupPolicyID:     "wolf_lunge_chase_windup_v1",
+		ActiveSkillElapsedTicks: 20,
+		LineOfSight:             true,
+	})
+
+	if active.DecisionPhase != "setup" || active.SetupPolicyID != "wolf_lunge_chase_windup_v1" {
+		t.Fatalf("active setup decision = %#v", active)
+	}
+	if active.MovementTactic != "run_chase_then_jump" {
+		t.Fatalf("movement tactic = %q, want chase setup", active.MovementTactic)
+	}
+	if active.Direction.X <= 0 || active.Direction.Y != 0 {
+		t.Fatalf("chase setup should keep direct run-up direction, got %#v", active.Direction)
+	}
+}
+
 func TestBrainUsesRetreatEvasionUnderPressure(t *testing.T) {
 	brain := NewBrain(testPolicy())
 	decision := brain.Decide(Input{
@@ -315,6 +338,7 @@ func testPolicy() Policy {
 		SideSwitchCooldownTicks:        45,
 		SetupPolicies: map[string]SkillSetupPolicy{
 			"wolf_lunge_flank_windup_v1":    {ID: "wolf_lunge_flank_windup_v1", SkillID: "lunge", SetupType: "moving_windup", MinSetupTicks: 90, MaxSetupTicks: 126, CommitDistanceCM: 520, PreferredMinRangeCM: 180, PreferredMaxRangeCM: 700, MovementTactic: "circle_then_curve_to_target", LockSideDuringSetup: true, Enabled: true},
+			"wolf_lunge_chase_windup_v1":    {ID: "wolf_lunge_chase_windup_v1", SkillID: "lunge", SetupType: "chase_windup", MinSetupTicks: 36, MaxSetupTicks: 78, CommitDistanceCM: 640, PreferredMinRangeCM: 520, PreferredMaxRangeCM: 1200, MovementTactic: "run_chase_then_jump", LockSideDuringSetup: false, Enabled: true},
 			"wolf_maul_pressure_counter_v1": {ID: "wolf_maul_pressure_counter_v1", SkillID: "maul", SetupType: "pressure_counter", MinSetupTicks: 4, MaxSetupTicks: 10, CommitDistanceCM: 160, PreferredMinRangeCM: 0, PreferredMaxRangeCM: 220, MovementTactic: "lateral_counter_dash", LockSideDuringSetup: true, Enabled: true},
 		},
 		Bindings: []SkillBinding{

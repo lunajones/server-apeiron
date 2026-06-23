@@ -119,11 +119,26 @@ func TestWolfLungeWindupUsesSetupMovementBeforeSkillRootMotion(t *testing.T) {
 	if wolf.actionMotion != nil {
 		t.Fatalf("lunge root motion started during windup: %#v", wolf.actionMotion)
 	}
+	if wolf.creatureActiveSetupPolicyID != "wolf_lunge_flank_windup_v1" {
+		t.Fatalf("active setup policy = %q, want selected lunge setup", wolf.creatureActiveSetupPolicyID)
+	}
 	if moved := distance(start, wolf.position); moved <= 0 {
 		t.Fatalf("lunge windup did not use setup movement, moved %.2f", moved)
 	}
 	if wolf.position.z != start.z {
 		t.Fatalf("lunge setup changed grounded z: %.2f -> %.2f", start.z, wolf.position.z)
+	}
+	if wolf.locomotion == nil {
+		t.Fatal("lunge setup did not publish locomotion")
+	}
+	if wolf.locomotion.GetMovementType() == "leap" || wolf.locomotion.GetActionContractId() == "low_fast_lunge_v1" {
+		t.Fatalf("lunge setup leaked airborne locomotion contract: %#v", wolf.locomotion)
+	}
+	if wolf.locomotion.GetAbilityKey() != "move" {
+		t.Fatalf("lunge setup ability key = %q, want grounded move", wolf.locomotion.GetAbilityKey())
+	}
+	if wolf.creatureAI.GetSkillMovementType() != "" || wolf.creatureAI.GetSkillMovementDistanceCm() != 0 {
+		t.Fatalf("lunge setup leaked skill movement presentation: %#v", wolf.creatureAI)
 	}
 }
 
@@ -164,6 +179,12 @@ func TestWolfLungeActivePhaseUsesSkillRootMotionOwner(t *testing.T) {
 	}
 	if wolf.locomotion == nil || wolf.locomotion.GetActionDistanceTraveled() <= 0 {
 		t.Fatalf("active lunge locomotion did not publish action distance: %#v", wolf.locomotion)
+	}
+	if wolf.locomotion.GetMovementType() != "leap" || wolf.locomotion.GetActionContractId() != "low_fast_lunge_v1" {
+		t.Fatalf("active lunge locomotion contract = type:%q id:%q", wolf.locomotion.GetMovementType(), wolf.locomotion.GetActionContractId())
+	}
+	if wolf.creatureAI.GetSkillMovementType() != "leap" {
+		t.Fatalf("active lunge AI movement type = %q, want leap", wolf.creatureAI.GetSkillMovementType())
 	}
 	if wolf.position.z != before.z {
 		t.Fatalf("active lunge changed server root z: %.2f -> %.2f", before.z, wolf.position.z)
@@ -331,7 +352,7 @@ func TestWolfLungeMovementPresentationIsContractDerived(t *testing.T) {
 	}
 }
 
-func TestWolfPublishedAIStateUsesContractMovementPresentation(t *testing.T) {
+func TestWolfPublishedAIStateUsesContractMovementPresentationDuringRootMotion(t *testing.T) {
 	runtime := NewRuntimeWithContracts(RecoveryFixtureRuntimeContracts())
 	player := runtime.ensurePlayerLocked("local_player")
 	wolf := runtime.ensureWolfLocked(player)
@@ -339,11 +360,22 @@ func TestWolfPublishedAIStateUsesContractMovementPresentation(t *testing.T) {
 	wolf.position = vector{x: player.position.x + 520, y: player.position.y, z: player.position.z}
 	runtime.tick = 328
 	runtime.updateWolfPolicyLocked(wolf, player)
+	if wolf.actionInstance == nil || wolf.skillRuntime == nil {
+		t.Fatal("wolf lunge did not start action runtime")
+	}
+	contract := runtime.contracts.skillContract("lunge")
+	activeElapsed := durationFromMS(contract.WindupMS) + 220*time.Millisecond
+	startedAt := time.Now().Add(-activeElapsed)
+	wolf.actionInstance.StartedAt = startedAt
+	wolf.skillRuntime.StartedAtMs = startedAt.UnixMilli()
+	wolf.actionMotion = nil
+
+	runtime.tick = 329
+	runtime.updateWolfPolicyLocked(wolf, player)
 
 	if wolf.creatureAI == nil {
 		t.Fatal("wolf AI state was not published")
 	}
-	contract := runtime.contracts.skillContract(wolf.creatureAI.GetSelectedSkillId())
 	presentation := creatureSkillMovementPresentationFromContract(contract)
 	if wolf.creatureAI.GetSkillMovementTakeoffMs() != presentation.TakeoffMS {
 		t.Fatalf("published takeoff = %d, want %d", wolf.creatureAI.GetSkillMovementTakeoffMs(), presentation.TakeoffMS)

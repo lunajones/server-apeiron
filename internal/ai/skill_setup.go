@@ -49,14 +49,25 @@ func selectBinding(policy Policy, memory Memory, input Input, threat ThreatAsses
 }
 
 func setupPolicyForBinding(policy Policy, binding SkillBinding) SkillSetupPolicy {
-	if binding.SetupPolicyID == "" || policy.SetupPolicies == nil {
+	return setupPolicyByID(policy, binding.SkillID, binding.SetupPolicyID)
+}
+
+func setupPolicyByID(policy Policy, skillID string, setupPolicyID string) SkillSetupPolicy {
+	if skillID == "" || setupPolicyID == "" || policy.SetupPolicies == nil {
 		return SkillSetupPolicy{}
 	}
-	setup := policy.SetupPolicies[binding.SetupPolicyID]
-	if !setup.Enabled || setup.SkillID != binding.SkillID {
+	setup := policy.SetupPolicies[setupPolicyID]
+	if !setup.Enabled || setup.SkillID != skillID {
 		return SkillSetupPolicy{}
 	}
 	return setup
+}
+
+func setupPolicyForContinuation(policy Policy, skillID string, activeSetupPolicyID string) SkillSetupPolicy {
+	if setup := setupPolicyByID(policy, skillID, activeSetupPolicyID); setup.ID != "" {
+		return setup
+	}
+	return setupPolicyForSkill(policy, skillID)
 }
 
 func setupPolicyForSkill(policy Policy, skillID string) SkillSetupPolicy {

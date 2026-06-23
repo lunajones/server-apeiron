@@ -1401,7 +1401,7 @@ func RecoveryFixtureRuntimeContracts() RuntimeContracts {
 		recoveredSkillContract("player_shield_bash", 130, 360, 260, 100),
 		recoveredSkillContract("player_shield_rush", 470, 830, 430, 240),
 		recoveredCreatureSkillContract("bite", "wolf_bite_melee_commit_v1", "grounded_skill", "grounded_skill_action_reconciliation", "melee_contact", 0, 520, 220, 180, 120, 180, 900),
-		recoveredCreatureSkillContract("lunge", "wolf_lunge_airborne_v1", "leap", "leap_reconciliation", "airborne_passthrough", 620, 980, 430, 260, 3600, 500, 4200),
+		recoveredCreatureSkillContract("lunge", "low_fast_lunge_v1", "leap", "leap_reconciliation", "airborne_passthrough", 918, 980, 430, 260, 3600, 500, 4200),
 		recoveredCreatureSkillContract("wolf_dodge", "wolf_dodge_lateral_leap_v1", "dodge", "dodge_reconciliation", "iframe", 210, 520, 420, 100, 0, 100, 0),
 		recoveredCreatureSkillContract("maul", "wolf_maul_lateral_counter_v1", "grounded_skill", "grounded_skill_action_reconciliation", "lateral_counter_contact", 140, 800, 260, 360, 180, 360, 5200),
 	} {

@@ -30,6 +30,7 @@ func (r *Runtime) applyCreatureActionRuntimeLocked(creature *entityState, target
 	if r.shouldStartCreatureActionInstanceLocked(creature, skillID, now) {
 		next := r.newCreatureActionInstance(creature, skillID, contract, start, now)
 		creature.actionInstance = &next
+		creature.creatureActiveSetupPolicyID = decision.SetupPolicyID
 		instance = &next
 		started = true
 		r.spendCreatureSkillStaminaLocked(creature, skillID, contract)

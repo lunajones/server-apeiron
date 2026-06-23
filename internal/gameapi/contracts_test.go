@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	dbv1 "db-apeiron/gen/apeiron/v1"
 	gamev1 "server-apeiron/gen/apeiron/game/v1"
@@ -789,7 +790,7 @@ func TestRuntimeStatsExposeContractCoverageByCategory(t *testing.T) {
 	}
 }
 
-func TestWolfMaulPublishesSelectedSkillMovementContract(t *testing.T) {
+func TestWolfMaulPublishesSkillMovementContractOnlyDuringRootMotion(t *testing.T) {
 	runtime := NewRuntimeWithContracts(RecoveryFixtureRuntimeContracts())
 	player := runtime.ensurePlayerLocked("local_player")
 	wolf := runtime.ensureWolfLocked(player)
@@ -801,6 +802,22 @@ func TestWolfMaulPublishesSelectedSkillMovementContract(t *testing.T) {
 	if wolf.creatureAI.GetSelectedSkillId() != "maul" {
 		t.Fatalf("selected skill = %q, want maul", wolf.creatureAI.GetSelectedSkillId())
 	}
+	if wolf.creatureAI.GetSkillMovementType() != "" {
+		t.Fatalf("maul windup leaked skill movement type = %q", wolf.creatureAI.GetSkillMovementType())
+	}
+	if wolf.actionInstance == nil || wolf.skillRuntime == nil {
+		t.Fatal("maul did not start action runtime")
+	}
+	contract := runtime.contracts.skillContract("maul")
+	activeElapsed := durationFromMS(contract.WindupMS) + 80*time.Millisecond
+	startedAt := time.Now().Add(-activeElapsed)
+	wolf.actionInstance.StartedAt = startedAt
+	wolf.skillRuntime.StartedAtMs = startedAt.UnixMilli()
+	wolf.actionMotion = nil
+
+	runtime.tick = 151
+	runtime.updateWolfPolicyLocked(wolf, player)
+
 	if wolf.creatureAI.GetSkillMovementType() != "grounded_skill" {
 		t.Fatalf("maul movement type = %q", wolf.creatureAI.GetSkillMovementType())
 	}
@@ -1131,7 +1148,7 @@ func fakeSkillMovementActionContractID(skillID string) string {
 	case "bite":
 		return "wolf_bite_melee_commit_v1"
 	case "lunge":
-		return "wolf_lunge_airborne_v1"
+		return "low_fast_lunge_v1"
 	case "wolf_dodge":
 		return "wolf_dodge_lateral_leap_v1"
 	case "maul":
