@@ -545,6 +545,7 @@ func (c RuntimeContracts) CoverageReport(strictLoadedSource bool) RuntimeContrac
 	report.addCategory("combat_core_profiles", c.combatCoreProfileBlockers(strictLoadedSource))
 	report.addCategory("combat_defense_contracts", c.combatDefenseContractBlockers(strictLoadedSource))
 	report.addCategory("combat_mode_slots", c.combatModeSlotBlockers())
+	report.addCategory("legacy_runtime_surfaces", legacyRuntimeSurfaceBlockers())
 	if strictLoadedSource {
 		report.addCategory("contract_load_issues", append([]string(nil), c.LoadIssues...))
 	}
@@ -616,6 +617,9 @@ func (c RuntimeContracts) skillRuntimeContractBlockers(strictLoadedSource bool) 
 		if skill.MovementAction.ID == "" {
 			missing = append(missing, "skill movement action "+skillID)
 		}
+		if skill.MovementActionContractID != "" && skill.MovementAction.ID != "" && skill.MovementActionContractID != skill.MovementAction.ID {
+			missing = append(missing, fmt.Sprintf("skill movement binding/action mismatch %s: %s != %s", skillID, skill.MovementActionContractID, skill.MovementAction.ID))
+		}
 		if skill.StartsAtPhase == "" {
 			missing = append(missing, "skill movement starts phase "+skillID)
 		}
@@ -630,6 +634,8 @@ func (c RuntimeContracts) skillRuntimeContractBlockers(strictLoadedSource bool) 
 		}
 		if action, ok := c.ActionContracts[skillID]; !ok || action.ID == "" {
 			missing = append(missing, "skill action manifest "+skillID)
+		} else if skill.MovementActionContractID != "" && action.ID != skill.MovementActionContractID {
+			missing = append(missing, fmt.Sprintf("skill action manifest mismatch %s: %s != %s", skillID, action.ID, skill.MovementActionContractID))
 		}
 		if strictLoadedSource {
 			missing = append(missing, validateMovementActionRuntimeContract("skill movement "+skillID, skill.MovementAction, true)...)
@@ -702,6 +708,19 @@ func (c RuntimeContracts) combatDefenseContractBlockers(strictLoadedSource bool)
 func (c RuntimeContracts) combatModeSlotBlockers() []string {
 	if len(c.CombatModes) == 0 {
 		return []string{"sword shield combat mode slots"}
+	}
+	var missing []string
+	for _, slot := range c.CombatModes {
+		if slot == nil || !slot.GetEnabled() || strings.TrimSpace(slot.GetSkillId()) == "" {
+			continue
+		}
+		skillID := slot.GetSkillId()
+		if skill, ok := c.SkillContracts[skillID]; !ok || skill.SkillID == "" || !skill.Enabled {
+			missing = append(missing, fmt.Sprintf("combat mode slot %s:%d references missing runtime skill %s", slot.GetCombatModeId(), slot.GetSlotIndex(), skillID))
+		}
+	}
+	if len(missing) > 0 {
+		return missing
 	}
 	return nil
 }

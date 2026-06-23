@@ -3,6 +3,7 @@ package gameapi
 import (
 	"context"
 	"math"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -97,6 +98,49 @@ func TestStrictRuntimeCoverageRejectsIncompleteMovementActionContract(t *testing
 		if !strings.Contains(err.Error(), want) {
 			t.Fatalf("missing blocker %q in %v", want, err)
 		}
+	}
+}
+
+func TestStrictRuntimeCoverageRejectsSkillBindingActionMismatch(t *testing.T) {
+	contracts := RecoveryFixtureRuntimeContracts()
+	skill := contracts.SkillContracts["player_shield_rush"]
+	skill.MovementAction.ID = "some_other_contract"
+	contracts.SkillContracts["player_shield_rush"] = skill
+
+	err := contracts.ValidateRequiredCoverage(true)
+	if err == nil {
+		t.Fatal("ValidateRequiredCoverage accepted mismatched skill movement binding")
+	}
+	if !strings.Contains(err.Error(), "skill movement binding/action mismatch player_shield_rush") {
+		t.Fatalf("binding/action mismatch not reported: %v", err)
+	}
+}
+
+func TestStrictRuntimeCoverageRejectsSkillActionManifestMismatch(t *testing.T) {
+	contracts := RecoveryFixtureRuntimeContracts()
+	action := contracts.ActionContracts["player_shield_rush"]
+	action.ID = "some_other_contract"
+	contracts.ActionContracts["player_shield_rush"] = action
+
+	err := contracts.ValidateRequiredCoverage(true)
+	if err == nil {
+		t.Fatal("ValidateRequiredCoverage accepted mismatched skill action manifest")
+	}
+	if !strings.Contains(err.Error(), "skill action manifest mismatch player_shield_rush") {
+		t.Fatalf("action manifest mismatch not reported: %v", err)
+	}
+}
+
+func TestStrictRuntimeCoverageRejectsCombatModeSlotWithoutRuntimeSkill(t *testing.T) {
+	contracts := RecoveryFixtureRuntimeContracts()
+	delete(contracts.SkillContracts, "player_shield_rush")
+
+	err := contracts.ValidateRequiredCoverage(true)
+	if err == nil {
+		t.Fatal("ValidateRequiredCoverage accepted combat mode slot pointing at missing skill runtime")
+	}
+	if !strings.Contains(err.Error(), "combat mode slot mode_sword_shield_bulwark:3 references missing runtime skill player_shield_rush") {
+		t.Fatalf("combat mode missing skill blocker not reported: %v", err)
 	}
 }
 
@@ -351,10 +395,55 @@ func TestRuntimeContractCoverageReportAcceptsRecoveredFixture(t *testing.T) {
 		"combat_core_profiles",
 		"combat_defense_contracts",
 		"combat_mode_slots",
+		"legacy_runtime_surfaces",
 	} {
 		if !coverageReportHasCategory(report, category) {
 			t.Fatalf("coverage report missing category %q: %#v", category, report.Categories)
 		}
+	}
+}
+
+func TestRuntimeContractSourceDoesNotExposeLegacySkillMovementEffect(t *testing.T) {
+	sourceType := reflect.TypeOf((*ContractSource)(nil)).Elem()
+	if _, ok := sourceType.MethodByName("GetSkillMovementEffect"); ok {
+		t.Fatal("normal runtime contract loader must not consume legacy GetSkillMovementEffect")
+	}
+	for _, required := range []string{
+		"GetSkillMovementActionBinding",
+		"GetSkillActionTiming",
+		"GetSkillHitboxProfiles",
+		"GetWeaponCombatModeSlots",
+	} {
+		if _, ok := sourceType.MethodByName(required); !ok {
+			t.Fatalf("normal runtime contract loader missing canonical method %s", required)
+		}
+	}
+}
+
+func TestLegacyRuntimeSurfaceClassificationKeepsCompatOutOfAuthority(t *testing.T) {
+	var foundLegacy bool
+	for _, surface := range runtimeContractSurfaces() {
+		if surface.NormalRuntimeAuthority && surface.Status != contractSurfaceFinalAuthority {
+			t.Fatalf("non-final surface became normal runtime authority: %#v", surface)
+		}
+		if surface.Name == "skill_movement_effect/GetSkillMovementEffect" {
+			foundLegacy = true
+			if surface.Status != contractSurfaceCompatRuntimeRequired {
+				t.Fatalf("legacy skill movement status = %q", surface.Status)
+			}
+			if surface.NormalRuntimeAuthority {
+				t.Fatalf("legacy skill movement endpoint must not be runtime authority: %#v", surface)
+			}
+			if surface.CanonicalReplacement != "skill_movement_action_binding + movement_action_contract" {
+				t.Fatalf("legacy skill movement canonical replacement = %q", surface.CanonicalReplacement)
+			}
+		}
+	}
+	if !foundLegacy {
+		t.Fatal("legacy skill movement endpoint is missing from the runtime surface audit")
+	}
+	if blockers := legacyRuntimeSurfaceBlockers(); len(blockers) != 0 {
+		t.Fatalf("legacy surface blockers = %#v", blockers)
 	}
 }
 
@@ -426,6 +515,15 @@ func TestRuntimeStatsExposeContractCoverageByCategory(t *testing.T) {
 	}
 	if fixtureResp.GetPhaseStatus()["contracts.skill_runtime_contracts"] != "ready" {
 		t.Fatalf("fixture skill contract coverage status = %#v", fixtureResp.GetPhaseStatus())
+	}
+	if fixtureResp.GetPhaseStatus()["contracts.legacy_runtime_surfaces"] != "ready" {
+		t.Fatalf("fixture legacy surface coverage status = %#v", fixtureResp.GetPhaseStatus())
+	}
+	if got := fixtureResp.GetPhaseStatus()["contracts.surface.skill_movement_effect/GetSkillMovementEffect"]; !strings.Contains(got, "compat_runtime_required") || !strings.Contains(got, "compat_api") {
+		t.Fatalf("legacy skill movement surface status = %q", got)
+	}
+	if got := fixtureResp.GetPhaseStatus()["contracts.surface.movement_action_contract"]; !strings.Contains(got, "final_authority") || !strings.Contains(got, "runtime_authority") {
+		t.Fatalf("movement action surface status = %q", got)
 	}
 }
 

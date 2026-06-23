@@ -500,6 +500,9 @@ func (r *Runtime) RuntimeStats(ctx context.Context, _ *gamev1.Empty) (*gamev1.Ru
 		}
 		phaseStatus["contracts."+category.Name] = "blocked"
 	}
+	for key, value := range legacyRuntimeSurfaceStatusValues() {
+		phaseStatus[key] = value
+	}
 	return &gamev1.RuntimeStatsResponse{
 		Tick:                 r.serverTickLocked(),
 		ActiveRegions:        1,
