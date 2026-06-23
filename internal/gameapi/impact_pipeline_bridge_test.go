@@ -148,6 +148,57 @@ func TestRuntimeSkillImpactAppliesContractControlEffects(t *testing.T) {
 	}
 }
 
+func TestWolfMaulImpactControlUsesSourceActionDirection(t *testing.T) {
+	t.Parallel()
+
+	runtime := NewRuntimeWithContracts(DevFixtureRuntimeContracts())
+	sessionID := "runtime-maul-impact-control"
+	attachRuntimePlayer(t, runtime, sessionID)
+	player := runtime.ensurePlayerLocked("local_player")
+	wolf := runtime.ensureWolfLocked(player)
+	player.position = vector{x: 0, y: 0, z: 98}
+	wolf.position = vector{x: 120, y: 0, z: 98}
+
+	maul := runtime.contracts.skillContract("maul")
+	wolf.actionMotion = &actionMotionState{
+		SkillID:       "maul",
+		MotionSource:  "skill_root_motion",
+		StartedAt:     time.Now(),
+		StartPosition: wolf.position,
+		Direction:     vector{x: 0, y: 1},
+		Contract:      maul.MovementAction,
+	}
+
+	impact, ok := runtime.resolveRuntimeSkillImpact(wolf, player, maul, maul.Hitboxes[0], wolf.position, vector{x: 1, y: 0})
+	if !ok {
+		t.Fatal("expected Maul impact")
+	}
+	if len(impact.StatusApplied) != 1 || impact.StatusApplied[0] != "impact_wolf_maul_lateral_grab" {
+		t.Fatalf("maul control status was not applied: %#v", impact.StatusApplied)
+	}
+	if impact.ControlType != "grab" {
+		t.Fatalf("maul control type = %q", impact.ControlType)
+	}
+	if impact.ControlReleasePolicy != "lateral_grab_release" {
+		t.Fatalf("maul release policy = %q", impact.ControlReleasePolicy)
+	}
+	if player.actionMotion == nil {
+		t.Fatal("maul impact control did not start player action motion")
+	}
+	if player.actionMotion.MotionSource != "impact_control" {
+		t.Fatalf("player control motion source = %q", player.actionMotion.MotionSource)
+	}
+	if player.actionMotion.Direction.y <= 0 || player.actionMotion.Direction.x != 0 {
+		t.Fatalf("maul control direction = %#v, want source action direction", player.actionMotion.Direction)
+	}
+	startY := player.position.y
+	player.actionMotion.StartedAt = time.Now().Add(-time.Duration(maul.ControlEffects[0].GetDurationMs()/2) * time.Millisecond)
+	runtime.advanceActionMotionLocked(player, time.Now())
+	if player.position.y <= startY {
+		t.Fatalf("maul control did not drag player laterally: %.1f -> %.1f", startY, player.position.y)
+	}
+}
+
 func TestImpactControlInterruptsCreatureActionAndCancelsPendingDamage(t *testing.T) {
 	t.Parallel()
 

@@ -109,6 +109,19 @@ func runtimeImpactControlDirection(source *entityState, target *entityState, for
 		normalized = "source_forward"
 	}
 	switch normalized {
+	case "source_action_direction":
+		if source != nil && source.actionMotion != nil {
+			if dir := normalize(source.actionMotion.Direction); dir != (vector{}) {
+				return dir
+			}
+		}
+		return normalize(forward)
+	case "source_lateral_right", "source_right_lateral":
+		dir := normalize(forward)
+		return normalize(vector{x: -dir.y, y: dir.x})
+	case "source_lateral_left", "source_left_lateral":
+		dir := normalize(forward)
+		return normalize(vector{x: dir.y, y: -dir.x})
 	case "source_to_target", "target_away_from_source":
 		if source == nil || target == nil {
 			return normalize(forward)

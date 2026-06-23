@@ -970,6 +970,7 @@ func skillContactPolicyRequiresControlEffect(policy string) bool {
 	return strings.Contains(normalized, "push") ||
 		strings.Contains(normalized, "carry") ||
 		strings.Contains(normalized, "knockback") ||
+		strings.Contains(normalized, "lateral_counter") ||
 		strings.Contains(normalized, "control")
 }
 
@@ -1852,6 +1853,18 @@ func fixtureSkillControlEffect(skillID string) *dbv1.SkillControlEffect {
 			SpeedCmS:        fixtureControlSpeedCMS(960, 720),
 			DirectionPolicy: "source_forward",
 		}
+	case "maul":
+		return &dbv1.SkillControlEffect{
+			Id:              "maul_impact_control",
+			Enabled:         true,
+			StatusEffectId:  "impact_wolf_maul_lateral_grab",
+			DurationMs:      520,
+			ControlType:     "grab",
+			ReleasePolicyId: "lateral_grab_release",
+			DistanceCm:      420,
+			SpeedCmS:        690,
+			DirectionPolicy: "source_action_direction",
+		}
 	default:
 		return nil
 	}
@@ -2060,6 +2073,7 @@ func fixtureCreatureSkillContract(skillID string, contractID string, actionType 
 		MaxTargets:               fixtureCreatureSkillMaxTargets(skillID),
 		Blockable:                true,
 		Impact:                   impact,
+		ControlEffects:           enabledSkillControlEffects(impact.GetControlEffects()),
 		Hitboxes:                 fixtureCreatureSkillHitboxes(skillID),
 		Enabled:                  true,
 	}

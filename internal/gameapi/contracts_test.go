@@ -322,6 +322,26 @@ func TestStrictRuntimeCoverageRejectsPushContactSkillWithoutControlEffect(t *tes
 	}
 }
 
+func TestStrictRuntimeCoverageRejectsLateralCounterWithoutControlEffect(t *testing.T) {
+	contracts := DevFixtureRuntimeContracts()
+	skill := contracts.SkillContracts["maul"]
+	skill.ControlEffects = nil
+	if skill.Impact != nil {
+		copy := *skill.Impact
+		copy.ControlEffects = nil
+		skill.Impact = &copy
+	}
+	contracts.SkillContracts["maul"] = skill
+
+	err := contracts.ValidateRequiredCoverage(true)
+	if err == nil {
+		t.Fatal("ValidateRequiredCoverage accepted lateral counter skill without control effect")
+	}
+	if !strings.Contains(err.Error(), "skill impact control effect maul") {
+		t.Fatalf("missing maul control blocker not reported: %v", err)
+	}
+}
+
 func TestStrictRuntimeCoverageRejectsIncompleteControlEffectMotion(t *testing.T) {
 	contracts := DevFixtureRuntimeContracts()
 	skill := contracts.SkillContracts["player_shield_rush"]
