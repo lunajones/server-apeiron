@@ -1222,8 +1222,16 @@ func recoveredCreatureSkillContract(skillID string, contractID string, actionTyp
 
 func recoveredCombatModeSlots() []*gamev1.CombatModeSlot {
 	return []*gamev1.CombatModeSlot{
+		{CombatModeId: swordShieldVanguardModeID, SlotIndex: 0, Enabled: false},
+		{CombatModeId: swordShieldVanguardModeID, SlotIndex: 1, Enabled: false},
+		{CombatModeId: swordShieldVanguardModeID, SlotIndex: 2, Enabled: false},
+		{CombatModeId: swordShieldVanguardModeID, SlotIndex: 3, Enabled: false},
+		{CombatModeId: swordShieldVanguardModeID, SlotIndex: 4, Enabled: false},
+		{CombatModeId: swordShieldBulwarkModeID, SlotIndex: 0, SkillId: "player_basic_attack_1", Enabled: true},
+		{CombatModeId: swordShieldBulwarkModeID, SlotIndex: 1, Enabled: false},
 		{CombatModeId: swordShieldBulwarkModeID, SlotIndex: 2, SkillId: "player_shield_bash", Enabled: true},
 		{CombatModeId: swordShieldBulwarkModeID, SlotIndex: 3, SkillId: "player_shield_rush", Enabled: true},
+		{CombatModeId: swordShieldBulwarkModeID, SlotIndex: 4, Enabled: false},
 	}
 }
 
@@ -1233,8 +1241,8 @@ func combatModeSlotsFromDB(slots []*dbv1.WeaponCombatModeSlot) []*gamev1.CombatM
 		if slot == nil {
 			continue
 		}
-		slotIndex := combatInputSlotIndex(slot.GetInputSlot())
-		if slotIndex == 0 {
+		slotIndex, ok := combatInputSlotIndex(slot.GetInputSlot())
+		if !ok {
 			continue
 		}
 		out = append(out, &gamev1.CombatModeSlot{
@@ -1247,18 +1255,20 @@ func combatModeSlotsFromDB(slots []*dbv1.WeaponCombatModeSlot) []*gamev1.CombatM
 	return out
 }
 
-func combatInputSlotIndex(input string) uint32 {
+func combatInputSlotIndex(input string) (uint32, bool) {
 	switch strings.ToUpper(strings.TrimSpace(input)) {
+	case "M1", "BASIC", "BASIC_ATTACK", "LEFT_MOUSE":
+		return 0, true
 	case "Q":
-		return 1
+		return 1, true
 	case "R":
-		return 2
+		return 2, true
 	case "F":
-		return 3
+		return 3, true
 	case "G":
-		return 4
+		return 4, true
 	default:
-		return 0
+		return 0, false
 	}
 }
 

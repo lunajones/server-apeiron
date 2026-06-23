@@ -56,6 +56,24 @@ func TestRecoveryFixtureRuntimeContractsExposeCreatureSkillContracts(t *testing.
 	}
 }
 
+func TestRecoveryFixtureCombatModesKeepBulwarkAndVanguardSeparate(t *testing.T) {
+	contracts := RecoveryFixtureRuntimeContracts()
+	if !hasCombatModeSlot(contracts.CombatModes, swordShieldBulwarkModeID, 0, "player_basic_attack_1") {
+		t.Fatalf("recovered Bulwark M1 slot missing: %#v", contracts.CombatModes)
+	}
+	if !hasCombatModeSlot(contracts.CombatModes, swordShieldBulwarkModeID, 2, "player_shield_bash") {
+		t.Fatalf("recovered Bulwark R slot missing: %#v", contracts.CombatModes)
+	}
+	if !hasCombatModeSlot(contracts.CombatModes, swordShieldBulwarkModeID, 3, "player_shield_rush") {
+		t.Fatalf("recovered Bulwark F slot missing: %#v", contracts.CombatModes)
+	}
+	for _, slotIndex := range []uint32{0, 1, 2, 3, 4} {
+		if !hasEmptyCombatModeSlot(contracts.CombatModes, swordShieldVanguardModeID, slotIndex) {
+			t.Fatalf("recovered Vanguard slot %d should be empty/disabled: %#v", slotIndex, contracts.CombatModes)
+		}
+	}
+}
+
 func TestLoadRuntimeContractsFromDBUsesRequiredSkillBindings(t *testing.T) {
 	source := fakeRuntimeContractSource{}
 	contracts := LoadRuntimeContractsFromDB(context.Background(), source, source)
@@ -86,10 +104,16 @@ func TestLoadRuntimeContractsFromDBUsesRequiredSkillBindings(t *testing.T) {
 	if !hasCombatModeSlot(contracts.CombatModes, "mode_sword_shield_bulwark", 3, "player_shield_rush") {
 		t.Fatalf("DB combat mode slots did not load Bulwark F -> Shield Rush: %#v", contracts.CombatModes)
 	}
+	if !hasCombatModeSlot(contracts.CombatModes, "mode_sword_shield_bulwark", 0, "player_basic_attack_1") {
+		t.Fatalf("DB combat mode slots did not load Bulwark M1 -> basic attack: %#v", contracts.CombatModes)
+	}
+	if !hasEmptyCombatModeSlot(contracts.CombatModes, "mode_sword_shield_vanguard", 0) {
+		t.Fatalf("Vanguard M1 should be present but empty/disabled until implemented: %#v", contracts.CombatModes)
+	}
 	if hasCombatModeSlot(contracts.CombatModes, "mode_sword_shield_vanguard", 2, "player_shield_bash") {
 		t.Fatalf("Vanguard must not inherit Bulwark R skill from fallback")
 	}
-	if hasCombatModeSlot(contracts.CombatModes, "mode_sword_shield_vanguard", 1, "player_basic_attack_1") {
+	if hasCombatModeSlot(contracts.CombatModes, "mode_sword_shield_vanguard", 0, "player_basic_attack_1") {
 		t.Fatalf("Vanguard must not expose M1 until sword-forward skills are implemented")
 	}
 	if contracts.WolfPolicy.TargetOpportunityPolicyID != "opportunity_wolf_harasser_v1" {
@@ -620,6 +644,15 @@ func fakeMovementActionContract(id string, abilityKey string, actionType string,
 func hasCombatModeSlot(slots []*gamev1.CombatModeSlot, combatModeID string, slotIndex uint32, skillID string) bool {
 	for _, slot := range slots {
 		if slot.GetCombatModeId() == combatModeID && slot.GetSlotIndex() == slotIndex && slot.GetSkillId() == skillID && slot.GetEnabled() {
+			return true
+		}
+	}
+	return false
+}
+
+func hasEmptyCombatModeSlot(slots []*gamev1.CombatModeSlot, combatModeID string, slotIndex uint32) bool {
+	for _, slot := range slots {
+		if slot.GetCombatModeId() == combatModeID && slot.GetSlotIndex() == slotIndex && slot.GetSkillId() == "" && !slot.GetEnabled() {
 			return true
 		}
 	}
