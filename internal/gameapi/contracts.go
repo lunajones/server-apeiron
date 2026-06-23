@@ -932,6 +932,9 @@ func validateRuntimeSkillContract(skillID string, skill SkillRuntimeContract) []
 			missing = append(missing, "skill motion samples "+skillID)
 			continue
 		}
+		for _, sample := range motion.GetSamples() {
+			missing = append(missing, validateSkillMotionSampleGeometry(skillID, profile, motion, sample, skill.Range)...)
+		}
 		hasTemporal = true
 	}
 	if !hasTemporal {
@@ -1001,6 +1004,45 @@ func validateSkillControlEffectContract(skillID string, effect *dbv1.SkillContro
 		missing = append(missing, prefix+"speed")
 	}
 	return missing
+}
+
+func validateSkillMotionSampleGeometry(skillID string, profile *dbv1.SkillHitboxProfile, motion *dbv1.SkillHitboxMotionProfile, sample *dbv1.SkillHitboxMotionSample, skillRange float64) []string {
+	if profile == nil || motion == nil || sample == nil {
+		return nil
+	}
+	sampleID := fmt.Sprintf("%d", sample.GetSampleIndex())
+	prefix := "skill motion sample " + skillID + "/" + motion.GetId() + "/" + sampleID + " "
+	shape := strings.ToLower(strings.TrimSpace(motion.GetSweepShape()))
+	switch shape {
+	case "arc_slice", "arc", "asymmetric_arc":
+		reach := firstPositiveFloat64(sample.GetLength(), sample.GetRadius(), profile.GetLength(), profile.GetRadius(), skillRangeToCM(skillRange))
+		if reach <= 0 {
+			return []string{prefix + "reach"}
+		}
+		return nil
+	case "box_strip", "box", "rectangle", "rect":
+		lengthCM := firstPositiveFloat64(sample.GetSizeX(), sample.GetLength(), profile.GetSizeX(), profile.GetLength(), skillRangeToCM(skillRange))
+		halfWidthCM := firstPositiveFloat64(sample.GetSizeY()/2, sample.GetRadius(), profile.GetSizeY()/2, profile.GetRadius())
+		var missing []string
+		if lengthCM <= 0 {
+			missing = append(missing, prefix+"length")
+		}
+		if halfWidthCM <= 0 {
+			missing = append(missing, prefix+"width")
+		}
+		return missing
+	default:
+		lengthCM := firstPositiveFloat64(sample.GetLength(), profile.GetLength(), skillRangeToCM(skillRange))
+		radiusCM := firstPositiveFloat64(sample.GetRadius(), sample.GetSizeY()/2, profile.GetRadius(), profile.GetSizeY()/2)
+		var missing []string
+		if lengthCM <= 0 {
+			missing = append(missing, prefix+"length")
+		}
+		if radiusCM <= 0 {
+			missing = append(missing, prefix+"radius")
+		}
+		return missing
+	}
 }
 
 func validateCombatCoreProfile(profileID string, profile *dbv1.CombatCoreProfile) []string {

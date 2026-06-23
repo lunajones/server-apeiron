@@ -295,6 +295,7 @@ Recovered/proven in current code:
 
 - `internal/gameapi/impact_temporal.go` evaluates an enabled motion profile at a hitbox-window-normalized time.
 - `internal/gameapi/impact.go` no longer expands reach/lane/angle from every motion sample when a temporal profile exists.
+- Runtime temporal hitboxes no longer invent a recovered default half-lane when radius/width is absent. Strict coverage validates temporal motion sample geometry, and `TestStrictRuntimeCoverageRejectsTemporalMotionSampleWithoutGeometry` blocks canonical skill hitboxes without contract-defined width/radius.
 - `bootstrap/015_temporal_hitbox_seed.sql`, `bootstrap/016_wolf_behavior_contract_seed.sql`, and recovered server fixtures use one coordinate convention: `offset_x` is forward and `offset_y` is lateral.
 - Tests prove future capsule/arc samples do not hit at the first active slice for player and wolf skills.
 - `internal/combat/damagegroup.Runtime` owns pending temporal impact windows, dedupe, skipped-window evaluation, and expiration for both player and creature scheduled impacts.

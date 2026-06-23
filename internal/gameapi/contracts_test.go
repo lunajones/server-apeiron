@@ -197,6 +197,40 @@ func TestStrictRuntimeCoverageRejectsIncompleteControlEffectMotion(t *testing.T)
 	}
 }
 
+func TestStrictRuntimeCoverageRejectsTemporalMotionSampleWithoutGeometry(t *testing.T) {
+	contracts := RecoveryFixtureRuntimeContracts()
+	skill := contracts.SkillContracts["player_basic_attack_1"]
+	if len(skill.Hitboxes) == 0 || skill.Hitboxes[0].GetMotionProfile() == nil {
+		t.Fatal("fixture basic attack should have temporal hitbox samples")
+	}
+	profile := *skill.Hitboxes[0]
+	profile.Radius = 0
+	profile.SizeY = 0
+	motion := *profile.GetMotionProfile()
+	samples := make([]*dbv1.SkillHitboxMotionSample, 0, len(motion.GetSamples()))
+	for _, original := range motion.GetSamples() {
+		if original == nil {
+			continue
+		}
+		sample := *original
+		sample.Radius = 0
+		sample.SizeY = 0
+		samples = append(samples, &sample)
+	}
+	motion.Samples = samples
+	profile.MotionProfile = &motion
+	skill.Hitboxes = []*dbv1.SkillHitboxProfile{&profile}
+	contracts.SkillContracts["player_basic_attack_1"] = skill
+
+	err := contracts.ValidateRequiredCoverage(true)
+	if err == nil {
+		t.Fatal("ValidateRequiredCoverage accepted temporal samples without width/radius")
+	}
+	if !strings.Contains(err.Error(), "skill motion sample player_basic_attack_1/") || !strings.Contains(err.Error(), "radius") {
+		t.Fatalf("missing temporal geometry blocker not reported: %v", err)
+	}
+}
+
 func TestStrictRuntimeCoverageRejectsIncompleteMovementActionContract(t *testing.T) {
 	contracts := RecoveryFixtureRuntimeContracts()
 	action := contracts.ActionContracts["player_shield_rush"]

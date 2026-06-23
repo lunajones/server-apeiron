@@ -146,7 +146,7 @@ func skillTemporalImpactSampleAt(profile *dbv1.SkillHitboxProfile, samples []*db
 
 func skillTemporalCapsuleContains(skill SkillRuntimeContract, profile *dbv1.SkillHitboxProfile, sample temporalImpactSample, origin vector, dir vector, target vector) bool {
 	lengthCM := firstPositiveFloat64(sample.Length, profile.GetLength(), skillRangeToCM(skill.Range))
-	radiusCM := firstPositiveFloat64(sample.Radius, sample.SizeY/2, profile.GetRadius(), profile.GetSizeY()/2, defaultRecoveredImpactHalfLane)
+	radiusCM := firstPositiveFloat64(sample.Radius, sample.SizeY/2, profile.GetRadius(), profile.GetSizeY()/2)
 	if lengthCM <= 0 || radiusCM <= 0 {
 		return false
 	}
@@ -157,7 +157,7 @@ func skillTemporalCapsuleContains(skill SkillRuntimeContract, profile *dbv1.Skil
 
 func skillTemporalBoxContains(skill SkillRuntimeContract, profile *dbv1.SkillHitboxProfile, sample temporalImpactSample, origin vector, dir vector, target vector) bool {
 	lengthCM := firstPositiveFloat64(sample.SizeX, sample.Length, profile.GetSizeX(), profile.GetLength(), skillRangeToCM(skill.Range))
-	halfWidthCM := firstPositiveFloat64(sample.SizeY/2, sample.Radius, profile.GetSizeY()/2, profile.GetRadius(), defaultRecoveredImpactHalfLane)
+	halfWidthCM := firstPositiveFloat64(sample.SizeY/2, sample.Radius, profile.GetSizeY()/2, profile.GetRadius())
 	if lengthCM <= 0 || halfWidthCM <= 0 {
 		return false
 	}

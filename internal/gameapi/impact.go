@@ -8,10 +8,9 @@ import (
 )
 
 const (
-	defaultImpactTargetLimit       int32   = 1
-	skillRangeMetersToCMThreshold  float64 = 25
-	centimetersPerMeter            float64 = 100
-	defaultRecoveredImpactHalfLane float64 = 45
+	defaultImpactTargetLimit      int32   = 1
+	skillRangeMetersToCMThreshold float64 = 25
+	centimetersPerMeter           float64 = 100
 )
 
 type runtimeSkillImpact struct {
@@ -166,11 +165,7 @@ func skillHitboxForwardReachCM(skill SkillRuntimeContract, profile *dbv1.SkillHi
 }
 
 func skillHitboxLaneHalfWidthCM(profile *dbv1.SkillHitboxProfile) float64 {
-	width := maxFloat64(profile.GetRadius(), profile.GetSizeX()/2, profile.GetSizeY()/2)
-	if width <= 0 {
-		return defaultRecoveredImpactHalfLane
-	}
-	return width
+	return maxFloat64(profile.GetRadius(), profile.GetSizeX()/2, profile.GetSizeY()/2)
 }
 
 func skillHitboxAngleWindow(profile *dbv1.SkillHitboxProfile) (float64, float64, bool) {
