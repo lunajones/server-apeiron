@@ -179,6 +179,47 @@ func TestBrainRepeatPenaltyLetsAlternativeBindingWin(t *testing.T) {
 	}
 }
 
+func TestOrbitSideSwitchChanceMultiplierIsNotPeriodicAlwaysFlip(t *testing.T) {
+	policy := testPolicy()
+	policy.AllowSideSwitchWhenTargetFaces = true
+	policy.LockSideDuringSetup = false
+	policy.MinOrbitDurationTicks = 10
+	policy.SideSwitchCooldownTicks = 10
+	policy.SideFlipChanceMultiplier = 0.35
+
+	side := "left"
+	switches := 0
+	windows := 20
+	for bucket := 1; bucket <= windows; bucket++ {
+		input := Input{Tick: uint64(bucket) * (policy.MinOrbitDurationTicks + policy.SideSwitchCooldownTicks)}
+		if shouldSwitchOrbitSide(policy, input, side) {
+			switches++
+			if side == "left" {
+				side = "right"
+			} else {
+				side = "left"
+			}
+		}
+	}
+	if switches == 0 {
+		t.Fatal("partial side flip chance never allowed a side switch")
+	}
+	if switches >= windows {
+		t.Fatalf("partial side flip chance behaved like periodic always-flip: switches=%d windows=%d", switches, windows)
+	}
+}
+
+func TestOrbitSideSwitchFullChanceStillAllowsDeterministicFlip(t *testing.T) {
+	policy := testPolicy()
+	policy.MinOrbitDurationTicks = 10
+	policy.SideSwitchCooldownTicks = 10
+	policy.SideFlipChanceMultiplier = 1
+
+	if !shouldSwitchOrbitSide(policy, Input{Tick: 20}, "left") {
+		t.Fatal("full side flip chance should allow switch after the policy window")
+	}
+}
+
 func testPolicy() Policy {
 	return Policy{
 		DesiredRangeCM:          420,

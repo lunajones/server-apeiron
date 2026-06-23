@@ -1,5 +1,7 @@
 package ai
 
+import "math"
+
 type Brain struct {
 	Policy Policy
 	Memory Memory
@@ -155,13 +157,44 @@ func (b *Brain) nextOrbitSide(input Input) string {
 	if !b.Policy.AllowSideSwitchWhenTargetFaces && b.Policy.LockSideDuringSetup {
 		return side
 	}
-	if b.Policy.SideFlipChanceMultiplier <= 0 {
+	if !shouldSwitchOrbitSide(b.Policy, input, side) {
 		return side
 	}
 	if side == "left" {
 		return "right"
 	}
 	return "left"
+}
+
+func shouldSwitchOrbitSide(policy Policy, input Input, currentSide string) bool {
+	chance := math.Max(0, math.Min(1, policy.SideFlipChanceMultiplier))
+	if chance <= 0 {
+		return false
+	}
+	if chance >= 1 {
+		return true
+	}
+	window := policy.MinOrbitDurationTicks + policy.SideSwitchCooldownTicks
+	if window == 0 {
+		return false
+	}
+	bucket := input.Tick / window
+	if bucket == 0 {
+		return false
+	}
+	return deterministicOrbitSideSwitchSample(bucket, currentSide) < chance
+}
+
+func deterministicOrbitSideSwitchSample(bucket uint64, currentSide string) float64 {
+	const sampleSlots = 10000
+	sideSalt := uint64(17)
+	if currentSide == "right" {
+		sideSalt = 53
+	}
+	// Fixed integer mixing makes side switching deterministic and reproducible on
+	// server/client logs, while the contract still owns the probability threshold.
+	mixed := bucket*1103515245 + sideSalt*12345 + 1013904223
+	return float64(mixed%sampleSlots) / sampleSlots
 }
 
 func movementTacticForAction(action string) string {
