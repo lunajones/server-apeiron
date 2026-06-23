@@ -45,7 +45,7 @@ evidence to audit, not final authority. Normal gameplay must be DB/profile/contr
 | DB legacy compatibility | `SUSPICIOUS` | `db-legacy-compatibility-audit-2026-06-22.md` classifies legacy surfaces; migrations 033-042 contain compatibility/finalization logic. | Legacy columns can hide missing canonical contracts if consumed accidentally. | Add runtime usage proof table: `final_authority`, `compat_runtime_required`, `recovery_only`, `dead`. Fail normal boot if required canonical contract is missing. |
 | Server movement resolver | `PARTIAL` | `internal/movement` exists with resolver, action contract registry, action timeline, kinematics, tests. | Need prove every player movement and skill movement path goes through resolver or the shared action contract path, not manual position writes. | Audit `player_skill_combat_system.go`, `gameapi/runtime.go`, and Unreal bridge for direct position authority and duplicated handoff logic. |
 | Runtime movement reconciliation profile | `PARTIAL` | DB has `runtime_movement_reconciliation_profile`; server loads it; Unreal has `FApeironMovementReconciliationProfile`. | Unreal still has numeric struct defaults and `ApeironPositiveOr(...)` fallback-style values. Some are safe C++ defaults, but not final gameplay authority if DB profile missing. | Convert missing profile in normal runtime into explicit failure/report, not silent gameplay defaults. Keep C++ values only as inert initialization or editor/dev safety. |
-| Skill movement: player F/R/M1 | `PARTIAL` | DB has movement bindings; server combat has `player_skill_combat_system.go` and `skill_movement_helpers.go`; Unreal bridge maps `SkillGroundedAction` and `PostActionGrounded`. | History shows this regressed repeatedly. Must prove no duplicate locomotion publisher and no normal movement competing during windup/active/recovery. | Re-run/extend movement regression suite for stationary M1, M1 chain, F/R, post-action sprint/strafe, and aggressive yaw. Fix common owner, not per-skill patches. |
+| Skill movement: player F/R/M1 | `PARTIAL` | DB has movement bindings; server combat has `player_skill_combat_system.go` and `skill_movement_helpers.go`; Unreal bridge maps `SkillGroundedAction` and `PostActionGrounded`. Server guard test now proves M1-1/M1-2/M1-3/R/F keep owned root during skill and return sprint-strafe after handoff. | History shows this regressed repeatedly. Unreal/PIE automation still must prove the same against real client prediction and aggressive yaw. | Extend movement regression suite for stationary M1, M1 chain, F/R, post-action sprint/strafe, and aggressive yaw. Fix common owner, not per-skill patches. |
 | Protected leap/dodge/turn baseline | `PARTIAL` | Unreal bridge has explicit dodge/leap/turn contracts and validation. Server has movement contracts/tests. | Recent history shows unrelated changes broke leap/dodge/turn. | Make a guard test suite: any skill/HUD/DB change must run leap, dodge, turn, sprint-strafe, and post-skill handoff validation. |
 | Combat mode / weapon kit / slots | `PARTIAL` | DB has `weapon_kit`, `weapon_combat_mode`, `weapon_combat_mode_skill_slot`; Unreal and server expose `mode_slots` and combat mode ACK/snapshot fields. | Current design says Vanguard is intentionally empty and Bulwark owns M1/R/F for now. Must prove no local fallback fills wrong mode. | Make DB-backed mode slot test: startup Bulwark slots, CTRL switch to empty Vanguard, CTRL back to Bulwark, no Q/R/F fallback in wrong mode. |
 | HUD visual identity | `PARTIAL` | Unreal HUD docs and C++ HUD exist; skill icon prompt sheet exists. | Visual polish and frame art are not final; Unreal project has no git safety. | Finish HUD frame/token asset plan only after gameplay runtime is stable, or isolate it so HUD cannot affect movement. |
@@ -152,6 +152,7 @@ Acceptance criteria:
 - `SkillGroundedAction` remains active while the action is still in recovery if the server still owns the action.
 - `PostActionGrounded` appears only after action completion/handoff.
 - No direct transform/position write bypasses resolver for moving entities.
+- Server guard: `TestRuntimePostSkillHandoffReturnsSprintStrafeForCurrentBulwarkSkills` covers M1-1, M1-2, M1-3, Shield Bash/R, and Shield Rush/F.
 
 #### A3. Rubberband Regression Suite
 
@@ -166,6 +167,7 @@ Required test scenarios:
 - F and R stationary.
 - F and R while sprinting forward.
 - F/R into immediate strafe/sprint handoff.
+- Server coverage exists for post-skill sprint-strafe handoff on M1-1, M1-2, M1-3, R, and F.
 - Leap stationary and leap running.
 - Leap while hit.
 - Dodge into movement and dodge into skill attempt.

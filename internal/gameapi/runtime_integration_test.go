@@ -753,6 +753,79 @@ func TestRuntimeGroundedSkillMotionProgressesBySnapshotAndOwnsRoot(t *testing.T)
 	}
 }
 
+func TestRuntimePostSkillHandoffReturnsSprintStrafeForCurrentBulwarkSkills(t *testing.T) {
+	t.Parallel()
+
+	for _, skillID := range []string{
+		"player_basic_attack_1",
+		"player_basic_attack_2",
+		"player_basic_attack_3",
+		"player_shield_bash",
+		"player_shield_rush",
+	} {
+		t.Run(skillID, func(t *testing.T) {
+			t.Parallel()
+
+			runtime := NewRuntimeWithOptions(RecoveredRuntimeContracts(), RuntimeOptions{MovementValidation: true})
+			sessionID := "runtime-integration-post-skill-handoff-" + skillID
+			if _, err := runtime.OpenSession(context.Background(), &gamev1.OpenSessionRequest{
+				Context: &gamev1.RequestContext{SessionId: sessionID},
+			}); err != nil {
+				t.Fatalf("OpenSession failed: %v", err)
+			}
+			if _, err := runtime.AttachPlayer(context.Background(), &gamev1.AttachPlayerRequest{
+				Context:  &gamev1.RequestContext{SessionId: sessionID},
+				PlayerId: "local_player",
+			}); err != nil {
+				t.Fatalf("AttachPlayer failed: %v", err)
+			}
+			player := runtime.ensurePlayerLocked("local_player")
+			dir := gamev1Vector(-0.7071067811865476, 0.7071067811865476, 0)
+			yaw := 315.0
+
+			castAck, err := runtime.SubmitCommand(context.Background(), testRuntimeCastSkillCommand(sessionID, 1, skillID, dir))
+			if err != nil {
+				t.Fatalf("cast submit failed: %v", err)
+			}
+			if !castAck.GetAccepted() {
+				t.Fatalf("cast rejected: %s %s", castAck.GetRejectionCode(), castAck.GetMessage())
+			}
+			if player.locomotion == nil || player.locomotion.GetAction() != "grounded_skill" {
+				t.Fatalf("cast did not own grounded skill root: %s", safeAction(player.locomotion))
+			}
+
+			moveDuringAck, err := runtime.SubmitCommand(context.Background(), testRuntimeMoveCommand(sessionID, 2, dir, 1, true, &yaw))
+			if err != nil {
+				t.Fatalf("move during skill failed: %v", err)
+			}
+			if !moveDuringAck.GetAccepted() {
+				t.Fatalf("move during skill rejected: %s %s", moveDuringAck.GetRejectionCode(), moveDuringAck.GetMessage())
+			}
+			if player.locomotion.GetAction() != "grounded_skill" {
+				t.Fatalf("move stole skill root before handoff: %q", player.locomotion.GetAction())
+			}
+
+			forceCompleteRuntimeAction(t, runtime, sessionID, player)
+			if player.actionMotion != nil {
+				t.Fatal("completed skill left action motion active")
+			}
+			moveAfterAck, err := runtime.SubmitCommand(context.Background(), testRuntimeMoveCommand(sessionID, 3, dir, 1, true, &yaw))
+			if err != nil {
+				t.Fatalf("move after skill failed: %v", err)
+			}
+			if !moveAfterAck.GetAccepted() {
+				t.Fatalf("move after skill rejected: %s %s", moveAfterAck.GetRejectionCode(), moveAfterAck.GetMessage())
+			}
+			if player.locomotion == nil || player.locomotion.GetAction() != "move" {
+				t.Fatalf("post-skill handoff did not return normal movement: %s", safeAction(player.locomotion))
+			}
+			if player.locomotion.GetTargetSpeed() <= 0 || player.locomotion.GetActionDistanceTraveled() <= 0 {
+				t.Fatalf("post-skill movement did not progress: speed=%.2f distance=%.2f", safeSpeed(player.locomotion), safeDistance(player.locomotion))
+			}
+		})
+	}
+}
+
 func testRuntimeMoveCommand(
 	sessionID string,
 	sequence uint64,
