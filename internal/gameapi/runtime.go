@@ -741,16 +741,15 @@ func (r *Runtime) groundedMoveSpeed(sprint bool, analogMagnitude float64, dir ve
 func (r *Runtime) movementSpeedProfile() movement.SpeedProfile {
 	profile := r.contracts.MovementProfile
 	if profile == nil {
-		profile = recoveredMovementProfile()
+		profile = &gamev1.MovementReconciliationProfile{}
 	}
-	recovered := recoveredMovementProfile()
 	return movement.SpeedProfile{
-		MaxSpeed:                       positiveOr(profile.GetMaxSpeed(), recovered.GetMaxSpeed()),
-		SprintSpeedMultiplier:          positiveOr(profile.GetSprintSpeedMultiplier(), recovered.GetSprintSpeedMultiplier()),
-		StrafeSpeedMultiplier:          positiveOr(profile.GetStrafeSpeedMultiplier(), recovered.GetStrafeSpeedMultiplier()),
-		BackpedalSpeedMultiplier:       positiveOr(profile.GetBackpedalSpeedMultiplier(), recovered.GetBackpedalSpeedMultiplier()),
-		StrafeSprintSpeedMultiplier:    positiveOr(profile.GetStrafeSprintSpeedMultiplier(), recovered.GetStrafeSprintSpeedMultiplier()),
-		BackpedalSprintSpeedMultiplier: positiveOr(profile.GetBackpedalSprintSpeedMultiplier(), recovered.GetBackpedalSprintSpeedMultiplier()),
+		MaxSpeed:                       profile.GetMaxSpeed(),
+		SprintSpeedMultiplier:          profile.GetSprintSpeedMultiplier(),
+		StrafeSpeedMultiplier:          profile.GetStrafeSpeedMultiplier(),
+		BackpedalSpeedMultiplier:       profile.GetBackpedalSpeedMultiplier(),
+		StrafeSprintSpeedMultiplier:    profile.GetStrafeSprintSpeedMultiplier(),
+		BackpedalSprintSpeedMultiplier: profile.GetBackpedalSprintSpeedMultiplier(),
 	}
 }
 

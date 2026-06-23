@@ -58,6 +58,9 @@ func TestLoadRuntimeContractsFromDBUsesRequiredSkillBindings(t *testing.T) {
 	if contracts.Source != "db_contracts" {
 		t.Fatalf("source = %q, want db_contracts", contracts.Source)
 	}
+	if contracts.MovementProfile.GetProfileId() != runtimeMovementReconciliationProfileID {
+		t.Fatalf("movement reconciliation profile = %q", contracts.MovementProfile.GetProfileId())
+	}
 
 	for _, skillID := range requiredRuntimeSkillIDs() {
 		skill := contracts.skillContract(skillID)
@@ -288,6 +291,65 @@ func (f fakeRuntimeContractSource) GetMovementActionContract(_ context.Context, 
 
 func (fakeRuntimeContractSource) GetMovementReconciliationContract(context.Context, *dbv1.IdRequest, ...grpc.CallOption) (*dbv1.MovementReconciliationContractResponse, error) {
 	return &dbv1.MovementReconciliationContractResponse{Found: false}, nil
+}
+
+func (fakeRuntimeContractSource) GetRuntimeMovementReconciliationProfile(_ context.Context, req *dbv1.IdRequest, _ ...grpc.CallOption) (*dbv1.RuntimeMovementReconciliationProfileResponse, error) {
+	if req.GetId() != runtimeMovementReconciliationProfileID {
+		return &dbv1.RuntimeMovementReconciliationProfileResponse{Found: false}, nil
+	}
+	return &dbv1.RuntimeMovementReconciliationProfileResponse{
+		Found: true,
+		Profile: &dbv1.RuntimeMovementReconciliationProfile{
+			ProfileId:                         runtimeMovementReconciliationProfileID,
+			MaxSpeed:                          470,
+			SprintSpeedMultiplier:             1.45,
+			Acceleration:                      2048,
+			Deceleration:                      2048,
+			GroundFriction:                    8,
+			AirAcceleration:                   768,
+			JumpHeight:                        180,
+			JumpDurationMs:                    620,
+			RotationRateYaw:                   720,
+			GravityScale:                      1,
+			BrakingFrictionFactor:             2,
+			MaxSlopeDeg:                       45,
+			StepHeight:                        45,
+			BaseDeadzone:                      25,
+			GroundedSpeedDeadzoneFactor:       0.08,
+			GroundedSpeedDeadzoneMin:          35,
+			GroundedSpeedDeadzoneMax:          90,
+			MoveSustainDeadzone:               45,
+			MoveSustainTransitionDeadzone:     65,
+			AirborneDeadzone:                  120,
+			LeapRecentDeadzone:                140,
+			LeapAirborneSnapshotDeadzone:      165,
+			LeapLandingDeadzoneFactor:         0.12,
+			LeapLandingDeadzoneMin:            80,
+			LeapLandingDeadzoneMax:            180,
+			DodgeRecentDeadzone:               90,
+			DodgeActiveDeadzone:               90,
+			DodgeExitDeadzoneFactor:           0.12,
+			DodgeExitDeadzoneMin:              65,
+			DodgeExitDeadzoneMax:              180,
+			PostActionGroundedDeadzone:        55,
+			CorrectionMaxStep:                 80,
+			HardSnapDistance:                  1400,
+			SevereDesyncDistance:              2200,
+			VisualSmoothingMs:                 80,
+			VisualSmoothingMaxDistance:        260,
+			RemoteVisualInterpolationMs:       100,
+			RemoteVisualMaxExtrapolationMs:    100,
+			RemoteVisualHardSnapDistance:      600,
+			MovementTurnResubmitDotThreshold:  0.92,
+			MovementTurnResubmitMinIntervalMs: 33,
+			MovementSubmitIntervalMs:          33,
+			SnapshotPollIntervalMs:            33,
+			StrafeSpeedMultiplier:             0.92,
+			BackpedalSpeedMultiplier:          0.65,
+			StrafeSprintSpeedMultiplier:       0.75,
+			BackpedalSprintSpeedMultiplier:    0.75,
+		},
+	}, nil
 }
 
 func (fakeRuntimeContractSource) GetCreatureBehaviorRuntimeContract(_ context.Context, req *dbv1.IdRequest, _ ...grpc.CallOption) (*dbv1.CreatureBehaviorRuntimeContractResponse, error) {

@@ -25,6 +25,7 @@ type ContractSource interface {
 type ProfileContractSource interface {
 	GetMovementActionContract(context.Context, *dbv1.IdRequest, ...grpc.CallOption) (*dbv1.MovementActionContractResponse, error)
 	GetMovementReconciliationContract(context.Context, *dbv1.IdRequest, ...grpc.CallOption) (*dbv1.MovementReconciliationContractResponse, error)
+	GetRuntimeMovementReconciliationProfile(context.Context, *dbv1.IdRequest, ...grpc.CallOption) (*dbv1.RuntimeMovementReconciliationProfileResponse, error)
 	GetCreatureBehaviorRuntimeContract(context.Context, *dbv1.IdRequest, ...grpc.CallOption) (*dbv1.CreatureBehaviorRuntimeContractResponse, error)
 	GetCreatureTargetOpportunityPolicy(context.Context, *dbv1.IdRequest, ...grpc.CallOption) (*dbv1.CreatureTargetOpportunityPolicyResponse, error)
 	GetCreatureOrbitPolicy(context.Context, *dbv1.IdRequest, ...grpc.CallOption) (*dbv1.CreatureOrbitPolicyResponse, error)
@@ -152,6 +153,8 @@ type movementActionContractMetadata struct {
 	YawRateDegPerSec       float64 `json:"yaw_rate_deg_per_sec"`
 }
 
+const runtimeMovementReconciliationProfileID = "player_default_movement_profile"
+
 func requiredBaseMovementActions() []struct {
 	abilityKey string
 	contractID string
@@ -184,6 +187,13 @@ func requiredRuntimeSkillIDs() []string {
 func LoadRuntimeContractsFromDB(ctx context.Context, skills ContractSource, profiles ProfileContractSource) RuntimeContracts {
 	contracts := RecoveredRuntimeContracts()
 	contracts.Source = "db_contracts_with_recovered_fallback"
+
+	if resp, err := profiles.GetRuntimeMovementReconciliationProfile(ctx, &dbv1.IdRequest{Id: runtimeMovementReconciliationProfileID}); err == nil && resp.GetFound() {
+		contracts.MovementProfile = runtimeMovementReconciliationProfileFromDB(resp.GetProfile())
+	} else {
+		contracts.MovementProfile = nil
+		contracts.LoadIssues = append(contracts.LoadIssues, "missing runtime movement reconciliation profile "+runtimeMovementReconciliationProfileID)
+	}
 
 	for _, ability := range requiredBaseMovementActions() {
 		if resp, err := profiles.GetMovementActionContract(ctx, &dbv1.IdRequest{Id: ability.contractID}); err == nil && resp.GetFound() {
@@ -370,6 +380,8 @@ func (c RuntimeContracts) ValidateRequiredCoverage(strictLoadedSource bool) erro
 	var missing []string
 	if c.MovementProfile == nil {
 		missing = append(missing, "movement reconciliation profile")
+	} else if strictLoadedSource {
+		missing = append(missing, validateRuntimeMovementReconciliationProfile(c.MovementProfile)...)
 	}
 	for _, ability := range requiredBaseMovementActions() {
 		contract, ok := c.ActionContracts[ability.abilityKey]
@@ -433,6 +445,44 @@ func (c RuntimeContracts) recoveredFallbacksAllowed() bool {
 	return c.Source == "recovered_runtime_fallback" || c.Source == "db_contracts_with_recovered_fallback"
 }
 
+func validateRuntimeMovementReconciliationProfile(profile *gamev1.MovementReconciliationProfile) []string {
+	var missing []string
+	if profile.GetProfileId() == "" {
+		missing = append(missing, "runtime movement profile id")
+	}
+	if profile.GetMaxSpeed() <= 0 {
+		missing = append(missing, "runtime movement max speed")
+	}
+	if profile.GetSprintSpeedMultiplier() <= 0 {
+		missing = append(missing, "runtime movement sprint multiplier")
+	}
+	if profile.GetAcceleration() <= 0 {
+		missing = append(missing, "runtime movement acceleration")
+	}
+	if profile.GetDeceleration() <= 0 {
+		missing = append(missing, "runtime movement deceleration")
+	}
+	if profile.GetMovementSubmitIntervalMs() <= 0 {
+		missing = append(missing, "runtime movement submit interval")
+	}
+	if profile.GetSnapshotPollIntervalMs() <= 0 {
+		missing = append(missing, "runtime movement snapshot poll interval")
+	}
+	if profile.GetStrafeSpeedMultiplier() <= 0 {
+		missing = append(missing, "runtime movement strafe multiplier")
+	}
+	if profile.GetBackpedalSpeedMultiplier() <= 0 {
+		missing = append(missing, "runtime movement backpedal multiplier")
+	}
+	if profile.GetStrafeSprintSpeedMultiplier() <= 0 {
+		missing = append(missing, "runtime movement strafe sprint multiplier")
+	}
+	if profile.GetBackpedalSprintSpeedMultiplier() <= 0 {
+		missing = append(missing, "runtime movement backpedal sprint multiplier")
+	}
+	return missing
+}
+
 func loadSkillRuntimeContract(ctx context.Context, skills ContractSource, skillID string) (SkillRuntimeContract, bool) {
 	timingResp, timingErr := skills.GetSkillActionTiming(ctx, &dbv1.IdRequest{Id: skillID})
 	bindingResp, bindingErr := skills.GetSkillMovementActionBinding(ctx, &dbv1.IdRequest{Id: skillID})
@@ -480,6 +530,68 @@ func loadSkillRuntimeContract(ctx context.Context, skills ContractSource, skillI
 		contract.Hitboxes = hitboxResp.GetProfiles()
 	}
 	return contract, true
+}
+
+func runtimeMovementReconciliationProfileFromDB(profile *dbv1.RuntimeMovementReconciliationProfile) *gamev1.MovementReconciliationProfile {
+	if profile == nil {
+		return nil
+	}
+	return &gamev1.MovementReconciliationProfile{
+		ProfileId:                         profile.GetProfileId(),
+		MaxSpeed:                          profile.GetMaxSpeed(),
+		SprintSpeedMultiplier:             profile.GetSprintSpeedMultiplier(),
+		Acceleration:                      profile.GetAcceleration(),
+		Deceleration:                      profile.GetDeceleration(),
+		GroundFriction:                    profile.GetGroundFriction(),
+		AirAcceleration:                   profile.GetAirAcceleration(),
+		JumpHeight:                        profile.GetJumpHeight(),
+		JumpDurationMs:                    profile.GetJumpDurationMs(),
+		RotationRateYaw:                   profile.GetRotationRateYaw(),
+		GravityScale:                      profile.GetGravityScale(),
+		BrakingFrictionFactor:             profile.GetBrakingFrictionFactor(),
+		MaxSlopeDeg:                       profile.GetMaxSlopeDeg(),
+		StepHeight:                        profile.GetStepHeight(),
+		BaseDeadzone:                      profile.GetBaseDeadzone(),
+		GroundedSpeedDeadzoneFactor:       profile.GetGroundedSpeedDeadzoneFactor(),
+		GroundedSpeedDeadzoneMin:          profile.GetGroundedSpeedDeadzoneMin(),
+		GroundedSpeedDeadzoneMax:          profile.GetGroundedSpeedDeadzoneMax(),
+		GroundedTransitionDeadzoneMin:     profile.GetGroundedTransitionDeadzoneMin(),
+		MoveSustainDeadzone:               profile.GetMoveSustainDeadzone(),
+		MoveSustainTransitionDeadzone:     profile.GetMoveSustainTransitionDeadzone(),
+		AirborneDeadzone:                  profile.GetAirborneDeadzone(),
+		LeapRecentDeadzone:                profile.GetLeapRecentDeadzone(),
+		LeapAirborneSnapshotDeadzone:      profile.GetLeapAirborneSnapshotDeadzone(),
+		LeapLandingDeadzoneFactor:         profile.GetLeapLandingDeadzoneFactor(),
+		LeapLandingDeadzoneMin:            profile.GetLeapLandingDeadzoneMin(),
+		LeapLandingDeadzoneMax:            profile.GetLeapLandingDeadzoneMax(),
+		LeapLandingClampIgnoreDeadzone:    profile.GetLeapLandingClampIgnoreDeadzone(),
+		LeapLandingSoftSnapDeadzone:       profile.GetLeapLandingSoftSnapDeadzone(),
+		DodgeRecentDeadzone:               profile.GetDodgeRecentDeadzone(),
+		DodgeActiveDeadzone:               profile.GetDodgeActiveDeadzone(),
+		DodgeExitDeadzoneFactor:           profile.GetDodgeExitDeadzoneFactor(),
+		DodgeExitDeadzoneMin:              profile.GetDodgeExitDeadzoneMin(),
+		DodgeExitDeadzoneMax:              profile.GetDodgeExitDeadzoneMax(),
+		PostActionGroundedDeadzone:        profile.GetPostActionGroundedDeadzone(),
+		CorrectionMaxStep:                 profile.GetCorrectionMaxStep(),
+		HardSnapDistance:                  profile.GetHardSnapDistance(),
+		SevereDesyncDistance:              profile.GetSevereDesyncDistance(),
+		VisualSmoothingMs:                 profile.GetVisualSmoothingMs(),
+		VisualSmoothingMaxDistance:        profile.GetVisualSmoothingMaxDistance(),
+		RemoteVisualInterpolationMs:       profile.GetRemoteVisualInterpolationMs(),
+		RemoteVisualMaxExtrapolationMs:    profile.GetRemoteVisualMaxExtrapolationMs(),
+		RemoteVisualHardSnapDistance:      profile.GetRemoteVisualHardSnapDistance(),
+		DodgeCarryHandoffMs:               profile.GetDodgeCarryHandoffMs(),
+		LeapLandingCorrectionGraceMs:      profile.GetLeapLandingCorrectionGraceMs(),
+		LeapGroundedCarryHandoffMs:        profile.GetLeapGroundedCarryHandoffMs(),
+		MovementTurnResubmitDotThreshold:  profile.GetMovementTurnResubmitDotThreshold(),
+		MovementTurnResubmitMinIntervalMs: profile.GetMovementTurnResubmitMinIntervalMs(),
+		MovementSubmitIntervalMs:          profile.GetMovementSubmitIntervalMs(),
+		SnapshotPollIntervalMs:            profile.GetSnapshotPollIntervalMs(),
+		StrafeSpeedMultiplier:             profile.GetStrafeSpeedMultiplier(),
+		BackpedalSpeedMultiplier:          profile.GetBackpedalSpeedMultiplier(),
+		StrafeSprintSpeedMultiplier:       profile.GetStrafeSprintSpeedMultiplier(),
+		BackpedalSprintSpeedMultiplier:    profile.GetBackpedalSprintSpeedMultiplier(),
+	}
 }
 
 func RecoveredRuntimeContracts() RuntimeContracts {

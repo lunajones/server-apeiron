@@ -316,8 +316,36 @@ The app boot path still initialized `gameapi.RecoveredRuntimeContracts()` before
 
 ## Remaining Recovery Notes
 
-- `movement_reconciliation_contract` in DB is still not the full rich `MovementReconciliationProfile` shape consumed by Unreal snapshots. Do not invent more Go/C++ literals for that. Restore/extend DB/proto if profile-level reconciliation tuning must become fully DB-authoritative.
+- `movement_reconciliation_contract` remains the per-action ownership category contract. The rich Unreal-facing profile is now tracked separately as `runtime_movement_reconciliation_profile`.
 - `internal/combat/player_skill_combat_system.go` still has fallback player attack profile paths and remains the next strict-fallback recovery target.
+
+# 2026-06-22 - DB-authoritative runtime movement reconciliation profile slice
+
+## Finding
+
+`gameapi.RecoveredRuntimeContracts()` still owned the rich `MovementReconciliationProfile` values sent in player snapshots. DB had `movement_reconciliation_contract`, but that table only describes per-action reconciliation ownership and cannot represent the full Unreal-facing profile fields such as grounded deadzones, leap/dodge handoff tolerances, submit intervals, visual smoothing, and strafe/backpedal sprint multipliers.
+
+## Implemented
+
+- `db-apeiron` now has `runtime_movement_reconciliation_profile`.
+- `db-apeiron` proto now exposes `RuntimeMovementReconciliationProfile`.
+- `ProfileDataService/GetRuntimeMovementReconciliationProfile` serves the rich profile.
+- Seed `player_default_movement_profile` carries the restored values previously embedded in the recovered server runtime.
+- `server-apeiron` strict DB contract loading now requires `player_default_movement_profile`.
+- `server-apeiron` maps the DB profile into `apeiron.game.v1.MovementReconciliationProfile`.
+- `gameapi.Runtime.movementSpeedProfile` no longer fills zero DB profile fields from `recoveredMovementProfile()`.
+
+## Validated
+
+- `db-apeiron`: `go test ./...`
+- `db-apeiron`: `go build -o bin/db-api.exe ./cmd/db-api`
+- `server-apeiron`: `go test ./...`
+- `server-apeiron`: `go build -o bin/game-server.exe ./cmd/game-server`
+
+## Runtime Validation Needed
+
+- Restart DB API and game server so bootstrap applies `020_runtime_movement_reconciliation_profile_seed.sql`.
+- Confirm `ProfileDataService/GetRuntimeMovementReconciliationProfile` returns `player_default_movement_profile`.
 
 # 2026-06-22 - Migrated player skill fallback guard slice
 

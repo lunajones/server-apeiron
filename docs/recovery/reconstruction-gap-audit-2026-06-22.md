@@ -39,6 +39,7 @@ Source threads:
 
 Status:
 - Mitigated in the app/gameapi boot path on 2026-06-22.
+- Rich runtime movement reconciliation profile moved to DB/proto on 2026-06-22.
 - Keep this item open only for the broader combat fallback audit below.
 
 Expected architecture:
@@ -49,6 +50,7 @@ Current recovered code evidence:
 - `internal/app/lifecycle.go` now loads DB contracts first and rejects startup without DB unless `ALLOW_RECOVERED_RUNTIME_FALLBACK=true` is explicitly set.
 - `internal/gameapi/runtime.go` only backfills missing runtime contract groups when the contract source is an explicit recovered fallback source.
 - `internal/gameapi/contracts.go` labels complete strict DB loads as `db_contracts`.
+- `db-apeiron.runtime_movement_reconciliation_profile` is now the source for the rich Unreal-facing movement reconciliation profile.
 - `internal/gameapi/contracts.go` declares source `recovered_runtime_fallback`.
 
 Risk:
