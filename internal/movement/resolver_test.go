@@ -131,12 +131,12 @@ func TestResolveRuntimeMatchesHistoricalDefaults(t *testing.T) {
 	dodge := r.ResolveRuntime(RuntimeActionContract{
 		ID: "dodge_v1_full_iframe", ActionType: "dodge", AbilityKey: "dodge",
 		DurationMS: 320, ActiveMS: 260, RecoveryMS: 60, DistanceCM: 260,
-		BaseSpeedCMS: 812, ReconciliationCategory: "dodge_reconciliation",
+		BaseSpeedCMS: 812.5, ReconciliationCategory: "dodge_reconciliation",
 	}, "active")
 	if dodge.ReconciliationMode != "dodge_reconciliation" {
 		t.Fatalf("reconciliation = %q", dodge.ReconciliationMode)
 	}
-	if dodge.ActionDistanceTraveled != 260 || dodge.TargetSpeed != 812 || dodge.EffectiveSpeed != 812 {
+	if dodge.ActionDistanceTraveled != 260 || dodge.TargetSpeed != 812.5 || dodge.EffectiveSpeed != 812.5 {
 		t.Fatalf("distance/speed = %v/%v/%v", dodge.ActionDistanceTraveled, dodge.TargetSpeed, dodge.EffectiveSpeed)
 	}
 	if dodge.Action != "dodge" || dodge.AbilityKey != "dodge" || dodge.ActionContractID != "dodge_v1_full_iframe" {

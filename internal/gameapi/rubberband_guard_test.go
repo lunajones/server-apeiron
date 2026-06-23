@@ -270,6 +270,13 @@ func TestRubberbandGuardLeapDodgeTurnBaselineSurvivesSkillPressure(t *testing.T)
 			if h.player.locomotion == nil || h.player.locomotion.GetAbilityKey() != scenario.abilityKey {
 				t.Fatalf("%s locomotion ability = %q, want %q", scenario.name, safeAbility(h.player.locomotion), scenario.abilityKey)
 			}
+			if scenario.name == "dodge" {
+				contract := h.player.actionMotion.Contract
+				maxPhysicalSpeed := contract.DistanceCM / (float64(contract.DurationMS) / 1000.0)
+				if math.Abs(h.player.locomotion.GetTargetSpeed()-maxPhysicalSpeed) > 0.001 {
+					t.Fatalf("dodge target speed = %.2f, want physical budget %.2f to avoid client overshoot snapback", h.player.locomotion.GetTargetSpeed(), maxPhysicalSpeed)
+				}
+			}
 
 			ack, err := h.runtime.SubmitCommand(context.Background(), testRuntimeCastSkillCommand(h.sessionID, h.nextSequence(), "player_shield_rush", gamev1Vector(1, 0, 0)))
 			if err != nil {

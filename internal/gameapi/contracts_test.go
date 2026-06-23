@@ -1426,7 +1426,7 @@ func fakeMovementActionContract(id string, abilityKey string, actionType string,
 		activeMS = 260
 		recoveryMS = 60
 		distanceCM = 260
-		baseSpeedCMS = 1297
+		baseSpeedCMS = 812.5
 		contactPolicy = "iframe"
 	case "shield_rush_front_contact_v1":
 		durationMS = 1100
