@@ -1,6 +1,7 @@
 package gameapi
 
 import (
+	"context"
 	"math"
 	"testing"
 	"time"
@@ -263,6 +264,33 @@ func TestWolfMaulContactStopsBeforeOverlappingTargetUsingContractGeometry(t *tes
 	}
 }
 
+func TestWolfMaulLateralCounterRootMotionUsesPolicyDirection(t *testing.T) {
+	runtime := NewRuntimeWithContracts(RecoveryFixtureRuntimeContracts())
+	player := runtime.ensurePlayerLocked("local_player")
+	wolf := runtime.ensureWolfLocked(player)
+	contract := runtime.contracts.skillContract("maul")
+	start := vector{x: player.position.x + 160, y: player.position.y, z: player.position.z}
+	wolf.position = start
+	startedAt := time.Now().Add(-760 * time.Millisecond)
+	instance := runtime.newCreatureActionInstance(wolf, "maul", contract, wolf.position, startedAt)
+
+	runtime.startCreatureSkillRootMotionLocked(wolf, player, creatureai.Decision{
+		Action:        "maul",
+		SelectedSkill: "maul",
+		Direction:     toDomainVector(vector{x: 0, y: 1, z: 0}),
+	}, contract, instance, startedAt)
+
+	if wolf.actionMotion == nil {
+		t.Fatal("maul did not start root motion")
+	}
+	if wolf.actionMotion.Direction.y <= 0 || math.Abs(wolf.actionMotion.Direction.x) > 0.0001 {
+		t.Fatalf("maul root direction = %#v, want lateral policy direction", wolf.actionMotion.Direction)
+	}
+	if wolf.actionMotion.ProjectedPosition.y <= start.y || math.Abs(wolf.actionMotion.ProjectedPosition.x-start.x) > 0.0001 {
+		t.Fatalf("maul projected position = %#v from start %#v, want lateral projection", wolf.actionMotion.ProjectedPosition, start)
+	}
+}
+
 func TestCreatureContactStopDistanceComesFromHitboxGeometryOnly(t *testing.T) {
 	contracts := RecoveryFixtureRuntimeContracts()
 	maul := contracts.skillContract("maul")
@@ -481,5 +509,40 @@ func TestGroundedCreatureDecisionMotionPreservesGroundPlane(t *testing.T) {
 	}
 	if projected.x <= creature.position.x {
 		t.Fatalf("grounded creature did not move horizontally: start=%#v projected=%#v", creature.position, projected)
+	}
+}
+
+func TestWolfSnapshotGroundedOrbitStaysOnPlayerGroundPlane(t *testing.T) {
+	runtime := NewRuntimeWithContracts(RecoveryFixtureRuntimeContracts())
+	sessionID := "wolf-ground-plane-snapshot"
+	attachRuntimePlayer(t, runtime, sessionID)
+	player := runtime.ensurePlayerLocked("local_player")
+	wolf := runtime.ensureWolfLocked(player)
+	wolf.position = vector{x: player.position.x + 420, y: player.position.y, z: player.position.z}
+
+	snapshot, err := runtime.GetSnapshot(context.Background(), &gamev1.SnapshotRequest{
+		Context: &gamev1.RequestContext{SessionId: sessionID},
+	})
+	if err != nil {
+		t.Fatalf("GetSnapshot failed: %v", err)
+	}
+	var creature *gamev1.SnapshotEntity
+	for _, entity := range snapshot.GetEntities() {
+		if entity.GetRef().GetEntityType() == "creature" {
+			creature = entity
+			break
+		}
+	}
+	if creature == nil {
+		t.Fatal("snapshot did not include wolf creature")
+	}
+	if creature.GetTransform().GetPosition().GetZ() != player.position.z {
+		t.Fatalf("creature snapshot z = %.2f, want player ground z %.2f", creature.GetTransform().GetPosition().GetZ(), player.position.z)
+	}
+	if creature.GetLocomotion().GetActionProjectedPosition().GetZ() != player.position.z {
+		t.Fatalf("creature projected z = %.2f, want player ground z %.2f", creature.GetLocomotion().GetActionProjectedPosition().GetZ(), player.position.z)
+	}
+	if creature.GetVelocity().GetZ() != 0 {
+		t.Fatalf("creature velocity z = %.2f, want 0", creature.GetVelocity().GetZ())
 	}
 }

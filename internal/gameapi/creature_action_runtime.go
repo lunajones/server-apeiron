@@ -201,7 +201,7 @@ func (r *Runtime) startCreatureSkillRootMotionLocked(creature *entityState, targ
 	if creature == nil {
 		return
 	}
-	dir := creatureSkillRootDirection(creature, target, decision)
+	dir := creatureSkillRootDirection(creature, target, decision, contract)
 	fullMotion := movement.ResolveActionMotion(movement.ActionMotionInput{
 		Position:  toDomainVector(creature.position),
 		Direction: toDomainVector(dir),
@@ -235,7 +235,13 @@ func (r *Runtime) startCreatureSkillRootMotionLocked(creature *entityState, targ
 	}
 }
 
-func creatureSkillRootDirection(creature *entityState, target *entityState, decision creatureai.Decision) vector {
+func creatureSkillRootDirection(creature *entityState, target *entityState, decision creatureai.Decision, contract SkillRuntimeContract) vector {
+	if creatureSkillRootPrefersDecisionDirection(contract) {
+		dir := fromDomainVector(flattenDomainDirection(decision.Direction))
+		if dir != (vector{}) {
+			return normalize(dir)
+		}
+	}
 	if target != nil && creature != nil {
 		dir := normalize(vector{x: target.position.x - creature.position.x, y: target.position.y - creature.position.y})
 		if dir != (vector{}) {
@@ -250,6 +256,15 @@ func creatureSkillRootDirection(creature *entityState, target *entityState, deci
 		return yawVector(creature.yaw)
 	}
 	return vector{x: 1}
+}
+
+func creatureSkillRootPrefersDecisionDirection(contract SkillRuntimeContract) bool {
+	policy := strings.TrimSpace(contract.ContactPolicy)
+	if policy == "" {
+		policy = contract.MovementAction.ContactPolicy
+	}
+	policy = strings.ToLower(strings.TrimSpace(policy))
+	return strings.Contains(policy, "lateral_counter")
 }
 
 func creatureSkillMovementStartAt(instance actionruntime.Instance, contract SkillRuntimeContract) time.Time {

@@ -440,6 +440,8 @@ Current restored behavior:
 - Creature action lifecycle clearing is centralized in `action_runtime_lifecycle.go` instead of being split between creature completion, non-skill clear, and impact-control interruption. Completion, interruption, pending impact cancellation, and terminal skill runtime publication now have one code path.
 - `gameapi` applies movement and publishes snapshot state; it no longer owns the lunge/maul/dodge decision schedule.
 - Recovered runtime contracts now include behavior bindings so recovery/dev fixtures exercise the same decision route as DB-backed runtime.
+- 2026-06-23 follow-up made lateral-counter creature root motion use the policy/decision direction when the contract contact policy is `lateral_counter*`; lunge/bite still target the player. This restores Maul as a left/right counter instead of a target-center charge.
+- Server tests now prove grounded wolf snapshot location, locomotion projection, and velocity stay on the player ground plane during orbit/chase-style movement.
 
 Acceptance criteria:
 
