@@ -30,7 +30,7 @@ func selectBinding(policy Policy, memory Memory, input Input, threat ThreatAsses
 		if !matchesState(binding.DecisionPhase, decisionPhase) {
 			continue
 		}
-		score := float64(binding.Priority) * firstPositive(binding.UsageWeight, 1)
+		score := float64(binding.Priority) * binding.UsageWeight
 		score *= repeatSkillScoreMultiplier(policy, memory, input.Tick, binding.SkillID)
 		score *= skillThreatMultiplier(threat, binding.SkillID)
 		if score > bestScore {

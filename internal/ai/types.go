@@ -31,6 +31,10 @@ type Policy struct {
 	DefensiveBiteWeight            float64
 	FleeingLungeWeight             float64
 	LowResourceRiskFloor           float64
+	DodgeCommittedThreatMultiplier float64
+	VulnerableBiteMultiplier       float64
+	VulnerableMaulMultiplier       float64
+	TacticalDestinationDistanceCM  float64
 	OrbitLocomotionMode            string
 	OrbitSpeedScale                float64
 	MinOrbitDurationTicks          uint64

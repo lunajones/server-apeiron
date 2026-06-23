@@ -9,6 +9,7 @@ import (
 
 	dbv1 "db-apeiron/gen/apeiron/v1"
 	gamev1 "server-apeiron/gen/apeiron/game/v1"
+	creatureai "server-apeiron/internal/ai"
 	"server-apeiron/internal/movement"
 
 	"google.golang.org/grpc"
@@ -157,6 +158,10 @@ type WolfRuntimePolicy struct {
 	DefensiveBiteWeight            float64
 	FleeingLungeWeight             float64
 	LowResourceRiskFloor           float64
+	DodgeCommittedThreatMultiplier float64
+	VulnerableBiteMultiplier       float64
+	VulnerableMaulMultiplier       float64
+	TacticalDestinationDistanceCM  float64
 	TargetMemoryMS                 int32
 	NoReadySkillMemoryPolicy       string
 	CandidateCooldownVisibility    bool
@@ -209,17 +214,32 @@ type CreatureSkillSetupRuntimePolicy struct {
 }
 
 type creaturePressurePolicyJSON struct {
-	RepeatSkillPenaltyMultiplier float64 `json:"repeatSkillPenaltyMultiplier"`
-	DodgeUnderPressure           bool    `json:"dodgeUnderPressure"`
-	MaulCounterUnderPressure     bool    `json:"maulCounterUnderPressure"`
-	MaulCounterChance            float64 `json:"maulCounterChance"`
-	DodgeRetreatMultiplier       float64 `json:"dodgeRetreatMultiplier"`
-	GlobalDodgeMultiplier        float64 `json:"globalDodgeMultiplier"`
-	CommitThreatWeight           float64 `json:"commitThreatWeight"`
-	ClosingThreatWeight          float64 `json:"closingThreatWeight"`
-	DefensiveBiteWeight          float64 `json:"defensiveBiteWeight"`
-	FleeingLungeWeight           float64 `json:"fleeingLungeWeight"`
-	LowResourceRiskFloor         float64 `json:"lowResourceRiskFloor"`
+	RepeatSkillPenaltyMultiplier   float64 `json:"repeatSkillPenaltyMultiplier"`
+	DodgeUnderPressure             bool    `json:"dodgeUnderPressure"`
+	MaulCounterUnderPressure       bool    `json:"maulCounterUnderPressure"`
+	MaulCounterChance              float64 `json:"maulCounterChance"`
+	DodgeRetreatMultiplier         float64 `json:"dodgeRetreatMultiplier"`
+	GlobalDodgeMultiplier          float64 `json:"globalDodgeMultiplier"`
+	CommitThreatWeight             float64 `json:"commitThreatWeight"`
+	ClosingThreatWeight            float64 `json:"closingThreatWeight"`
+	DefensiveBiteWeight            float64 `json:"defensiveBiteWeight"`
+	FleeingLungeWeight             float64 `json:"fleeingLungeWeight"`
+	LowResourceRiskFloor           float64 `json:"lowResourceRiskFloor"`
+	DodgeCommittedThreatMultiplier float64 `json:"dodgeCommittedThreatMultiplier"`
+	VulnerableBiteMultiplier       float64 `json:"vulnerableBiteMultiplier"`
+	VulnerableMaulMultiplier       float64 `json:"vulnerableMaulMultiplier"`
+	TacticalDestinationDistanceCM  float64 `json:"tacticalDestinationDistanceCm"`
+}
+
+type creatureRangePolicyJSON struct {
+	DesiredRangeCM  float64 `json:"desiredRangeCm"`
+	ChaseRangeCM    float64 `json:"chaseRangeCm"`
+	RetreatRangeCM  float64 `json:"retreatRangeCm"`
+	OrbitSpeedCMS   float64 `json:"orbitSpeedCmS"`
+	ChaseSpeedCMS   float64 `json:"chaseSpeedCmS"`
+	LungeSpeedCMS   float64 `json:"lungeSpeedCmS"`
+	MaulSpeedCMS    float64 `json:"maulSpeedCmS"`
+	RetreatSpeedCMS float64 `json:"retreatSpeedCmS"`
 }
 
 type creatureStaminaPolicyJSON struct {
@@ -526,6 +546,19 @@ func applyWolfBehaviorPolicyJSON(policy *WolfRuntimePolicy, behavior *dbv1.Creat
 			policy.StaminaRegenPerSecond = staminaPolicy.RegenPerSecond
 		}
 	}
+	if rangeJSON := strings.TrimSpace(behavior.GetRangePolicyJson()); rangeJSON != "" {
+		var rangePolicy creatureRangePolicyJSON
+		if err := json.Unmarshal([]byte(rangeJSON), &rangePolicy); err == nil {
+			policy.DesiredRangeCM = rangePolicy.DesiredRangeCM
+			policy.ChaseRangeCM = rangePolicy.ChaseRangeCM
+			policy.RetreatRangeCM = rangePolicy.RetreatRangeCM
+			policy.OrbitSpeedCMS = rangePolicy.OrbitSpeedCMS
+			policy.ChaseSpeedCMS = rangePolicy.ChaseSpeedCMS
+			policy.LungeSpeedCMS = rangePolicy.LungeSpeedCMS
+			policy.MaulSpeedCMS = rangePolicy.MaulSpeedCMS
+			policy.RetreatSpeedCMS = rangePolicy.RetreatSpeedCMS
+		}
+	}
 	if pressureJSON := strings.TrimSpace(behavior.GetPressurePolicyJson()); pressureJSON != "" {
 		var pressurePolicy creaturePressurePolicyJSON
 		if err := json.Unmarshal([]byte(pressureJSON), &pressurePolicy); err == nil {
@@ -540,6 +573,10 @@ func applyWolfBehaviorPolicyJSON(policy *WolfRuntimePolicy, behavior *dbv1.Creat
 			policy.DefensiveBiteWeight = pressurePolicy.DefensiveBiteWeight
 			policy.FleeingLungeWeight = pressurePolicy.FleeingLungeWeight
 			policy.LowResourceRiskFloor = pressurePolicy.LowResourceRiskFloor
+			policy.DodgeCommittedThreatMultiplier = pressurePolicy.DodgeCommittedThreatMultiplier
+			policy.VulnerableBiteMultiplier = pressurePolicy.VulnerableBiteMultiplier
+			policy.VulnerableMaulMultiplier = pressurePolicy.VulnerableMaulMultiplier
+			policy.TacticalDestinationDistanceCM = pressurePolicy.TacticalDestinationDistanceCM
 		}
 	}
 }
@@ -739,8 +776,8 @@ func (c RuntimeContracts) wolfBrainPolicyBlockers(strictLoadedSource bool) []str
 		if len(c.WolfPolicy.SkillSetupPolicies) == 0 {
 			missing = append(missing, "wolf skill setup policies")
 		}
-		if c.WolfPolicy.CommitThreatWeight <= 0 || c.WolfPolicy.ClosingThreatWeight <= 0 || c.WolfPolicy.DefensiveBiteWeight <= 0 || c.WolfPolicy.FleeingLungeWeight <= 0 || c.WolfPolicy.LowResourceRiskFloor <= 0 {
-			missing = append(missing, "wolf threat pressure weights")
+		for _, issue := range creatureai.ValidatePolicy(wolfBrainPolicy(c.WolfPolicy)) {
+			missing = append(missing, "wolf brain policy "+issue)
 		}
 	}
 	return missing
@@ -1223,6 +1260,10 @@ func RecoveryFixtureRuntimeContracts() RuntimeContracts {
 			DefensiveBiteWeight:            0.14,
 			FleeingLungeWeight:             0.20,
 			LowResourceRiskFloor:           0.16,
+			DodgeCommittedThreatMultiplier: 1.12,
+			VulnerableBiteMultiplier:       1.16,
+			VulnerableMaulMultiplier:       1.10,
+			TacticalDestinationDistanceCM:  180,
 			TargetMemoryMS:                 1200,
 			NoReadySkillMemoryPolicy:       "observe_only",
 			CandidateCooldownVisibility:    true,

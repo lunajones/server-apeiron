@@ -70,26 +70,26 @@ func AssessThreat(policy Policy, input Input, toTarget domainmath.Vec3, rangeCM 
 	vulnerable := !perception.TargetIFrame && !perception.TargetParrying && targetPostureLow(perception.TargetPostureCurrent, perception.TargetPostureMax)
 	multipliers := map[string]float64{}
 	if policy.MaulCounterUnderPressure && committed && !perception.TargetIFrame {
-		multipliers["maul"] = 1 + firstPositive(policy.MaulCounterChance, 0.22)
+		multipliers["maul"] = 1 + policy.MaulCounterChance
 	}
 	if policy.DodgeUnderPressure && committed {
-		multipliers[policy.DodgeSkillID] = firstPositive(policy.GlobalDodgeMultiplier, 1) * 1.12
+		multipliers[policy.DodgeSkillID] = policy.GlobalDodgeMultiplier * policy.DodgeCommittedThreatMultiplier
 	}
 	if defensive && !perception.TargetIFrame {
 		multipliers["bite"] = 1.0 + policy.DefensiveBiteWeight
 	}
-	if fleeing && rangeCM >= firstPositive(policy.LungeMinRangeCM, policy.DesiredRangeCM) {
+	if fleeing && rangeCM >= policy.LungeMinRangeCM {
 		multipliers["lunge"] = 1.0 + policy.FleeingLungeWeight
 	}
 	if vulnerable {
-		multipliers["bite"] = math.Max(firstPositive(multipliers["bite"], 1), 1.16)
-		multipliers["maul"] = math.Max(firstPositive(multipliers["maul"], 1), 1.10)
+		multipliers["bite"] = math.Max(firstPositive(multipliers["bite"], 1), policy.VulnerableBiteMultiplier)
+		multipliers["maul"] = math.Max(firstPositive(multipliers["maul"], 1), policy.VulnerableMaulMultiplier)
 	}
 
 	counter := ""
-	if policy.MaulCounterUnderPressure && pressure >= firstPositive(policy.MaulPressureThreshold, 0.65) && committed && !perception.TargetIFrame {
+	if policy.MaulCounterUnderPressure && pressure >= policy.MaulPressureThreshold && committed && !perception.TargetIFrame {
 		counter = "maul"
-	} else if policy.DodgeUnderPressure && pressure >= firstPositive(policy.MaulPressureThreshold, 0.65) && committed {
+	} else if policy.DodgeUnderPressure && pressure >= policy.MaulPressureThreshold && committed {
 		counter = policy.DodgeSkillID
 	}
 

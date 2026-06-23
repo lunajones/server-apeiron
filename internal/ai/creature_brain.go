@@ -1,6 +1,10 @@
 package ai
 
-import "math"
+import (
+	"math"
+
+	domainmath "server-apeiron/internal/domain/math"
+)
 
 type Brain struct {
 	Policy Policy
@@ -30,7 +34,7 @@ func (b *Brain) Decide(input Input) Decision {
 		setup := setupPolicyForSkill(b.Policy, input.ActiveSkillID)
 		dir, speed := movementForAction(action, b.Policy, toTarget, right, b.Memory.OrbitSide)
 		setupPolicyID := ""
-		if setup.ID != "" && setup.LockSideDuringSetup && input.ActiveSkillElapsedTicks < firstPositiveUint64(setup.MaxSetupTicks, setup.MinSetupTicks) {
+		if setup.ID != "" && setup.LockSideDuringSetup && input.ActiveSkillElapsedTicks < setup.MaxSetupTicks {
 			dir, speed = movementForSetup(setup, b.Policy, toTarget, right, b.Memory.OrbitSide)
 			decisionPhase = "setup"
 			movementTactic = setup.MovementTactic
@@ -53,7 +57,7 @@ func (b *Brain) Decide(input Input) Decision {
 			ResourceState:  resourceState(input),
 			SpeedCMPerSec:  speed,
 			Direction:      dir,
-			Destination:    input.CreaturePosition.Add(dir.Normalize().Scale(180)),
+			Destination:    destinationForDecision(input.CreaturePosition, dir, b.Policy),
 			RangeCM:        rangeCM,
 			SetupPolicyID:  setupPolicyID,
 			Threat:         threat,
@@ -92,7 +96,7 @@ func (b *Brain) Decide(input Input) Decision {
 		} else {
 			reason = "pressure_policy_no_ready_skill"
 		}
-	} else if rangeCM <= firstPositive(b.Policy.BiteRangeCM, b.Policy.RetreatRangeCM) && skillAvailable("bite", input.UnavailableSkill) && skillAffordable("bite", input.ResourceCurrent, input.SkillCosts) {
+	} else if rangeCM <= b.Policy.BiteRangeCM && skillAvailable("bite", input.UnavailableSkill) && skillAffordable("bite", input.ResourceCurrent, input.SkillCosts) {
 		selectedSkill = "bite"
 		action = "bite"
 		reason = "range_policy_bite"
@@ -124,13 +128,25 @@ func (b *Brain) Decide(input Input) Decision {
 		ResourceState:  resourceState(input),
 		SpeedCMPerSec:  speed,
 		Direction:      dir,
-		Destination:    input.CreaturePosition.Add(dir.Normalize().Scale(180)),
+		Destination:    destinationForDecision(input.CreaturePosition, dir, b.Policy),
 		RangeCM:        rangeCM,
 		SetupPolicyID:  setupPolicyID,
 		Threat:         threat,
 	}
 	b.Memory.remember(decision, input.Tick)
 	return decision
+}
+
+func destinationForDecision(origin domainmath.Position, direction domainmath.Vec3, policy Policy) domainmath.Position {
+	distanceCM := policy.TacticalDestinationDistanceCM
+	if distanceCM <= 0 {
+		return origin
+	}
+	dir := direction.Normalize()
+	if dir.IsZero() {
+		return origin
+	}
+	return origin.Add(dir.Scale(distanceCM))
 }
 
 func resourceState(input Input) string {

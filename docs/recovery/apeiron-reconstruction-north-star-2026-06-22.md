@@ -430,6 +430,7 @@ Current restored behavior:
 - Creature skill cooldowns are tracked by the runtime and passed to the brain as unavailable skills; the brain skips cooldown-blocked bindings instead of repeating them.
 - Creature skill stamina costs come from DB-loaded skills. Behavior `stamina_policy_json` controls max stamina, dodge cost multiplier, and regeneration. The brain skips unaffordable skill bindings before selection, and `gameapi` spends stamina only when the skill starts.
 - `target_memory_ms` and behavior `pressure_policy_json.repeatSkillPenaltyMultiplier` feed repeat-skill penalty in `internal/ai`, so lunge/dodge/maul repetition pressure is policy-driven instead of hardcoded by wolf branch.
+- `internal/ai.ValidatePolicy` now owns creature brain contract completeness. Strict runtime coverage fails if DB/fake/runtime policies omit range/speed tuning, threat weights, vulnerability multipliers, tactical destination distance, setup policies, or enabled skill bindings. Wolf range/speed values come from `range_policy_json`, and threat tuning comes from `pressure_policy_json`, not package constants. The brain no longer silently substitutes chase/orbit/bite/default values for missing lunge, retreat, setup, range, or speed tuning; missing data is a contract failure, not runtime improvisation.
 - `gameapi` applies movement and publishes snapshot state; it no longer owns the lunge/maul/dodge decision schedule.
 - Recovered runtime contracts now include behavior bindings so recovery/dev fixtures exercise the same decision route as DB-backed runtime.
 

@@ -357,6 +357,12 @@ func TestLoadRuntimeContractsFromDBUsesRequiredSkillBindings(t *testing.T) {
 	if contracts.WolfPolicy.RepeatSkillPenaltyWindowMS != 1200 || contracts.WolfPolicy.RepeatSkillPenaltyMultiplier != 0.65 {
 		t.Fatalf("wolf repeat policy = window %d multiplier %.2f", contracts.WolfPolicy.RepeatSkillPenaltyWindowMS, contracts.WolfPolicy.RepeatSkillPenaltyMultiplier)
 	}
+	if contracts.WolfPolicy.DesiredRangeCM != 420 || contracts.WolfPolicy.OrbitSpeedCMS != 360 || contracts.WolfPolicy.ChaseSpeedCMS != 620 {
+		t.Fatalf("wolf range/speed policy = desired %.0f orbit %.0f chase %.0f", contracts.WolfPolicy.DesiredRangeCM, contracts.WolfPolicy.OrbitSpeedCMS, contracts.WolfPolicy.ChaseSpeedCMS)
+	}
+	if contracts.WolfPolicy.DodgeCommittedThreatMultiplier != 1.12 || contracts.WolfPolicy.VulnerableBiteMultiplier != 1.16 || contracts.WolfPolicy.TacticalDestinationDistanceCM != 180 {
+		t.Fatalf("wolf threat policy = dodge %.2f vulnerable bite %.2f destination %.0f", contracts.WolfPolicy.DodgeCommittedThreatMultiplier, contracts.WolfPolicy.VulnerableBiteMultiplier, contracts.WolfPolicy.TacticalDestinationDistanceCM)
+	}
 	if contracts.WolfPolicy.LungeMinRangeCM != 180 || contracts.WolfPolicy.LungeMaxRangeCM != 700 {
 		t.Fatalf("wolf lunge range = %.0f..%.0f", contracts.WolfPolicy.LungeMinRangeCM, contracts.WolfPolicy.LungeMaxRangeCM)
 	}
@@ -1071,7 +1077,8 @@ func (fakeRuntimeContractSource) GetCreatureBehaviorRuntimeContract(_ context.Co
 		Contract: &dbv1.CreatureBehaviorRuntimeContract{
 			Id:                        req.GetId(),
 			CreatureTemplateId:        "steppe_wolf",
-			PressurePolicyJson:        `{"repeatSkillPenaltyMultiplier":0.65,"dodgeUnderPressure":true,"maulCounterUnderPressure":true,"maulCounterChance":0.22,"dodgeRetreatMultiplier":0.70,"globalDodgeMultiplier":0.85,"commitThreatWeight":0.28,"closingThreatWeight":0.18,"defensiveBiteWeight":0.14,"fleeingLungeWeight":0.20,"lowResourceRiskFloor":0.16}`,
+			RangePolicyJson:           `{"desiredRangeCm":420,"chaseRangeCm":760,"retreatRangeCm":220,"orbitSpeedCmS":360,"chaseSpeedCmS":620,"lungeSpeedCmS":760,"maulSpeedCmS":420,"retreatSpeedCmS":520}`,
+			PressurePolicyJson:        `{"repeatSkillPenaltyMultiplier":0.65,"dodgeUnderPressure":true,"maulCounterUnderPressure":true,"maulCounterChance":0.22,"dodgeRetreatMultiplier":0.70,"globalDodgeMultiplier":0.85,"commitThreatWeight":0.28,"closingThreatWeight":0.18,"defensiveBiteWeight":0.14,"fleeingLungeWeight":0.20,"lowResourceRiskFloor":0.16,"dodgeCommittedThreatMultiplier":1.12,"vulnerableBiteMultiplier":1.16,"vulnerableMaulMultiplier":1.10,"tacticalDestinationDistanceCm":180}`,
 			StaminaPolicyJson:         `{"max":100,"dodgeCostMultiplier":0.50,"regenPerSecond":12}`,
 			TargetOpportunityPolicyId: "opportunity_wolf_harasser_v1",
 			OrbitPolicyId:             "orbit_wolf_harasser_combat_walk_v1",
@@ -1185,7 +1192,7 @@ func (fakeRuntimeContractSource) GetCreatureSkillBehaviorBindings(_ context.Cont
 		Found: true,
 		Bindings: []*dbv1.CreatureSkillBehaviorBinding{
 			{Id: "bind_bite_approach", BehaviorContractId: req.GetId(), SkillId: "bite", TacticalState: "approach", DecisionPhase: "acquire", MinRangeCm: 0, MaxRangeCm: 260, Priority: 60, UsageWeight: 0.9, CooldownGroup: "wolf_bite", RequiresLineOfSight: true, IsEnabled: true},
-			{Id: "bind_lunge_circle", BehaviorContractId: req.GetId(), SkillId: "lunge", TacticalState: "circle", DecisionPhase: "reposition", SetupPolicyId: "setup_wolf_lunge_orbit_windup_v1", MinRangeCm: 180, MaxRangeCm: 700, Priority: 90, UsageWeight: 1.1, CooldownGroup: "wolf_lunge", RequiresLineOfSight: true, IsEnabled: true},
+			{Id: "bind_lunge_circle", BehaviorContractId: req.GetId(), SkillId: "lunge", TacticalState: "circle", DecisionPhase: "reposition", SetupPolicyId: "wolf_lunge_flank_windup_v1", MinRangeCm: 180, MaxRangeCm: 700, Priority: 90, UsageWeight: 1.1, CooldownGroup: "wolf_lunge", RequiresLineOfSight: true, IsEnabled: true},
 			{Id: "bind_maul_pressure", BehaviorContractId: req.GetId(), SkillId: "maul", TacticalState: "pressure", DecisionPhase: "counter", MinRangeCm: 0, MaxRangeCm: 260, Priority: 100, UsageWeight: 0.7, CooldownGroup: "wolf_maul", RequiresLineOfSight: true, IsEnabled: true},
 			{Id: "bind_dodge_pressure", BehaviorContractId: req.GetId(), SkillId: "wolf_dodge", TacticalState: "pressure", DecisionPhase: "evade", MinRangeCm: 0, MaxRangeCm: 420, Priority: 110, UsageWeight: 1.2, CooldownGroup: "wolf_dodge", RequiresLineOfSight: false, IsEnabled: true},
 		},
