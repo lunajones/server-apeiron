@@ -4,6 +4,7 @@ import (
 	"context"
 	"math"
 	"testing"
+	"time"
 
 	gamev1 "server-apeiron/gen/apeiron/game/v1"
 )
@@ -70,6 +71,14 @@ func TestRuntimeSkillImpactAppliesDBContractDamage(t *testing.T) {
 	if !ack.GetAccepted() {
 		t.Fatalf("cast rejected: %s %s", ack.GetRejectionCode(), ack.GetMessage())
 	}
+	if wolf.health != before {
+		t.Fatalf("SubmitCommand applied damage before temporal runner: %.1f -> %.1f", before, wolf.health)
+	}
+	contract := runtime.contracts.skillContract("player_basic_attack_1")
+	impacts := runtime.runPendingSkillImpactSchedulesLocked(runtimeSkillImpactWindowTime(player, contract))
+	if len(impacts) != 1 {
+		t.Fatalf("pending impact runner resolved %d impacts, want 1", len(impacts))
+	}
 	wantHealth := before - 8*1.05
 	if math.Abs(wolf.health-wantHealth) > 0.001 {
 		t.Fatalf("wolf health = %v, want %v", wolf.health, wantHealth)
@@ -101,23 +110,51 @@ func TestRuntimePlayerSkillImpactSchedulerDedupesActionInstance(t *testing.T) {
 		t.Fatal("player basic attack did not create action instance")
 	}
 
-	healthAfterFirstImpact := wolf.health
 	contract := runtime.contracts.skillContract("player_basic_attack_1")
-	again := runtime.resolveSkillImpactScheduleLocked(skillImpactScheduleFromActionInstance(
-		player,
-		contract,
-		player.actionInstance.InstanceID,
-		player.actionInstance.StartedAt,
-		player.position,
-		vector{x: player.position.x + 240, y: player.position.y, z: player.position.z},
-		vector{x: 1},
-		skillImpactEvaluationElapsedMS(contract),
-	))
+	impacts := runtime.runPendingSkillImpactSchedulesLocked(runtimeSkillImpactWindowTime(player, contract))
+	if len(impacts) != 1 {
+		t.Fatalf("first pending impact runner resolved %d impacts, want 1", len(impacts))
+	}
+	healthAfterFirstImpact := wolf.health
+	again := runtime.runPendingSkillImpactSchedulesLocked(runtimeSkillImpactWindowTime(player, contract).Add(16 * time.Millisecond))
 	if len(again) != 0 {
 		t.Fatalf("same player action instance applied duplicate impacts: %d", len(again))
 	}
 	if wolf.health != healthAfterFirstImpact {
 		t.Fatalf("duplicate player action changed wolf health: %.2f -> %.2f", healthAfterFirstImpact, wolf.health)
+	}
+}
+
+func TestRuntimePendingImpactRunnerCatchesSkippedHitboxWindow(t *testing.T) {
+	t.Parallel()
+
+	runtime := NewRuntimeWithContracts(RecoveryFixtureRuntimeContracts())
+	sessionID := "runtime-player-impact-scheduler-skipped-window"
+	attachRuntimePlayer(t, runtime, sessionID)
+	player := runtime.ensurePlayerLocked("local_player")
+	wolf := runtime.ensureWolfLocked(player)
+	wolf.position = vector{x: player.position.x + 120, y: player.position.y, z: player.position.z}
+	before := wolf.health
+
+	ack, err := runtime.SubmitCommand(context.Background(), testRuntimeCastSkillCommand(sessionID, 1, "player_basic_attack_1", gamev1Vector(1, 0, 0)))
+	if err != nil {
+		t.Fatalf("SubmitCommand failed: %v", err)
+	}
+	if !ack.GetAccepted() {
+		t.Fatalf("cast rejected: %s %s", ack.GetRejectionCode(), ack.GetMessage())
+	}
+	contract := runtime.contracts.skillContract("player_basic_attack_1")
+	endMS, ok := skillLatestImpactWindowEndMS(contract)
+	if !ok {
+		t.Fatal("basic attack contract has no temporal impact window")
+	}
+
+	impacts := runtime.runPendingSkillImpactSchedulesLocked(player.actionInstance.StartedAt.Add(time.Duration(endMS+80) * time.Millisecond))
+	if len(impacts) != 1 {
+		t.Fatalf("skipped-window runner resolved %d impacts, want 1", len(impacts))
+	}
+	if wolf.health >= before {
+		t.Fatalf("skipped-window runner did not damage wolf: %.1f -> %.1f", before, wolf.health)
 	}
 }
 
@@ -169,9 +206,22 @@ func TestRuntimeSkillImpactMissesOutsideHitbox(t *testing.T) {
 	if _, err := runtime.SubmitCommand(context.Background(), testRuntimeCastSkillCommand(sessionID, 1, "player_basic_attack_1", gamev1Vector(1, 0, 0))); err != nil {
 		t.Fatalf("SubmitCommand failed: %v", err)
 	}
+	contract := runtime.contracts.skillContract("player_basic_attack_1")
+	runtime.runPendingSkillImpactSchedulesLocked(runtimeSkillImpactWindowTime(player, contract))
 	if wolf.health != before {
 		t.Fatalf("outside hitbox changed health: got %v want %v", wolf.health, before)
 	}
+}
+
+func runtimeSkillImpactWindowTime(source *entityState, contract SkillRuntimeContract) time.Time {
+	elapsed := skillImpactEvaluationElapsedMS(contract)
+	if elapsed < 0 {
+		elapsed = 0
+	}
+	if source != nil && source.actionInstance != nil {
+		return source.actionInstance.StartedAt.Add(time.Duration(elapsed+1) * time.Millisecond)
+	}
+	return time.Now().Add(time.Duration(elapsed+1) * time.Millisecond)
 }
 
 func attachRuntimePlayer(t *testing.T, runtime *Runtime, sessionID string) {

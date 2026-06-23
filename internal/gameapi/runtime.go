@@ -48,6 +48,7 @@ type Runtime struct {
 	options   RuntimeOptions
 	aiSystem  *creatureai.RegionBrainSystem
 	impact    *combatpipeline.ImpactResolutionPipeline
+	impacts   map[string]skillImpactSchedule
 }
 
 type RuntimeOptions struct {
@@ -184,6 +185,7 @@ func NewRuntimeWithOptions(contracts RuntimeContracts, options RuntimeOptions) *
 		options:   options,
 		aiSystem:  creatureai.NewRegionBrainSystem(),
 		impact:    combatpipeline.NewImpactResolutionPipeline(nil, nil, nil, nil),
+		impacts:   make(map[string]skillImpactSchedule),
 	}
 }
 
@@ -253,7 +255,9 @@ func (r *Runtime) GetSnapshot(ctx context.Context, req *gamev1.SnapshotRequest) 
 	if r.creaturesEnabled() {
 		r.updateCreaturePoliciesLocked()
 	}
-	r.refreshActionRuntimeStatesLocked(time.Now())
+	now := time.Now()
+	r.refreshActionRuntimeStatesLocked(now)
+	r.runPendingSkillImpactSchedulesLocked(now)
 	out := &gamev1.SnapshotResponse{
 		Tick:        r.serverTickLocked(),
 		Region:      regionRef(),
@@ -668,17 +672,30 @@ func (r *Runtime) updateWolfPolicyLocked(wolf *entityState, player *entityState)
 }
 
 func (r *Runtime) resolveCreatureSkillImpactLocked(creature *entityState, player *entityState, skill SkillRuntimeContract, now time.Time) []runtimeSkillImpact {
-	if r == nil || creature == nil || player == nil || creature.skillRuntime == nil || skill.SkillID == "" {
+	schedule, ok := r.creatureSkillImpactScheduleLocked(creature, player, skill, now)
+	if !ok {
 		return nil
+	}
+	return r.resolveSkillImpactScheduleLocked(schedule)
+}
+
+func (r *Runtime) enqueueCreatureSkillImpactLocked(creature *entityState, player *entityState, skill SkillRuntimeContract, now time.Time) bool {
+	schedule, ok := r.creatureSkillImpactScheduleLocked(creature, player, skill, now)
+	if !ok {
+		return false
+	}
+	return r.enqueueSkillImpactScheduleLocked(schedule)
+}
+
+func (r *Runtime) creatureSkillImpactScheduleLocked(creature *entityState, player *entityState, skill SkillRuntimeContract, now time.Time) (skillImpactSchedule, bool) {
+	if r == nil || creature == nil || player == nil || creature.skillRuntime == nil || skill.SkillID == "" {
+		return skillImpactSchedule{}, false
 	}
 	startedAtMS := creature.skillRuntime.GetStartedAtMs()
 	if startedAtMS <= 0 || creature.skillRuntime.GetCurrentSkillId() != skill.SkillID {
-		return nil
+		return skillImpactSchedule{}, false
 	}
 	elapsedMS := float64(now.UnixMilli() - startedAtMS)
-	if !skillHasTemporalImpactWindowAt(skill, elapsedMS) {
-		return nil
-	}
 
 	dir := normalize(vector{x: player.position.x - creature.position.x, y: player.position.y - creature.position.y})
 	if dir == (vector{}) {
@@ -698,7 +715,7 @@ func (r *Runtime) resolveCreatureSkillImpactLocked(creature *entityState, player
 		instanceID = creature.actionInstance.InstanceID
 		startedAt = creature.actionInstance.StartedAt
 	}
-	return r.resolveSkillImpactScheduleLocked(skillImpactScheduleFromActionInstance(
+	return skillImpactScheduleFromActionInstance(
 		creature,
 		skill,
 		instanceID,
@@ -707,7 +724,7 @@ func (r *Runtime) resolveCreatureSkillImpactLocked(creature *entityState, player
 		end,
 		dir,
 		elapsedMS,
-	))
+	), true
 }
 
 func skillHasTemporalImpactWindowAt(skill SkillRuntimeContract, elapsedMS float64) bool {
@@ -1211,7 +1228,7 @@ func (r *Runtime) applySkill(player *entityState, cmd *gamev1.PlayerCommand) {
 		CooldownEndMs:    time.UnixMilli(now).Add(durationFromMS(skillContract.CooldownMS)).UnixMilli(),
 		LastResolvedAtMs: now,
 	}
-	r.resolveSkillImpactScheduleLocked(skillImpactScheduleFromActionInstance(
+	r.enqueueSkillImpactScheduleLocked(skillImpactScheduleFromActionInstance(
 		player,
 		skillContract,
 		instance.InstanceID,

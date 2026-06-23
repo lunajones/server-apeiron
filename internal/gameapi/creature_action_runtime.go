@@ -58,7 +58,7 @@ func (r *Runtime) applyCreatureActionRuntimeLocked(creature *entityState, target
 	creature.combatState = "committed"
 	rootMotionApplied := r.applyCreatureSkillRootMotionLocked(creature, target, decision, contract, instance, now)
 	if target != nil {
-		r.resolveCreatureSkillImpactLocked(creature, target, contract, now)
+		r.enqueueCreatureSkillImpactLocked(creature, target, contract, now)
 	}
 	return creatureActionRuntimeUpdate{Started: started, Active: true, RootMotionApplied: rootMotionApplied, Phase: phase}
 }

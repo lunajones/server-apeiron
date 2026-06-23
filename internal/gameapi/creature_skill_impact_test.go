@@ -36,7 +36,10 @@ func TestCreatureTemporalSkillImpactDamagesPlayerOncePerInstance(t *testing.T) {
 	beforeHealth := player.health
 	beforePosture := player.posture
 
-	impacts := runtime.resolveCreatureSkillImpactLocked(wolf, player, contract, now)
+	if !runtime.enqueueCreatureSkillImpactLocked(wolf, player, contract, now) {
+		t.Fatal("creature impact was not enqueued during temporal hitbox window")
+	}
+	impacts := runtime.runPendingSkillImpactSchedulesLocked(now)
 	if len(impacts) != 1 {
 		t.Fatalf("impacts = %d, want 1", len(impacts))
 	}
@@ -48,7 +51,10 @@ func TestCreatureTemporalSkillImpactDamagesPlayerOncePerInstance(t *testing.T) {
 		t.Fatalf("player posture = %.1f, want %.1f", player.posture, beforePosture-contract.PostureDamage)
 	}
 
-	again := runtime.resolveCreatureSkillImpactLocked(wolf, player, contract, now.Add(16*time.Millisecond))
+	if runtime.enqueueCreatureSkillImpactLocked(wolf, player, contract, now.Add(16*time.Millisecond)) {
+		t.Fatal("duplicate creature skill instance was enqueued after impact resolution")
+	}
+	again := runtime.runPendingSkillImpactSchedulesLocked(now.Add(16 * time.Millisecond))
 	if len(again) != 0 {
 		t.Fatalf("same creature skill instance applied damage twice: %d impacts", len(again))
 	}
@@ -90,9 +96,12 @@ func TestCreatureTemporalSkillImpactWaitsForHitboxWindow(t *testing.T) {
 	}
 	beforeHealth := player.health
 
-	impacts := runtime.resolveCreatureSkillImpactLocked(wolf, player, contract, now)
+	if !runtime.enqueueCreatureSkillImpactLocked(wolf, player, contract, now) {
+		t.Fatal("creature impact was not enqueued before bite hitbox window")
+	}
+	impacts := runtime.runPendingSkillImpactSchedulesLocked(now)
 	if len(impacts) != 0 {
-		t.Fatalf("impact resolved before bite hitbox window: %d impacts", len(impacts))
+		t.Fatalf("impact runner resolved before bite hitbox window: %d impacts", len(impacts))
 	}
 	if player.health != beforeHealth {
 		t.Fatalf("player health changed before hitbox window: %.1f want %.1f", player.health, beforeHealth)
