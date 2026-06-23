@@ -35,6 +35,76 @@ func TestRecoveryFixtureRuntimeContractsExposeRequiredSkillContracts(t *testing.
 	}
 }
 
+func TestCurrentPlayerAndCreatureDamagingSkillsUseTemporalHitboxes(t *testing.T) {
+	t.Parallel()
+
+	contracts := RecoveryFixtureRuntimeContracts()
+	cases := []struct {
+		skillID       string
+		motionID      string
+		sweepShape    string
+		damageGroupID string
+	}{
+		{"player_basic_attack_1", "motion_player_basic_attack_1_forward_v1", "capsule_strip", "player_basic_attack_1_damage"},
+		{"player_basic_attack_2", "motion_player_basic_attack_2_right_to_left_v1", "arc_slice", "player_basic_attack_2_damage"},
+		{"player_basic_attack_3", "motion_player_basic_attack_3_shield_drive_v1", "capsule_strip", "player_basic_attack_3_damage"},
+		{"player_shield_bash", "motion_player_shield_bash_front_push_v1", "capsule_strip", "player_shield_bash_front_push"},
+		{"player_shield_rush", "motion_player_shield_rush_front_contact_v1", "capsule_strip", "player_shield_rush_front_contact"},
+		{"bite", "motion_wolf_bite_melee_v1", "capsule_strip", "wolf_bite_damage"},
+		{"lunge", "motion_wolf_lunge_cross_v1", "capsule_strip", "wolf_lunge_damage"},
+		{"maul", "motion_wolf_maul_lateral_counter_v1", "arc_slice", "wolf_maul_damage"},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.skillID, func(t *testing.T) {
+			t.Parallel()
+
+			skill := contracts.skillContract(tc.skillID)
+			if skill.SkillID != tc.skillID {
+				t.Fatalf("missing skill contract %q (got %q)", tc.skillID, skill.SkillID)
+			}
+			if skill.Damage <= 0 && skill.PostureDamage <= 0 {
+				t.Fatalf("%s is not a damaging/posture skill in runtime contract", tc.skillID)
+			}
+			if len(skill.Hitboxes) != 1 {
+				t.Fatalf("%s hitboxes = %d, want exactly one canonical temporal hitbox", tc.skillID, len(skill.Hitboxes))
+			}
+
+			profile := skill.Hitboxes[0]
+			if profile.GetHitboxShape() != "temporal_sweep" {
+				t.Fatalf("%s hitbox shape = %q, want temporal_sweep", tc.skillID, profile.GetHitboxShape())
+			}
+			if profile.GetDamageGroupId() != tc.damageGroupID {
+				t.Fatalf("%s damage group = %q, want %q", tc.skillID, profile.GetDamageGroupId(), tc.damageGroupID)
+			}
+
+			motion := profile.GetMotionProfile()
+			if motion == nil || !motion.GetEnabled() {
+				t.Fatalf("%s temporal motion profile missing or disabled: %#v", tc.skillID, motion)
+			}
+			if motion.GetId() != tc.motionID {
+				t.Fatalf("%s motion profile = %q, want %q", tc.skillID, motion.GetId(), tc.motionID)
+			}
+			if motion.GetMotionType() != "timeline_sweep" {
+				t.Fatalf("%s motion type = %q, want timeline_sweep", tc.skillID, motion.GetMotionType())
+			}
+			if motion.GetTimeBasis() != "hitbox_window_normalized" {
+				t.Fatalf("%s time basis = %q, want hitbox_window_normalized", tc.skillID, motion.GetTimeBasis())
+			}
+			if motion.GetSweepShape() != tc.sweepShape {
+				t.Fatalf("%s sweep shape = %q, want %q", tc.skillID, motion.GetSweepShape(), tc.sweepShape)
+			}
+			if motion.GetDamageGroupId() != tc.damageGroupID {
+				t.Fatalf("%s motion damage group = %q, want %q", tc.skillID, motion.GetDamageGroupId(), tc.damageGroupID)
+			}
+			if len(motion.GetSamples()) < 3 {
+				t.Fatalf("%s temporal samples = %d, want at least 3", tc.skillID, len(motion.GetSamples()))
+			}
+		})
+	}
+}
+
 func TestRuntimeContractRequirementsDriveRequiredSkillAndMovementLists(t *testing.T) {
 	requiredSkills := requiredRuntimeSkillIDs()
 	for _, skillID := range []string{
