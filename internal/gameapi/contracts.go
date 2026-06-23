@@ -1440,6 +1440,11 @@ func fixturePlayerCombatCoreProfile() *dbv1.CombatCoreProfile {
 		ParryWindowMs:           220,
 		ParryRewardMultiplier:   1.4,
 		DodgeIframeMs:           320,
+		MaxStamina:              100,
+		StaminaRegenPerSec:      14,
+		DodgeStaminaCost:        24,
+		BlockStaminaCostPerSec:  2,
+		AttackStaminaCost:       0,
 	}
 }
 
@@ -1456,6 +1461,11 @@ func fixtureCreatureCombatCoreProfile() *dbv1.CombatCoreProfile {
 		ParryWindowMs:           0,
 		ParryRewardMultiplier:   1,
 		DodgeIframeMs:           220,
+		MaxStamina:              100,
+		StaminaRegenPerSec:      12,
+		DodgeStaminaCost:        24,
+		BlockStaminaCostPerSec:  0,
+		AttackStaminaCost:       0,
 	}
 }
 

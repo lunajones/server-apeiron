@@ -236,6 +236,72 @@ func TestRuntimeRejectsDodgeAndLeapWhenMovementContractIsMissing(t *testing.T) {
 	}
 }
 
+func TestRuntimeDodgeSpendsAndRegeneratesProfileStamina(t *testing.T) {
+	t.Parallel()
+
+	runtime := NewRuntimeWithOptions(DevFixtureRuntimeContracts(), RuntimeOptions{MovementValidation: true})
+	sessionID := "runtime-dodge-stamina"
+	if _, err := runtime.OpenSession(context.Background(), &gamev1.OpenSessionRequest{
+		Context: &gamev1.RequestContext{SessionId: sessionID},
+	}); err != nil {
+		t.Fatalf("OpenSession failed: %v", err)
+	}
+	if _, err := runtime.AttachPlayer(context.Background(), &gamev1.AttachPlayerRequest{
+		Context:  &gamev1.RequestContext{SessionId: sessionID},
+		PlayerId: "local_player",
+	}); err != nil {
+		t.Fatalf("AttachPlayer failed: %v", err)
+	}
+
+	player := runtime.ensurePlayerLocked("local_player")
+	if player.maxStamina != 100 || player.stamina != 100 {
+		t.Fatalf("initial stamina = %.1f/%.1f, want 100/100", player.stamina, player.maxStamina)
+	}
+
+	ack, err := runtime.SubmitCommand(context.Background(), testRuntimeDodgeCommand(sessionID, 1, gamev1Vector(1, 0, 0)))
+	if err != nil {
+		t.Fatalf("SubmitCommand dodge failed: %v", err)
+	}
+	if !ack.GetAccepted() {
+		t.Fatalf("dodge rejected: %s %s", ack.GetRejectionCode(), ack.GetMessage())
+	}
+	if got, want := player.stamina, 76.0; math.Abs(got-want) > 0.001 {
+		t.Fatalf("stamina after dodge = %.3f, want %.3f", got, want)
+	}
+	if got := ack.GetMetadata()["current_stamina"]; got != "76.000" {
+		t.Fatalf("ack current_stamina = %q, want 76.000", got)
+	}
+	if got := ack.GetMetadata()["dodge_stamina_cost"]; got != "24.000" {
+		t.Fatalf("ack dodge_stamina_cost = %q, want 24.000", got)
+	}
+	forceCompleteRuntimeAction(t, runtime, sessionID, player)
+
+	runtime.mu.Lock()
+	player.stamina = 10
+	runtime.mu.Unlock()
+	rejected, err := runtime.SubmitCommand(context.Background(), testRuntimeDodgeCommand(sessionID, 2, gamev1Vector(0, 1, 0)))
+	if err != nil {
+		t.Fatalf("SubmitCommand low stamina dodge failed: %v", err)
+	}
+	if rejected.GetAccepted() {
+		t.Fatal("low stamina dodge accepted")
+	}
+	if rejected.GetRejectionCode() != "insufficient_stamina" {
+		t.Fatalf("low stamina rejection = %q, want insufficient_stamina", rejected.GetRejectionCode())
+	}
+
+	for i := 0; i < 45; i++ {
+		if _, err := runtime.GetSnapshot(context.Background(), &gamev1.SnapshotRequest{
+			Context: &gamev1.RequestContext{SessionId: sessionID},
+		}); err != nil {
+			t.Fatalf("GetSnapshot regen tick %d failed: %v", i, err)
+		}
+	}
+	if player.stamina <= 24 {
+		t.Fatalf("stamina did not regenerate above dodge cost: %.3f", player.stamina)
+	}
+}
+
 func TestRuntimeRejectsSkillWhenRuntimeContractIsMissing(t *testing.T) {
 	t.Parallel()
 

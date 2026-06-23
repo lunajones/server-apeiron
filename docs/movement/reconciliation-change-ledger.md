@@ -357,3 +357,61 @@ moving the local root during the dodge window.
 Do not make owned dodge root rely only on local velocity while movement input is suppressed. The
 client presentation must advance root position from the DB movement action contract, and the server
 must remain the authority for the final handoff.
+
+## 2026-06-23 - Dodge Only Validation And Stamina Contract
+
+### Symptom
+
+Manual PIE reported the previous dodge adjustment regressed into a visible go-forward/go-back feel.
+The automated validation was also too broad: new dodge checks were being folded into the large
+movement flow, making each iteration slow and harder to interpret. Manual PIE also showed dodge not
+spending stamina.
+
+### Hypothesis
+
+The local dodge root sweep was correct, but ACK/snapshot reconciliation could still try to converge
+the pawn root while the local dodge prediction owned presentation. In parallel, the server had DB
+stamina values loaded in combat core profiles but the proto did not expose them to game-server
+runtime, so player dodge could not spend authoritative stamina.
+
+### Cause
+
+- `CombatCoreProfile` exposed dodge iframe and posture/block fields, but not `max_stamina`,
+  `stamina_regen_per_sec`, or `dodge_stamina_cost`.
+- Game-server initialized player stamina from a literal default and did not spend profile stamina
+  on `COMMAND_TYPE_DODGE`.
+- Unreal had no isolated dodge-only automation suite; dodge coverage lived inside broad/focused
+  flows.
+- ACK/snapshot correction paths could still evaluate correction while `IsLocalDodgePredictionActive`
+  was true, instead of treating dodge snapshots as authoritative feed for state/timing only.
+
+### Change
+
+- DB proto and gRPC mapper now expose combat core stamina fields.
+- Game-server initializes player stamina from the combat core profile, spends
+  `dodge_stamina_cost` before applying dodge, rejects insufficient stamina, regenerates stamina
+  from `stamina_regen_per_sec`, and includes stamina metadata in command ACKs.
+- Dev fixture combat core profiles now mirror the DB-backed stamina fields instead of silently
+  defaulting to zero-cost dodge.
+- Unreal now supports a dedicated `-ApeironRunDodgeMovementInputValidation` suite. It opens the
+  game, submits four directional dodges, waits for stamina recovery, submits two more diagonal
+  dodges, validates movement/stamina, then exits.
+- ACK and generic snapshot correction now defer root correction while local dodge prediction is
+  active unless the server explicitly requests a snap/rejection.
+
+### Tests
+
+- `go test ./internal/gameapi`
+- `go test ./...` in `server-apeiron`
+- `go test ./...` in `db-apeiron`
+- `PlainTestMapEditor Win64 Development` Unreal build succeeded with `-NoHotReload`.
+- Dedicated Unreal dodge suite passed:
+  `dodge_only=submitted=4 recovered_submitted=2 path=5746.0 max_distance=697.7 stamina_start=100.0 stamina_low=47.4 stamina_recovered=100.0 spent=true regen=true moved=true`.
+- Dedicated dodge log contained no `RubberbandProbe`, `snapshot_apply`, or movement rejection lines.
+
+### Guardrail
+
+Do not add future dodge checks to the broad movement validation by default. Keep dodge, leap,
+walk/run/turn, and skill-movement suites small and targeted so regressions point to one authority
+path. During an active local dodge, snapshots may update authoritative action state, but root
+correction must wait for explicit server snap/rejection or the post-dodge handoff.

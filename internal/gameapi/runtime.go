@@ -2,6 +2,7 @@ package gameapi
 
 import (
 	"context"
+	dbv1 "db-apeiron/gen/apeiron/v1"
 	"fmt"
 	"math"
 	"net"
@@ -369,6 +370,11 @@ func (r *Runtime) SubmitCommand(ctx context.Context, cmd *gamev1.PlayerCommand) 
 			r.queueAckLocked(cmd.GetContext().GetSessionId(), ack)
 			return ack, nil
 		}
+		if ok, code, message := r.spendPlayerDodgeStaminaLocked(player); !ok {
+			ack := r.ackLocked(cmd, player, false, code, message)
+			r.queueAckLocked(cmd.GetContext().GetSessionId(), ack)
+			return ack, nil
+		}
 		r.applyImpulse(player, cmd, r.contracts.contractForAbility("dodge"))
 	case gamev1.CommandType_COMMAND_TYPE_LEAP:
 		if ok, code, message := r.canApplyMovementActionContract("jump", r.contracts.contractForAbility("jump")); !ok {
@@ -619,6 +625,11 @@ func (r *Runtime) ensurePlayerLocked(playerID string) *entityState {
 	if player := r.players[playerID]; player != nil {
 		return player
 	}
+	playerCombatProfile := r.contracts.combatCoreProfileForEntity(&entityState{entityType: "player"})
+	maxStamina := 100.0
+	if playerCombatProfile != nil && playerCombatProfile.GetMaxStamina() > 0 {
+		maxStamina = playerCombatProfile.GetMaxStamina()
+	}
 	entity := &entityState{
 		id:                    r.nextRuntimeIDLocked(),
 		entityType:            "player",
@@ -630,8 +641,8 @@ func (r *Runtime) ensurePlayerLocked(playerID string) *entityState {
 		yaw:                   0,
 		health:                100,
 		maxHealth:             100,
-		stamina:               100,
-		maxStamina:            100,
+		stamina:               maxStamina,
+		maxStamina:            maxStamina,
 		posture:               100,
 		maxPosture:            100,
 		movementState:         "grounded",
@@ -1506,6 +1517,9 @@ func (r *Runtime) newActionInstance(player *entityState, cmd *gamev1.PlayerComma
 
 func (r *Runtime) refreshActionRuntimeStatesLocked(now time.Time) {
 	for _, entity := range r.entities {
+		if entity.entityType == "player" {
+			r.regeneratePlayerStaminaLocked(entity)
+		}
 		r.refreshCompletedActionHandoffLocked(entity, now)
 		r.advanceActionMotionLocked(entity, now)
 		if entity.actionInstance == nil || entity.skillRuntime == nil {
@@ -1525,6 +1539,54 @@ func (r *Runtime) refreshActionRuntimeStatesLocked(now time.Time) {
 			continue
 		}
 		entity.skillState = string(phase)
+	}
+}
+
+func (r *Runtime) spendPlayerDodgeStaminaLocked(player *entityState) (bool, string, string) {
+	if player == nil {
+		return false, "player_not_found", "player not found"
+	}
+	profile := r.contracts.combatCoreProfileForEntity(player)
+	if profile == nil {
+		return false, "missing_combat_core_profile", "player combat core profile is missing"
+	}
+	r.syncPlayerStaminaProfileLocked(player, profile)
+	cost := profile.GetDodgeStaminaCost()
+	if cost <= 0 {
+		return true, "", ""
+	}
+	if player.stamina+1e-6 < cost {
+		return false, "insufficient_stamina", "not enough stamina for dodge"
+	}
+	player.stamina = math.Max(0, player.stamina-cost)
+	return true, "", ""
+}
+
+func (r *Runtime) regeneratePlayerStaminaLocked(player *entityState) {
+	if player == nil {
+		return
+	}
+	profile := r.contracts.combatCoreProfileForEntity(player)
+	if profile == nil {
+		return
+	}
+	r.syncPlayerStaminaProfileLocked(player, profile)
+	regen := profile.GetStaminaRegenPerSec()
+	if regen <= 0 || player.maxStamina <= 0 || player.stamina >= player.maxStamina {
+		return
+	}
+	player.stamina = math.Min(player.maxStamina, player.stamina+(regen/tickRate))
+}
+
+func (r *Runtime) syncPlayerStaminaProfileLocked(player *entityState, profile *dbv1.CombatCoreProfile) {
+	if player == nil || profile == nil {
+		return
+	}
+	if profile.GetMaxStamina() > 0 {
+		player.maxStamina = profile.GetMaxStamina()
+		if player.stamina > player.maxStamina {
+			player.stamina = player.maxStamina
+		}
 	}
 }
 
@@ -1743,6 +1805,18 @@ func (r *Runtime) ackLocked(cmd *gamev1.PlayerCommand, player *entityState, acce
 	metadata := map[string]string{
 		"command_type":      commandTypeName(cmd.GetType()),
 		"movement_protocol": "apeiron_game_v1",
+	}
+	if player != nil {
+		if player.maxStamina > 0 {
+			metadata["current_stamina"] = strconv.FormatFloat(player.stamina, 'f', 3, 64)
+			metadata["max_stamina"] = strconv.FormatFloat(player.maxStamina, 'f', 3, 64)
+		}
+		if accepted && cmd.GetType() == gamev1.CommandType_COMMAND_TYPE_DODGE {
+			if profile := r.contracts.combatCoreProfileForEntity(player); profile != nil && profile.GetDodgeStaminaCost() > 0 {
+				metadata["stamina_delta"] = strconv.FormatFloat(-profile.GetDodgeStaminaCost(), 'f', 3, 64)
+				metadata["dodge_stamina_cost"] = strconv.FormatFloat(profile.GetDodgeStaminaCost(), 'f', 3, 64)
+			}
+		}
 	}
 	if cmd.GetCastSkill() != nil {
 		skillID := cmd.GetCastSkill().GetSkillId()
