@@ -371,10 +371,11 @@ func TestLoadRuntimeContractsFromDBUsesRequiredSkillBindings(t *testing.T) {
 
 	for _, skillID := range requiredRuntimeSkillIDs() {
 		skill := contracts.skillContract(skillID)
-		if skill.MovementActionContractID != "db_"+skillID+"_movement" {
+		expectedContractID := fakeSkillMovementActionContractID(skillID)
+		if skill.MovementActionContractID != expectedContractID {
 			t.Fatalf("%s movement binding = %q", skillID, skill.MovementActionContractID)
 		}
-		if contracts.ActionContracts[skillID].ID != "db_"+skillID+"_movement" {
+		if contracts.ActionContracts[skillID].ID != expectedContractID {
 			t.Fatalf("%s action contract id = %q", skillID, contracts.ActionContracts[skillID].ID)
 		}
 	}
@@ -403,6 +404,12 @@ func TestLoadRuntimeContractsFromDBUsesRequiredSkillBindings(t *testing.T) {
 	}
 	if effects := contracts.SkillContracts["player_shield_rush"].ControlEffects; len(effects) != 1 || effects[0].GetStatusEffectId() != "impact_shield_rush_carry_push" {
 		t.Fatalf("DB skill impact control effects did not load for Shield Rush: %#v", effects)
+	}
+	if action := contracts.SkillContracts["player_shield_rush"].MovementAction; action.DistanceCM != 470 || action.DurationMS != 830 || action.ActiveMS != 430 || action.RecoveryMS != 240 {
+		t.Fatalf("Shield Rush movement envelope = distance %.1f duration %d active %d recovery %d, want restored 470/830/430/240", action.DistanceCM, action.DurationMS, action.ActiveMS, action.RecoveryMS)
+	}
+	if effects := contracts.SkillContracts["player_shield_rush"].ControlEffects; effects[0].GetDistanceCm() != 470 {
+		t.Fatalf("Shield Rush control distance = %.1f, want restored 470", effects[0].GetDistanceCm())
 	}
 	if impact := contracts.SkillContracts["player_shield_rush"].Impact; impact == nil || impact.GetImpactType() != "blunt" {
 		t.Fatalf("DB skill impact profile did not load for Shield Rush: %#v", impact)
@@ -1022,7 +1029,7 @@ func (f fakeRuntimeContractSource) GetSkillMovementActionBinding(_ context.Conte
 	if f.missingSkills[req.GetId()] {
 		return &dbv1.SkillMovementActionBindingResponse{Found: false}, nil
 	}
-	contractID := "db_" + req.GetId() + "_movement"
+	contractID := fakeSkillMovementActionContractID(req.GetId())
 	return &dbv1.SkillMovementActionBindingResponse{
 		Found: true,
 		Binding: &dbv1.SkillMovementActionBinding{
@@ -1037,6 +1044,31 @@ func (f fakeRuntimeContractSource) GetSkillMovementActionBinding(_ context.Conte
 			MovementActionContract:   fakeMovementActionContract(contractID, req.GetId(), "grounded_skill", "grounded_skill_action_reconciliation"),
 		},
 	}, nil
+}
+
+func fakeSkillMovementActionContractID(skillID string) string {
+	switch skillID {
+	case "player_basic_attack_1":
+		return "basic_attack_1_forward_cut_v1"
+	case "player_basic_attack_2":
+		return "basic_attack_2_cross_cut_v1"
+	case "player_basic_attack_3":
+		return "basic_attack_3_shield_drive_v1"
+	case "player_shield_bash":
+		return "shield_bash_front_push_v1"
+	case "player_shield_rush":
+		return "shield_rush_front_contact_v1"
+	case "bite":
+		return "wolf_bite_melee_commit_v1"
+	case "lunge":
+		return "wolf_lunge_airborne_v1"
+	case "wolf_dodge":
+		return "wolf_dodge_lateral_leap_v1"
+	case "maul":
+		return "wolf_maul_lateral_counter_v1"
+	default:
+		return "db_" + skillID + "_movement"
+	}
 }
 
 func (f fakeRuntimeContractSource) GetWeaponCombatModeSlots(context.Context, *dbv1.IdRequest, ...grpc.CallOption) (*dbv1.WeaponCombatModeSlotsResponse, error) {
@@ -1068,6 +1100,10 @@ func (f fakeRuntimeContractSource) GetMovementActionContract(_ context.Context, 
 	} else if req.GetId() == "dodge_v1_full_iframe" {
 		actionType = "dodge"
 	} else if req.GetId() == "jump_v1_authoritative_grounded_handoff" {
+		actionType = "leap"
+	} else if strings.HasPrefix(req.GetId(), "basic_attack_") || strings.HasPrefix(req.GetId(), "shield_") || strings.HasPrefix(req.GetId(), "wolf_bite_") || strings.HasPrefix(req.GetId(), "wolf_maul_") {
+		actionType = "grounded_skill"
+	} else if strings.HasPrefix(req.GetId(), "wolf_lunge_") {
 		actionType = "leap"
 	}
 	return &dbv1.MovementActionContractResponse{
@@ -1281,19 +1317,61 @@ func fakeMovementActionContract(id string, abilityKey string, actionType string,
 	if abilityKey != "" {
 		metadata = `{"ability_key":"` + abilityKey + `"}`
 	}
+	durationMS := int32(240)
+	activeMS := int32(160)
+	recoveryMS := int32(80)
+	distanceCM := float64(120)
+	baseSpeedCMS := float64(600)
+	contactPolicy := "authoritative_contact"
+	switch id {
+	case "shield_rush_front_contact_v1":
+		durationMS = 830
+		activeMS = 430
+		recoveryMS = 240
+		distanceCM = 470
+		baseSpeedCMS = 620
+		contactPolicy = "multi_target_carry_push"
+		metadata = `{"ability_key":"player_shield_rush","front_contact_offset_cm":45,"source":"test_db_contract"}`
+	case "shield_bash_front_push_v1":
+		durationMS = 540
+		activeMS = 260
+		recoveryMS = 180
+		distanceCM = 130
+		baseSpeedCMS = 360
+		contactPolicy = "multi_target_push"
+	case "basic_attack_1_forward_cut_v1":
+		durationMS = 340
+		activeMS = 140
+		recoveryMS = 120
+		distanceCM = 55
+		baseSpeedCMS = 260
+	case "basic_attack_2_cross_cut_v1":
+		durationMS = 360
+		activeMS = 150
+		recoveryMS = 120
+		distanceCM = 35
+		baseSpeedCMS = 260
+	case "basic_attack_3_shield_drive_v1":
+		durationMS = 620
+		activeMS = 260
+		recoveryMS = 180
+		distanceCM = 200
+		baseSpeedCMS = 330
+		contactPolicy = "carry_contact"
+	}
 	return &dbv1.MovementActionContract{
 		Id:                       id,
 		ActionType:               actionType,
-		DurationMs:               240,
-		ActiveMs:                 160,
-		RecoveryMs:               80,
-		DistanceCm:               120,
-		BaseSpeedCmS:             600,
+		DurationMs:               durationMS,
+		ActiveMs:                 activeMS,
+		RecoveryMs:               recoveryMS,
+		DistanceCm:               distanceCM,
+		BaseSpeedCmS:             baseSpeedCMS,
 		PhaseWindowPolicy:        "server_authoritative",
 		PredictionErrorPolicy:    "bounded_smooth_correction",
 		ReconciliationContractId: reconciliation,
 		RootMotionOwner:          "skill",
-		ContactPolicy:            "authoritative_contact",
+		ContactPolicy:            contactPolicy,
 		MetadataJson:             metadata,
 		ReconciliationContract: &dbv1.MovementReconciliationContract{
 			Id:       reconciliation,

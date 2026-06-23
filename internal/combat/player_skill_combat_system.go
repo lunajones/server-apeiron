@@ -2425,17 +2425,22 @@ func commitPendingPlayerSkillMovementTarget(source domainentity.Entity, resolver
 		return pending
 	}
 	landingTarget := domainmath.Position{}
-	if pending.Intent.HasTarget && resolver != nil {
-		if target, ok := resolver.Resolve(pending.Intent.Target.RuntimeID); ok && target != nil {
-			landingTarget = target.Position()
-		}
-	}
-	if landingTarget.IsZero() && pendingPlayerSkillMovementUsesForwardDistance(pending, cfg) {
+
+	// Dash/charge-style grounded skills own their root by a forward distance
+	// contract. The target entity and mouse position are hit/contact inputs, not
+	// movement anchors; using them here makes close-range Shield Rush/Bash cut
+	// diagonally or shrink when the cursor is on the ground near the target.
+	if pendingPlayerSkillMovementUsesForwardDistance(pending, cfg) {
 		direction := playerSkillForwardMovementDirection(source, pending)
 		distance := pendingPlayerSkillMovementDistance(pending, cfg)
 		if !direction.IsZero() && distance > 0 {
 			landingTarget = source.Position().Add(direction.Mul(distance))
 			landingTarget.Z = source.Position().Z
+		}
+	}
+	if landingTarget.IsZero() && pending.Intent.HasTarget && resolver != nil {
+		if target, ok := resolver.Resolve(pending.Intent.Target.RuntimeID); ok && target != nil {
+			landingTarget = target.Position()
 		}
 	}
 	if landingTarget.IsZero() && pending.Intent.HasPosition {
@@ -2508,7 +2513,7 @@ func playerSkillMovementUsesForwardDistance(cfg skillMovementConfig) bool {
 
 func playerSkillMovementTypeUsesForwardDistance(movementType string) bool {
 	switch strings.ToLower(strings.TrimSpace(movementType)) {
-	case "dash", "charge", "skill_step", "ground_slide":
+	case "dash", "charge", "skill_step", "ground_slide", "grounded_skill", "grounded_skill_action":
 		return true
 	default:
 		return false

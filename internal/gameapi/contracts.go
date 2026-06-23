@@ -1399,7 +1399,7 @@ func RecoveryFixtureRuntimeContracts() RuntimeContracts {
 		recoveredSkillContract("player_basic_attack_2", 35, 260, 180, 80),
 		recoveredSkillContract("player_basic_attack_3", 200, 420, 300, 120),
 		recoveredSkillContract("player_shield_bash", 130, 360, 260, 100),
-		recoveredSkillContract("player_shield_rush", 340, 640, 520, 120),
+		recoveredSkillContract("player_shield_rush", 470, 830, 430, 240),
 		recoveredCreatureSkillContract("bite", "wolf_bite_melee_commit_v1", "grounded_skill", "grounded_skill_action_reconciliation", "melee_contact", 0, 520, 220, 180, 120, 180, 900),
 		recoveredCreatureSkillContract("lunge", "wolf_lunge_airborne_v1", "leap", "leap_reconciliation", "airborne_passthrough", 620, 980, 430, 260, 3600, 500, 4200),
 		recoveredCreatureSkillContract("wolf_dodge", "wolf_dodge_lateral_leap_v1", "dodge", "dodge_reconciliation", "iframe", 210, 520, 420, 100, 0, 100, 0),
@@ -1798,8 +1798,8 @@ func recoveredSkillControlEffect(skillID string) *dbv1.SkillControlEffect {
 			DurationMs:      430,
 			ControlType:     "carry_push",
 			ReleasePolicyId: "multi_target_carry_push_forward_release",
-			DistanceCm:      340,
-			SpeedCmS:        recoveredControlSpeedCMS(340, 430),
+			DistanceCm:      470,
+			SpeedCmS:        recoveredControlSpeedCMS(470, 430),
 			DirectionPolicy: "source_forward",
 		}
 	default:

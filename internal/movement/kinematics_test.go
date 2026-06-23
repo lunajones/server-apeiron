@@ -34,6 +34,12 @@ func TestGroundedMoveSpeedUsesDirectionalProfile(t *testing.T) {
 	if back >= forward {
 		t.Fatalf("backpedal speed should be capped below forward: back=%v forward=%v", back, forward)
 	}
+	if math.Abs(strafe-(forward*0.75)) > 0.0001 {
+		t.Fatalf("strafe sprint speed = %v, want exactly 75%% of forward sprint %v", strafe, forward)
+	}
+	if math.Abs(back-(forward*0.75)) > 0.0001 {
+		t.Fatalf("backpedal sprint speed = %v, want exactly 75%% of forward sprint %v", back, forward)
+	}
 }
 
 func TestResolveGroundedMovePublishesSingleTickMotion(t *testing.T) {
@@ -71,21 +77,21 @@ func TestResolveActionMotionDerivesSpeedFromContractDuration(t *testing.T) {
 		Contract: RuntimeActionContract{
 			ID:         "shield_rush_front_contact_v1",
 			ActionType: "grounded_skill",
-			DistanceCM: 340,
-			DurationMS: 640,
+			DistanceCM: 470,
+			DurationMS: 830,
 		},
 	})
 
 	if got.Stopped {
 		t.Fatal("action should move")
 	}
-	if got.DistanceCM != 340 {
-		t.Fatalf("distance = %v, want 340", got.DistanceCM)
+	if got.DistanceCM != 470 {
+		t.Fatalf("distance = %v, want 470", got.DistanceCM)
 	}
-	if math.Abs(got.SpeedCMPerSecond-531.25) > 0.0001 {
-		t.Fatalf("speed = %v, want 531.25", got.SpeedCMPerSecond)
+	if math.Abs(got.SpeedCMPerSecond-(470.0/0.83)) > 0.0001 {
+		t.Fatalf("speed = %v, want derived restored Shield Rush speed", got.SpeedCMPerSecond)
 	}
-	if got.Projected.X != 340 || got.Projected.Y != 0 {
+	if got.Projected.X != 470 || got.Projected.Y != 0 {
 		t.Fatalf("projected = %+v", got.Projected)
 	}
 }
