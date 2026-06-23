@@ -90,6 +90,7 @@ type entityState struct {
 	combatMode            *gamev1.CombatModeState
 	creatureAI            *gamev1.CreatureAIState
 	creatureCooldownUntil map[string]time.Time
+	resolvedSkillImpacts  map[string]struct{}
 
 	// actionLockedUntil marks an owned movement action (leap/dodge) the player cannot
 	// interrupt with a skill/basic. Restores the chat 6 #3 rule: no skill while
@@ -592,9 +593,85 @@ func (r *Runtime) updateWolfPolicyLocked(wolf *entityState, player *entityState)
 			r.spendCreatureSkillStaminaLocked(wolf, selectedSkill, selectedRuntime)
 			r.startCreatureSkillCooldownLocked(wolf, selectedSkill, selectedRuntime, nowTime)
 		}
+		r.resolveCreatureSkillImpactLocked(wolf, player, selectedRuntime, nowTime)
 	} else {
 		wolf.skillRuntime = &gamev1.SkillRuntimeState{State: "idle", LastResolvedAtMs: now}
 	}
+}
+
+func (r *Runtime) resolveCreatureSkillImpactLocked(creature *entityState, player *entityState, skill SkillRuntimeContract, now time.Time) []runtimeSkillImpact {
+	if r == nil || creature == nil || player == nil || creature.skillRuntime == nil || skill.SkillID == "" {
+		return nil
+	}
+	startedAtMS := creature.skillRuntime.GetStartedAtMs()
+	if startedAtMS <= 0 || creature.skillRuntime.GetCurrentSkillId() != skill.SkillID {
+		return nil
+	}
+	elapsedMS := float64(now.UnixMilli() - startedAtMS)
+	if !skillHasTemporalImpactWindowAt(skill, elapsedMS) {
+		return nil
+	}
+	instanceKey := fmt.Sprintf("%d:%s:%d", creature.id, skill.SkillID, startedAtMS)
+	if _, resolved := creature.resolvedSkillImpacts[instanceKey]; resolved {
+		return nil
+	}
+
+	dir := normalize(vector{x: player.position.x - creature.position.x, y: player.position.y - creature.position.y})
+	if dir == (vector{}) {
+		dir = yawVector(creature.yaw)
+	}
+	reach := skillRangeToCM(skill.Range)
+	if reach <= 0 {
+		reach = movement.ActionDistance(skill.MovementAction, 0)
+	}
+	if reach <= 0 {
+		reach = maxSkillHitboxReachCM(skill)
+	}
+	end := vector{x: creature.position.x + dir.x*reach, y: creature.position.y + dir.y*reach, z: creature.position.z}
+	impacts := r.applySkillImpactAt(creature, skill, creature.position, end, dir, elapsedMS)
+	if len(impacts) > 0 {
+		if creature.resolvedSkillImpacts == nil {
+			creature.resolvedSkillImpacts = map[string]struct{}{}
+		}
+		creature.resolvedSkillImpacts[instanceKey] = struct{}{}
+	}
+	return impacts
+}
+
+func skillHasTemporalImpactWindowAt(skill SkillRuntimeContract, elapsedMS float64) bool {
+	for _, profile := range skill.Hitboxes {
+		if profile == nil {
+			continue
+		}
+		startMS := float64(profile.GetHitboxStartMs())
+		endMS := float64(profile.GetHitboxEndMs())
+		if endMS <= startMS {
+			return true
+		}
+		if elapsedMS+impactTemporalEpsilon >= startMS && elapsedMS-impactTemporalEpsilon <= endMS {
+			return true
+		}
+	}
+	return false
+}
+
+func maxSkillHitboxReachCM(skill SkillRuntimeContract) float64 {
+	reach := 0.0
+	for _, profile := range skill.Hitboxes {
+		if profile == nil {
+			continue
+		}
+		reach = maxFloat64(reach, profile.GetOffsetX()+profile.GetLength(), profile.GetLength(), profile.GetRadius())
+		if motion := profile.GetMotionProfile(); motion != nil {
+			for _, sample := range motion.GetSamples() {
+				if sample == nil {
+					continue
+				}
+				reach = maxFloat64(reach, sample.GetOffsetX()+sample.GetLength(), sample.GetLength(), sample.GetRadius())
+			}
+		}
+	}
+	return reach
 }
 
 func (r *Runtime) creatureSkillCostsLocked(policy WolfRuntimePolicy) map[string]float64 {
