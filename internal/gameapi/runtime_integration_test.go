@@ -144,6 +144,127 @@ func TestRuntimeTurnWithMissingLocomotionSeedsTurnContract(t *testing.T) {
 	}
 }
 
+func TestRuntimeRejectsDodgeAndLeapWhenMovementContractIsMissing(t *testing.T) {
+	t.Parallel()
+
+	for _, scenario := range []struct {
+		name        string
+		abilityKey  string
+		commandType gamev1.CommandType
+		command     func(sessionID string, sequence uint64) *gamev1.PlayerCommand
+	}{
+		{
+			name:        "dodge",
+			abilityKey:  "dodge",
+			commandType: gamev1.CommandType_COMMAND_TYPE_DODGE,
+			command: func(sessionID string, sequence uint64) *gamev1.PlayerCommand {
+				return &gamev1.PlayerCommand{
+					Context:              &gamev1.RequestContext{SessionId: sessionID},
+					CommandId:            fmt.Sprintf("dodge-%d", sequence),
+					Sequence:             sequence,
+					Type:                 gamev1.CommandType_COMMAND_TYPE_DODGE,
+					ClientTick:           sequence,
+					ClientActionSequence: sequence,
+					Payload: &gamev1.PlayerCommand_Dodge{
+						Dodge: &gamev1.DodgeCommand{Direction: gamev1Vector(1, 0, 0)},
+					},
+				}
+			},
+		},
+		{
+			name:        "leap",
+			abilityKey:  "jump",
+			commandType: gamev1.CommandType_COMMAND_TYPE_LEAP,
+			command: func(sessionID string, sequence uint64) *gamev1.PlayerCommand {
+				return &gamev1.PlayerCommand{
+					Context:              &gamev1.RequestContext{SessionId: sessionID},
+					CommandId:            fmt.Sprintf("leap-%d", sequence),
+					Sequence:             sequence,
+					Type:                 gamev1.CommandType_COMMAND_TYPE_LEAP,
+					ClientTick:           sequence,
+					ClientActionSequence: sequence,
+					Payload: &gamev1.PlayerCommand_Leap{
+						Leap: &gamev1.LeapCommand{Direction: gamev1Vector(1, 0, 0)},
+					},
+				}
+			},
+		},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			t.Parallel()
+
+			contracts := RecoveredRuntimeContracts()
+			delete(contracts.ActionContracts, scenario.abilityKey)
+			runtime := NewRuntimeWithOptions(contracts, RuntimeOptions{MovementValidation: true})
+			sessionID := "runtime-integration-missing-contract-" + scenario.name
+			if _, err := runtime.OpenSession(context.Background(), &gamev1.OpenSessionRequest{
+				Context: &gamev1.RequestContext{SessionId: sessionID},
+			}); err != nil {
+				t.Fatalf("OpenSession failed: %v", err)
+			}
+			if _, err := runtime.AttachPlayer(context.Background(), &gamev1.AttachPlayerRequest{
+				Context:  &gamev1.RequestContext{SessionId: sessionID},
+				PlayerId: "local_player",
+			}); err != nil {
+				t.Fatalf("AttachPlayer failed: %v", err)
+			}
+			player := runtime.ensurePlayerLocked("local_player")
+			start := player.position
+
+			ack, err := runtime.SubmitCommand(context.Background(), scenario.command(sessionID, 1))
+			if err != nil {
+				t.Fatalf("SubmitCommand failed: %v", err)
+			}
+			if ack.GetAccepted() {
+				t.Fatalf("%s with missing movement contract was accepted", scenario.commandType)
+			}
+			if ack.GetRejectionCode() != "missing_movement_contract" {
+				t.Fatalf("rejection code = %q", ack.GetRejectionCode())
+			}
+			if moved := distance(start, player.position); moved > 0 {
+				t.Fatalf("missing contract command moved player by %.2fcm", moved)
+			}
+		})
+	}
+}
+
+func TestRuntimeRejectsSkillWhenRuntimeContractIsMissing(t *testing.T) {
+	t.Parallel()
+
+	contracts := RecoveredRuntimeContracts()
+	delete(contracts.SkillContracts, "player_shield_rush")
+	delete(contracts.ActionContracts, "player_shield_rush")
+	runtime := NewRuntimeWithOptions(contracts, RuntimeOptions{MovementValidation: true})
+	sessionID := "runtime-integration-missing-skill-contract"
+	if _, err := runtime.OpenSession(context.Background(), &gamev1.OpenSessionRequest{
+		Context: &gamev1.RequestContext{SessionId: sessionID},
+	}); err != nil {
+		t.Fatalf("OpenSession failed: %v", err)
+	}
+	if _, err := runtime.AttachPlayer(context.Background(), &gamev1.AttachPlayerRequest{
+		Context:  &gamev1.RequestContext{SessionId: sessionID},
+		PlayerId: "local_player",
+	}); err != nil {
+		t.Fatalf("AttachPlayer failed: %v", err)
+	}
+	player := runtime.ensurePlayerLocked("local_player")
+	start := player.position
+
+	ack, err := runtime.SubmitCommand(context.Background(), testRuntimeCastSkillCommand(sessionID, 1, "player_shield_rush", gamev1Vector(1, 0, 0)))
+	if err != nil {
+		t.Fatalf("SubmitCommand failed: %v", err)
+	}
+	if ack.GetAccepted() {
+		t.Fatal("skill with missing runtime contract was accepted")
+	}
+	if ack.GetRejectionCode() != "missing_skill_contract" {
+		t.Fatalf("rejection code = %q", ack.GetRejectionCode())
+	}
+	if moved := distance(start, player.position); moved > 0 {
+		t.Fatalf("missing skill contract moved player by %.2fcm", moved)
+	}
+}
+
 func TestGroundedMoveSpeedPreservesDirectionalCaps(t *testing.T) {
 	t.Parallel()
 
@@ -557,6 +678,72 @@ func TestRuntimeShiftRunRepeatedBasicAttackPresses(t *testing.T) {
 		t.Fatalf("final action empty")
 	}
 	_ = player
+}
+
+func TestRuntimeShiftRunRepeatedShieldSkillsReturnForwardMove(t *testing.T) {
+	t.Parallel()
+
+	runtime := NewRuntimeWithOptions(RecoveredRuntimeContracts(), RuntimeOptions{MovementValidation: true})
+	sessionID := "runtime-integration-shift-run-r-f"
+	if _, err := runtime.OpenSession(context.Background(), &gamev1.OpenSessionRequest{
+		Context: &gamev1.RequestContext{SessionId: sessionID},
+	}); err != nil {
+		t.Fatalf("OpenSession failed: %v", err)
+	}
+	if _, err := runtime.AttachPlayer(context.Background(), &gamev1.AttachPlayerRequest{
+		Context:  &gamev1.RequestContext{SessionId: sessionID},
+		PlayerId: "local_player",
+	}); err != nil {
+		t.Fatalf("AttachPlayer failed: %v", err)
+	}
+	player := runtime.ensurePlayerLocked("local_player")
+	sequence := uint64(1)
+	yaw := 0.0
+	forward := gamev1Vector(1, 0, 0)
+	skills := []string{"player_shield_bash", "player_shield_rush"}
+
+	submit := func(cmd *gamev1.PlayerCommand) {
+		ack, err := runtime.SubmitCommand(context.Background(), cmd)
+		if err != nil {
+			t.Fatalf("SubmitCommand failed (%s): %v", commandTypeName(cmd.GetType()), err)
+		}
+		if ack == nil || !ack.GetAccepted() {
+			t.Fatalf("command rejected: type=%s code=%s message=%s", commandTypeName(cmd.GetType()), ack.GetRejectionCode(), ack.GetMessage())
+		}
+	}
+
+	for i := 0; i < 8; i++ {
+		submit(testRuntimeMoveCommand(sessionID, sequence, forward, 1, true, &yaw))
+		sequence++
+		if player.locomotion == nil || player.locomotion.GetAction() != "move" {
+			t.Fatalf("iteration %d pre-skill move missing: %s", i, safeAction(player.locomotion))
+		}
+		if player.locomotion.GetTargetSpeed() <= 0 || player.locomotion.GetActionDistanceTraveled() <= 0 {
+			t.Fatalf("iteration %d pre-skill move did not advance: speed=%.2f distance=%.2f", i, safeSpeed(player.locomotion), safeDistance(player.locomotion))
+		}
+
+		submit(testRuntimeCastSkillCommand(sessionID, sequence, skills[i%len(skills)], forward))
+		sequence++
+		if player.locomotion == nil || player.locomotion.GetAction() != "grounded_skill" {
+			t.Fatalf("iteration %d expected grounded_skill after %s, got=%s", i, skills[i%len(skills)], safeAction(player.locomotion))
+		}
+		if player.locomotion.GetReconciliationMode() != "grounded_skill_action" {
+			t.Fatalf("iteration %d skill reconciliation=%q", i, player.locomotion.GetReconciliationMode())
+		}
+
+		forceCompleteRuntimeAction(t, runtime, sessionID, player)
+		submit(testRuntimeMoveCommand(sessionID, sequence, forward, 1, true, &yaw))
+		sequence++
+		if player.locomotion == nil || player.locomotion.GetAction() != "move" {
+			t.Fatalf("iteration %d post-skill move missing: %s", i, safeAction(player.locomotion))
+		}
+		if player.locomotion.GetReconciliationMode() != "grounded_move_reconciliation" {
+			t.Fatalf("iteration %d post-skill reconciliation=%q", i, player.locomotion.GetReconciliationMode())
+		}
+		if player.locomotion.GetTargetSpeed() <= 0 || player.locomotion.GetActionDistanceTraveled() <= 0 {
+			t.Fatalf("iteration %d post-skill move did not advance: speed=%.2f distance=%.2f", i, safeSpeed(player.locomotion), safeDistance(player.locomotion))
+		}
+	}
 }
 
 func TestRuntimeCastPublishesActionInstanceAckMetadata(t *testing.T) {

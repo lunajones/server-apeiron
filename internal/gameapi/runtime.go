@@ -296,10 +296,25 @@ func (r *Runtime) SubmitCommand(ctx context.Context, cmd *gamev1.PlayerCommand) 
 	case gamev1.CommandType_COMMAND_TYPE_TURN:
 		r.applyTurn(player, cmd)
 	case gamev1.CommandType_COMMAND_TYPE_DODGE:
-		r.applyImpulse(player, cmd, r.contracts.contractForAbility("dodge"), 260)
+		if ok, code, message := r.canApplyMovementActionContract("dodge", r.contracts.contractForAbility("dodge")); !ok {
+			ack := r.ackLocked(cmd, player, false, code, message)
+			r.queueAckLocked(cmd.GetContext().GetSessionId(), ack)
+			return ack, nil
+		}
+		r.applyImpulse(player, cmd, r.contracts.contractForAbility("dodge"))
 	case gamev1.CommandType_COMMAND_TYPE_LEAP:
-		r.applyImpulse(player, cmd, r.contracts.contractForAbility("jump"), 280)
+		if ok, code, message := r.canApplyMovementActionContract("jump", r.contracts.contractForAbility("jump")); !ok {
+			ack := r.ackLocked(cmd, player, false, code, message)
+			r.queueAckLocked(cmd.GetContext().GetSessionId(), ack)
+			return ack, nil
+		}
+		r.applyImpulse(player, cmd, r.contracts.contractForAbility("jump"))
 	case gamev1.CommandType_COMMAND_TYPE_CAST_SKILL:
+		if ok, code, message := r.canApplySkillContract(cmd.GetCastSkill().GetSkillId(), player); !ok {
+			ack := r.ackLocked(cmd, player, false, code, message)
+			r.queueAckLocked(cmd.GetContext().GetSessionId(), ack)
+			return ack, nil
+		}
 		r.applySkill(player, cmd)
 	case gamev1.CommandType_COMMAND_TYPE_BLOCK_START, gamev1.CommandType_COMMAND_TYPE_BLOCK_STOP, gamev1.CommandType_COMMAND_TYPE_PARRY:
 		r.applyDefense(player, cmd)
@@ -312,6 +327,37 @@ func (r *Runtime) SubmitCommand(ctx context.Context, cmd *gamev1.PlayerCommand) 
 	ack := r.ackLocked(cmd, player, true, "", "accepted")
 	r.queueAckLocked(cmd.GetContext().GetSessionId(), ack)
 	return ack, nil
+}
+
+func (r *Runtime) canApplyMovementActionContract(abilityKey string, contract MovementActionRuntimeContract) (bool, string, string) {
+	if contract.ID == "" || contract.AbilityKey == "" {
+		return false, "missing_movement_contract", "movement action contract is not loaded: " + abilityKey
+	}
+	if movement.ActionDuration(contract) <= 0 {
+		return false, "invalid_movement_contract", "movement action contract has no duration: " + abilityKey
+	}
+	if movement.ActionDistance(contract, 0) <= 0 && contract.ActionType != "turn" {
+		return false, "invalid_movement_contract", "movement action contract has no distance: " + abilityKey
+	}
+	return true, "", ""
+}
+
+func (r *Runtime) canApplySkillContract(requestedSkillID string, player *entityState) (bool, string, string) {
+	skillID := requestedSkillID
+	if skillID == "" || skillID == "player_basic_attack" {
+		skillID = nextBasicAttack(player)
+	}
+	contract := r.contracts.skillContract(skillID)
+	if !contract.Enabled || contract.SkillID == "" {
+		return false, "missing_skill_contract", "skill runtime contract is not loaded: " + skillID
+	}
+	if contract.MovementAction.ID == "" {
+		return false, "missing_movement_contract", "skill movement action contract is not loaded: " + skillID
+	}
+	if movement.ActionDuration(contract.MovementAction) <= 0 {
+		return false, "invalid_movement_contract", "skill movement action contract has no duration: " + skillID
+	}
+	return true, "", ""
 }
 
 func (r *Runtime) Health(ctx context.Context, _ *gamev1.Empty) (*gamev1.HealthResponse, error) {
@@ -786,7 +832,7 @@ func (r *Runtime) applyTurn(player *entityState, cmd *gamev1.PlayerCommand) {
 	player.locomotion.LastUpdatedTick = r.tick
 }
 
-func (r *Runtime) applyImpulse(player *entityState, cmd *gamev1.PlayerCommand, contract MovementActionRuntimeContract, fallbackDistanceCM float64) {
+func (r *Runtime) applyImpulse(player *entityState, cmd *gamev1.PlayerCommand, contract MovementActionRuntimeContract) {
 	dir := vector{x: 1}
 	if cmd.GetDodge() != nil {
 		dir = normalize(fromProto(cmd.GetDodge().GetDirection()))
@@ -801,17 +847,15 @@ func (r *Runtime) applyImpulse(player *entityState, cmd *gamev1.PlayerCommand, c
 	}
 	start := player.position
 	fullMotion := movement.ResolveActionMotion(movement.ActionMotionInput{
-		Position:           toDomainVector(player.position),
-		Direction:          toDomainVector(dir),
-		Contract:           contract,
-		FallbackDistanceCM: fallbackDistanceCM,
+		Position:  toDomainVector(player.position),
+		Direction: toDomainVector(dir),
+		Contract:  contract,
 	})
 	progress := movement.ResolveActionMotionProgress(movement.ActionMotionProgressInput{
-		Position:           toDomainVector(start),
-		Direction:          toDomainVector(dir),
-		Contract:           contract,
-		FallbackDistanceCM: fullMotion.DistanceCM,
-		Elapsed:            0,
+		Position:  toDomainVector(start),
+		Direction: toDomainVector(dir),
+		Contract:  contract,
+		Elapsed:   0,
 	})
 	player.actionMotion = &actionMotionState{
 		CommandID:         cmd.GetCommandId(),

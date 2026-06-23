@@ -91,6 +91,45 @@ Normal gameplay server must run without movement validation enabled. Movement va
 - Aggressive `Shift + W/A/D` curves with mouse yaw.
 - Creature lunge/maul/bite using the same action identity and contract publication language.
 
+## 2026-06-22 - Runtime Commands Reject Missing Movement Contracts
+
+### Symptom
+
+The North Star still classified runtime fallback paths as suspicious. In `gameapi`, dodge and
+leap command execution still passed literal fallback distances into action motion resolution.
+Even when normal recovered contracts were present, that left a live path where a missing DB/action
+contract could be accepted and moved with invented data.
+
+### Hypothesis
+
+Fallback distances are not the direct cause of every rubberband, but they are a root-risk:
+they allow command execution to proceed without the same contract manifest that Unreal prediction
+and server reconciliation expect. That can hide DB/manifest holes and later present as correction,
+missing contract prediction, or post-action handoff mismatch.
+
+### Change
+
+- `SubmitCommand` now validates dodge, leap, and skill movement contracts before executing.
+- Missing contracts reject with `missing_movement_contract` or `missing_skill_contract`.
+- Invalid movement contracts reject with `invalid_movement_contract`.
+- `applyImpulse` no longer accepts literal fallback distances for dodge/leap.
+- Added server guards:
+  - `TestRuntimeRejectsDodgeAndLeapWhenMovementContractIsMissing`
+  - `TestRuntimeRejectsSkillWhenRuntimeContractIsMissing`
+  - `TestRuntimeShiftRunRepeatedShieldSkillsReturnForwardMove`
+
+### Effect
+
+Server runtime no longer masks missing movement contracts in the live command path. The remaining
+`FallbackDistanceCM` usage in action-motion progress is derived from the already-started action's
+stored total distance, not from an invented ability default.
+
+### Guardrail
+
+Do not reintroduce command-level movement distances such as "dodge = 260" or "jump = 280".
+If an action needs a distance, it must come from `movement_action_contract` / skill movement
+binding data and be present in the runtime contract registry.
+
 ## 2026-06-22 - Movement Kinematics Back Under Movement Package
 
 ### Symptom
