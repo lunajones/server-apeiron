@@ -455,8 +455,9 @@ func (r *Runtime) Readiness(ctx context.Context, _ *gamev1.Empty) (*gamev1.Readi
 		return &gamev1.ReadinessResponse{Ready: false, Blockers: []string{"runtime is nil"}}, nil
 	}
 	strict := r.contracts.Source == "db_contracts"
-	if err := r.contracts.ValidateRequiredCoverage(strict); err != nil {
-		return &gamev1.ReadinessResponse{Ready: false, Blockers: splitCoverageBlockers(err)}, nil
+	report := r.contracts.CoverageReport(strict)
+	if !report.Ready {
+		return &gamev1.ReadinessResponse{Ready: false, Blockers: report.Blockers()}, nil
 	}
 	return &gamev1.ReadinessResponse{Ready: true}, nil
 }

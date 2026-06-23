@@ -321,6 +321,43 @@ func TestDBRuntimeContractsDoNotInventMissingFallbacks(t *testing.T) {
 	}
 }
 
+func TestRuntimeContractCoverageReportClassifiesMissingContracts(t *testing.T) {
+	contracts := RuntimeContracts{Source: "db_contracts"}
+	report := contracts.CoverageReport(true)
+	if report.Ready {
+		t.Fatal("empty DB contracts reported ready")
+	}
+	if !coverageReportHasBlocker(report, "runtime_movement_profile", "movement reconciliation profile") {
+		t.Fatalf("movement profile blocker missing: %#v", report)
+	}
+	if !coverageReportHasBlocker(report, "skill_runtime_contracts", "skill runtime player_shield_rush") {
+		t.Fatalf("skill blocker missing: %#v", report)
+	}
+	if !coverageReportHasBlocker(report, "combat_mode_slots", "sword shield combat mode slots") {
+		t.Fatalf("combat mode blocker missing: %#v", report)
+	}
+}
+
+func TestRuntimeContractCoverageReportAcceptsRecoveredFixture(t *testing.T) {
+	report := RecoveryFixtureRuntimeContracts().CoverageReport(false)
+	if !report.Ready {
+		t.Fatalf("recovered fixture coverage report is not ready: %#v", report.Blockers())
+	}
+	for _, category := range []string{
+		"runtime_movement_profile",
+		"base_movement_actions",
+		"skill_runtime_contracts",
+		"wolf_brain_policy",
+		"combat_core_profiles",
+		"combat_defense_contracts",
+		"combat_mode_slots",
+	} {
+		if !coverageReportHasCategory(report, category) {
+			t.Fatalf("coverage report missing category %q: %#v", category, report.Categories)
+		}
+	}
+}
+
 func TestRuntimeReadinessReportsMissingContracts(t *testing.T) {
 	runtime := NewRuntimeWithContracts(RuntimeContracts{Source: "db_contracts"})
 	resp, err := runtime.Readiness(context.Background(), &gamev1.Empty{})
@@ -333,6 +370,29 @@ func TestRuntimeReadinessReportsMissingContracts(t *testing.T) {
 	if len(resp.GetBlockers()) == 0 {
 		t.Fatalf("readiness blockers missing: %#v", resp)
 	}
+}
+
+func coverageReportHasCategory(report RuntimeContractCoverageReport, name string) bool {
+	for _, category := range report.Categories {
+		if category.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+func coverageReportHasBlocker(report RuntimeContractCoverageReport, categoryName string, blocker string) bool {
+	for _, category := range report.Categories {
+		if category.Name != categoryName {
+			continue
+		}
+		for _, got := range category.Blockers {
+			if got == blocker {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func TestRuntimeReadinessAcceptsRecoveredFixtureForDevTests(t *testing.T) {

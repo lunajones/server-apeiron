@@ -49,6 +49,19 @@ type RuntimeContracts struct {
 	LoadIssues      []string
 }
 
+type RuntimeContractCoverageReport struct {
+	Source     string
+	Strict     bool
+	Ready      bool
+	Categories []RuntimeContractCoverageCategory
+}
+
+type RuntimeContractCoverageCategory struct {
+	Name     string
+	Ready    bool
+	Blockers []string
+}
+
 type MovementActionRuntimeContract = movement.RuntimeActionContract
 
 type SkillRuntimeContract struct {
@@ -523,26 +536,71 @@ func creatureSkillSetupPoliciesFromDB(policies []*dbv1.CreatureSkillSetupPolicy)
 	return runtimePolicies
 }
 
-func (c RuntimeContracts) ValidateRequiredCoverage(strictLoadedSource bool) error {
-	var missing []string
-	if c.MovementProfile == nil {
-		missing = append(missing, "movement reconciliation profile")
-	} else if strictLoadedSource {
-		missing = append(missing, validateRuntimeMovementReconciliationProfile(c.MovementProfile)...)
+func (c RuntimeContracts) CoverageReport(strictLoadedSource bool) RuntimeContractCoverageReport {
+	report := RuntimeContractCoverageReport{Source: c.Source, Strict: strictLoadedSource, Ready: true}
+	report.addCategory("runtime_movement_profile", c.runtimeMovementProfileBlockers(strictLoadedSource))
+	report.addCategory("base_movement_actions", c.baseMovementActionBlockers(strictLoadedSource))
+	report.addCategory("skill_runtime_contracts", c.skillRuntimeContractBlockers(strictLoadedSource))
+	report.addCategory("wolf_brain_policy", c.wolfBrainPolicyBlockers(strictLoadedSource))
+	report.addCategory("combat_core_profiles", c.combatCoreProfileBlockers(strictLoadedSource))
+	report.addCategory("combat_defense_contracts", c.combatDefenseContractBlockers(strictLoadedSource))
+	report.addCategory("combat_mode_slots", c.combatModeSlotBlockers())
+	if strictLoadedSource {
+		report.addCategory("contract_load_issues", append([]string(nil), c.LoadIssues...))
 	}
+	return report
+}
+
+func (r *RuntimeContractCoverageReport) addCategory(name string, blockers []string) {
+	category := RuntimeContractCoverageCategory{Name: name, Ready: len(blockers) == 0, Blockers: blockers}
+	if !category.Ready {
+		r.Ready = false
+	}
+	r.Categories = append(r.Categories, category)
+}
+
+func (r RuntimeContractCoverageReport) Blockers() []string {
+	var blockers []string
+	for _, category := range r.Categories {
+		for _, blocker := range category.Blockers {
+			if strings.TrimSpace(blocker) != "" {
+				blockers = append(blockers, category.Name+": "+blocker)
+			}
+		}
+	}
+	return blockers
+}
+
+func (c RuntimeContracts) runtimeMovementProfileBlockers(strictLoadedSource bool) []string {
+	if c.MovementProfile == nil {
+		return []string{"movement reconciliation profile"}
+	}
+	if strictLoadedSource {
+		return validateRuntimeMovementReconciliationProfile(c.MovementProfile)
+	}
+	return nil
+}
+
+func (c RuntimeContracts) baseMovementActionBlockers(strictLoadedSource bool) []string {
+	var missing []string
 	for _, ability := range requiredBaseMovementActions() {
 		contract, ok := c.ActionContracts[ability.abilityKey]
 		if !ok || contract.ID == "" {
 			missing = append(missing, fmt.Sprintf("movement action %s", ability.abilityKey))
 			continue
 		}
-		if contract.ReconciliationContractID == "" {
+		if contract.ReconciliationContractID == "" && contract.ReconciliationCategory == "" {
 			missing = append(missing, fmt.Sprintf("movement action %s reconciliation", ability.abilityKey))
 		}
 		if strictLoadedSource {
 			missing = append(missing, validateMovementActionRuntimeContract("movement action "+ability.abilityKey, contract, false)...)
 		}
 	}
+	return missing
+}
+
+func (c RuntimeContracts) skillRuntimeContractBlockers(strictLoadedSource bool) []string {
+	var missing []string
 	for _, skillID := range requiredRuntimeSkillIDs() {
 		skill, ok := c.SkillContracts[skillID]
 		if !ok || skill.SkillID == "" {
@@ -567,7 +625,7 @@ func (c RuntimeContracts) ValidateRequiredCoverage(strictLoadedSource bool) erro
 		if skill.NormalInputPolicy == "" {
 			missing = append(missing, "skill movement normal input policy "+skillID)
 		}
-		if skill.MovementAction.ReconciliationContractID == "" {
+		if skill.MovementAction.ReconciliationContractID == "" && skill.MovementAction.ReconciliationCategory == "" {
 			missing = append(missing, "skill movement reconciliation "+skillID)
 		}
 		if action, ok := c.ActionContracts[skillID]; !ok || action.ID == "" {
@@ -578,36 +636,13 @@ func (c RuntimeContracts) ValidateRequiredCoverage(strictLoadedSource bool) erro
 			missing = append(missing, validateRuntimeSkillContract(skillID, skill)...)
 		}
 	}
+	return missing
+}
+
+func (c RuntimeContracts) wolfBrainPolicyBlockers(strictLoadedSource bool) []string {
+	var missing []string
 	if c.WolfPolicy.ContractID == "" || c.WolfPolicy.DodgeSkillID == "" {
 		missing = append(missing, "wolf runtime policy")
-	}
-	for _, profileID := range []string{c.CombatCore.PlayerProfileID, c.CombatCore.CreatureProfileID} {
-		if profileID == "" {
-			missing = append(missing, "combat core profile id")
-			continue
-		}
-		profile := c.CombatCore.Profiles[profileID]
-		if profile == nil {
-			missing = append(missing, "combat core profile "+profileID)
-			continue
-		}
-		if strictLoadedSource {
-			missing = append(missing, validateCombatCoreProfile(profileID, profile)...)
-		}
-	}
-	for _, contractID := range []string{c.Defense.PlayerGuardContractID, c.Defense.CreatureGuardContractID} {
-		if contractID == "" {
-			missing = append(missing, "combat defense contract id")
-			continue
-		}
-		contract := c.Defense.Contracts[contractID]
-		if contract == nil {
-			missing = append(missing, "combat defense contract "+contractID)
-			continue
-		}
-		if strictLoadedSource {
-			missing = append(missing, validateCombatDefenseContract(contractID, contract)...)
-		}
 	}
 	if strictLoadedSource {
 		if c.WolfPolicy.TargetOpportunityPolicyID == "" {
@@ -623,12 +658,56 @@ func (c RuntimeContracts) ValidateRequiredCoverage(strictLoadedSource bool) erro
 			missing = append(missing, "wolf skill setup policies")
 		}
 	}
+	return missing
+}
+
+func (c RuntimeContracts) combatCoreProfileBlockers(strictLoadedSource bool) []string {
+	var missing []string
+	for _, profileID := range []string{c.CombatCore.PlayerProfileID, c.CombatCore.CreatureProfileID} {
+		if profileID == "" {
+			missing = append(missing, "combat core profile id")
+			continue
+		}
+		profile := c.CombatCore.Profiles[profileID]
+		if profile == nil {
+			missing = append(missing, "combat core profile "+profileID)
+			continue
+		}
+		if strictLoadedSource {
+			missing = append(missing, validateCombatCoreProfile(profileID, profile)...)
+		}
+	}
+	return missing
+}
+
+func (c RuntimeContracts) combatDefenseContractBlockers(strictLoadedSource bool) []string {
+	var missing []string
+	for _, contractID := range []string{c.Defense.PlayerGuardContractID, c.Defense.CreatureGuardContractID} {
+		if contractID == "" {
+			missing = append(missing, "combat defense contract id")
+			continue
+		}
+		contract := c.Defense.Contracts[contractID]
+		if contract == nil {
+			missing = append(missing, "combat defense contract "+contractID)
+			continue
+		}
+		if strictLoadedSource {
+			missing = append(missing, validateCombatDefenseContract(contractID, contract)...)
+		}
+	}
+	return missing
+}
+
+func (c RuntimeContracts) combatModeSlotBlockers() []string {
 	if len(c.CombatModes) == 0 {
-		missing = append(missing, "sword shield combat mode slots")
+		return []string{"sword shield combat mode slots"}
 	}
-	if strictLoadedSource && len(c.LoadIssues) > 0 {
-		missing = append(missing, c.LoadIssues...)
-	}
+	return nil
+}
+
+func (c RuntimeContracts) ValidateRequiredCoverage(strictLoadedSource bool) error {
+	missing := c.CoverageReport(strictLoadedSource).Blockers()
 	if len(missing) > 0 {
 		return fmt.Errorf("runtime contract coverage incomplete: %s", strings.Join(missing, "; "))
 	}
