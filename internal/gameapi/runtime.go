@@ -240,6 +240,7 @@ func (r *Runtime) AttachPlayer(ctx context.Context, req *gamev1.AttachPlayerRequ
 	}
 
 	player := r.ensurePlayerLocked(playerID)
+	resetPlayerCommandReplayState(player)
 	if r.creaturesEnabled() {
 		r.ensureWolfLocked(player)
 	}
@@ -414,6 +415,16 @@ func rememberPlayerCommand(player *entityState, cmd *gamev1.PlayerCommand) {
 		delete(player.processedCommandIDs, oldKey)
 	}
 	player.processedCommandOrder = append([]string(nil), player.processedCommandOrder[removeCount:]...)
+}
+
+func resetPlayerCommandReplayState(player *entityState) {
+	if player == nil {
+		return
+	}
+	player.lastSequence = 0
+	player.lastClientTick = 0
+	player.processedCommandIDs = nil
+	player.processedCommandOrder = nil
 }
 
 func playerCommandReplayKey(cmd *gamev1.PlayerCommand) string {

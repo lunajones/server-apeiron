@@ -107,3 +107,46 @@ func TestCreatureTemporalSkillImpactWaitsForHitboxWindow(t *testing.T) {
 		t.Fatalf("player health changed before hitbox window: %.1f want %.1f", player.health, beforeHealth)
 	}
 }
+
+func TestCreatureTemporalSkillImpactFollowsAuthoritativeActionDirection(t *testing.T) {
+	t.Parallel()
+
+	runtime := NewRuntimeWithContracts(DevFixtureRuntimeContracts())
+	player := runtime.ensurePlayerLocked("local_player")
+	wolf := runtime.ensureWolfLocked(player)
+	player.position = vector{x: 220, y: 0, z: 0}
+	wolf.position = vector{x: 0, y: 0, z: 0}
+	contract := runtime.contracts.skillContract("lunge")
+	startedAt := time.Now().Add(-3700 * time.Millisecond)
+	instanceID := "lunge-action-direction-test"
+	wolf.actionMotion = &actionMotionState{
+		SkillID:         "lunge",
+		CommandID:       instanceID,
+		StartedAt:       startedAt,
+		StartPosition:   wolf.position,
+		Direction:       vector{x: 1, y: 0},
+		TotalDistanceCM: contract.MovementAction.DistanceCM,
+		Contract:        contract.MovementAction,
+	}
+	beforeHealth := player.health
+
+	schedule := skillImpactSchedule{
+		InstanceID:  instanceID,
+		StartedAt:   startedAt,
+		Source:      wolf,
+		Skill:       contract,
+		Direction:   vector{x: 0, y: 1},
+		ElapsedMS:   3700,
+		PreviousMS:  3684,
+		RequireTime: true,
+		TrackSource: true,
+	}
+	schedule.Start, schedule.End, schedule.Direction = skillImpactScheduleTrace(schedule)
+	impacts := runtime.resolveSkillImpactScheduleLocked(schedule)
+	if len(impacts) != 1 {
+		t.Fatalf("lunge impact count = %d, want 1; trace dir=%#v start=%#v end=%#v", len(impacts), schedule.Direction, schedule.Start, schedule.End)
+	}
+	if player.health >= beforeHealth {
+		t.Fatalf("lunge impact did not damage player: before %.1f after %.1f", beforeHealth, player.health)
+	}
+}

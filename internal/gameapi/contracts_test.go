@@ -620,7 +620,7 @@ func TestLoadRuntimeContractsFromDBUsesRequiredSkillBindings(t *testing.T) {
 	if contracts.WolfPolicy.MaxStamina != 100 || contracts.WolfPolicy.DodgeStaminaCostMultiplier != 0.5 || contracts.WolfPolicy.StaminaRegenPerSecond != 12 {
 		t.Fatalf("wolf stamina policy = max %.1f dodge multiplier %.2f regen %.1f", contracts.WolfPolicy.MaxStamina, contracts.WolfPolicy.DodgeStaminaCostMultiplier, contracts.WolfPolicy.StaminaRegenPerSecond)
 	}
-	if contracts.WolfPolicy.RepeatSkillPenaltyWindowMS != 1200 || contracts.WolfPolicy.RepeatSkillPenaltyMultiplier != 0.65 {
+	if contracts.WolfPolicy.RepeatSkillPenaltyWindowMS != 5200 || contracts.WolfPolicy.RepeatSkillPenaltyMultiplier != 0.35 {
 		t.Fatalf("wolf repeat policy = window %d multiplier %.2f", contracts.WolfPolicy.RepeatSkillPenaltyWindowMS, contracts.WolfPolicy.RepeatSkillPenaltyMultiplier)
 	}
 	if contracts.WolfPolicy.DesiredRangeCM != 560 || contracts.WolfPolicy.OrbitSpeedCMS != 150 || contracts.WolfPolicy.ChaseSpeedCMS != 310 {
@@ -1402,7 +1402,7 @@ func (fakeRuntimeContractSource) GetCreatureBehaviorRuntimeContract(_ context.Co
 			Id:                        req.GetId(),
 			CreatureTemplateId:        "steppe_wolf",
 			RangePolicyJson:           `{"desiredRangeCm":560,"chaseRangeCm":860,"retreatRangeCm":340,"orbitSpeedCmS":150,"chaseSpeedCmS":310,"lungeSpeedCmS":380,"maulSpeedCmS":345,"retreatSpeedCmS":260}`,
-			PressurePolicyJson:        `{"repeatSkillPenaltyMultiplier":0.65,"dodgeUnderPressure":true,"maulCounterUnderPressure":true,"maulCounterChance":0.22,"dodgeRetreatMultiplier":0.70,"globalDodgeMultiplier":0.85,"commitThreatWeight":0.28,"closingThreatWeight":0.18,"defensiveBiteWeight":0.14,"fleeingLungeWeight":0.20,"lowResourceRiskFloor":0.16,"dodgeCommittedThreatMultiplier":1.12,"vulnerableBiteMultiplier":1.16,"vulnerableMaulMultiplier":1.10,"tacticalDestinationDistanceCm":180}`,
+			PressurePolicyJson:        `{"repeatSkillPenaltyMultiplier":0.35,"dodgeUnderPressure":true,"maulCounterUnderPressure":true,"maulCounterChance":0.30,"dodgeRetreatMultiplier":0.70,"globalDodgeMultiplier":0.85,"commitThreatWeight":0.28,"closingThreatWeight":0.18,"defensiveBiteWeight":0.14,"fleeingLungeWeight":0.20,"lowResourceRiskFloor":0.16,"dodgeCommittedThreatMultiplier":1.12,"vulnerableBiteMultiplier":1.16,"vulnerableMaulMultiplier":1.16,"tacticalDestinationDistanceCm":180}`,
 			StaminaPolicyJson:         `{"max":100,"dodgeCostMultiplier":0.50,"regenPerSecond":12}`,
 			TargetOpportunityPolicyId: "opportunity_wolf_harasser_v1",
 			OrbitPolicyId:             "orbit_wolf_harasser_combat_walk_v1",
@@ -1442,7 +1442,7 @@ func (fakeRuntimeContractSource) GetCreatureTargetOpportunityPolicy(_ context.Co
 			LungeMinRangeCm:             180,
 			LungeMaxRangeCm:             700,
 			MaulPressureThreshold:       0.72,
-			TargetMemoryMs:              1200,
+			TargetMemoryMs:              5200,
 			NoReadySkillMemoryPolicy:    "observe_only",
 			CandidateCooldownVisibility: true,
 			AllowBacksideCommit:         true,

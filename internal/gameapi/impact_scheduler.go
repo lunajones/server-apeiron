@@ -235,6 +235,9 @@ func skillImpactScheduleTrace(schedule skillImpactSchedule) (vector, vector, vec
 		start = schedule.Source.position
 	}
 	dir := normalize(schedule.Direction)
+	if actionDir := skillImpactActionMotionDirection(schedule); actionDir != (vector{}) {
+		dir = actionDir
+	}
 	if dir == (vector{}) && schedule.Source != nil {
 		dir = yawVector(schedule.Source.yaw)
 	}
@@ -247,6 +250,20 @@ func skillImpactScheduleTrace(schedule skillImpactSchedule) (vector, vector, vec
 	}
 	end := vector{x: start.x + dir.x*reach, y: start.y + dir.y*reach, z: start.z}
 	return start, end, dir
+}
+
+func skillImpactActionMotionDirection(schedule skillImpactSchedule) vector {
+	if schedule.Source == nil || schedule.Source.actionMotion == nil {
+		return vector{}
+	}
+	motion := schedule.Source.actionMotion
+	if motion.SkillID != schedule.Skill.SkillID {
+		return vector{}
+	}
+	if schedule.InstanceID != "" && motion.CommandID != "" && schedule.InstanceID != motion.CommandID {
+		return vector{}
+	}
+	return normalize(motion.Direction)
 }
 
 func skillImpactTraceReachCM(skill SkillRuntimeContract) float64 {

@@ -375,6 +375,39 @@ func TestRuntimeStaleSequenceDoesNotReapplyMovement(t *testing.T) {
 	}
 }
 
+func TestRuntimeAttachPlayerResetsEphemeralCommandReplayState(t *testing.T) {
+	runtime := NewRuntimeWithOptions(DevFixtureRuntimeContracts(), RuntimeOptions{MovementValidation: true})
+	sessionID := "runtime-reattach-command-sequence"
+	if _, err := runtime.OpenSession(context.Background(), &gamev1.OpenSessionRequest{
+		Context: &gamev1.RequestContext{SessionId: sessionID},
+	}); err != nil {
+		t.Fatalf("OpenSession failed: %v", err)
+	}
+	if _, err := runtime.AttachPlayer(context.Background(), &gamev1.AttachPlayerRequest{
+		Context:  &gamev1.RequestContext{SessionId: sessionID},
+		PlayerId: "local_player",
+	}); err != nil {
+		t.Fatalf("AttachPlayer failed: %v", err)
+	}
+	if ack, err := runtime.SubmitCommand(context.Background(), testRuntimeMoveCommand(sessionID, 409, gamev1Vector(1, 0, 0), 1, false, nil)); err != nil || !ack.GetAccepted() {
+		t.Fatalf("high sequence move ack=%v err=%v", ack, err)
+	}
+
+	if _, err := runtime.AttachPlayer(context.Background(), &gamev1.AttachPlayerRequest{
+		Context:  &gamev1.RequestContext{SessionId: sessionID},
+		PlayerId: "local_player",
+	}); err != nil {
+		t.Fatalf("reattach failed: %v", err)
+	}
+	ack, err := runtime.SubmitCommand(context.Background(), testRuntimeMoveCommand(sessionID, 1, gamev1Vector(0, 1, 0), 1, false, nil))
+	if err != nil {
+		t.Fatalf("post-reattach move failed: %v", err)
+	}
+	if !ack.GetAccepted() {
+		t.Fatalf("post-reattach sequence 1 rejected code=%q message=%q", ack.GetRejectionCode(), ack.GetMessage())
+	}
+}
+
 func TestRuntimeSprintStrafeYawInversionInterleavedWithSkills(t *testing.T) {
 	t.Parallel()
 
