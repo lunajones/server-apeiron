@@ -26,6 +26,11 @@ type Policy struct {
 	MaulCounterChance              float64
 	DodgeRetreatMultiplier         float64
 	GlobalDodgeMultiplier          float64
+	CommitThreatWeight             float64
+	ClosingThreatWeight            float64
+	DefensiveBiteWeight            float64
+	FleeingLungeWeight             float64
+	LowResourceRiskFloor           float64
 	OrbitLocomotionMode            string
 	OrbitSpeedScale                float64
 	MinOrbitDurationTicks          uint64

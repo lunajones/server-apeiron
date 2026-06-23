@@ -152,6 +152,11 @@ type WolfRuntimePolicy struct {
 	MaulCounterChance              float64
 	DodgeRetreatMultiplier         float64
 	GlobalDodgeMultiplier          float64
+	CommitThreatWeight             float64
+	ClosingThreatWeight            float64
+	DefensiveBiteWeight            float64
+	FleeingLungeWeight             float64
+	LowResourceRiskFloor           float64
 	TargetMemoryMS                 int32
 	NoReadySkillMemoryPolicy       string
 	CandidateCooldownVisibility    bool
@@ -210,6 +215,11 @@ type creaturePressurePolicyJSON struct {
 	MaulCounterChance            float64 `json:"maulCounterChance"`
 	DodgeRetreatMultiplier       float64 `json:"dodgeRetreatMultiplier"`
 	GlobalDodgeMultiplier        float64 `json:"globalDodgeMultiplier"`
+	CommitThreatWeight           float64 `json:"commitThreatWeight"`
+	ClosingThreatWeight          float64 `json:"closingThreatWeight"`
+	DefensiveBiteWeight          float64 `json:"defensiveBiteWeight"`
+	FleeingLungeWeight           float64 `json:"fleeingLungeWeight"`
+	LowResourceRiskFloor         float64 `json:"lowResourceRiskFloor"`
 }
 
 type creatureStaminaPolicyJSON struct {
@@ -525,6 +535,11 @@ func applyWolfBehaviorPolicyJSON(policy *WolfRuntimePolicy, behavior *dbv1.Creat
 			policy.MaulCounterChance = pressurePolicy.MaulCounterChance
 			policy.DodgeRetreatMultiplier = pressurePolicy.DodgeRetreatMultiplier
 			policy.GlobalDodgeMultiplier = pressurePolicy.GlobalDodgeMultiplier
+			policy.CommitThreatWeight = pressurePolicy.CommitThreatWeight
+			policy.ClosingThreatWeight = pressurePolicy.ClosingThreatWeight
+			policy.DefensiveBiteWeight = pressurePolicy.DefensiveBiteWeight
+			policy.FleeingLungeWeight = pressurePolicy.FleeingLungeWeight
+			policy.LowResourceRiskFloor = pressurePolicy.LowResourceRiskFloor
 		}
 	}
 }
@@ -723,6 +738,9 @@ func (c RuntimeContracts) wolfBrainPolicyBlockers(strictLoadedSource bool) []str
 		}
 		if len(c.WolfPolicy.SkillSetupPolicies) == 0 {
 			missing = append(missing, "wolf skill setup policies")
+		}
+		if c.WolfPolicy.CommitThreatWeight <= 0 || c.WolfPolicy.ClosingThreatWeight <= 0 || c.WolfPolicy.DefensiveBiteWeight <= 0 || c.WolfPolicy.FleeingLungeWeight <= 0 || c.WolfPolicy.LowResourceRiskFloor <= 0 {
+			missing = append(missing, "wolf threat pressure weights")
 		}
 	}
 	return missing
@@ -1200,6 +1218,11 @@ func RecoveryFixtureRuntimeContracts() RuntimeContracts {
 			MaulCounterChance:              0.22,
 			DodgeRetreatMultiplier:         0.70,
 			GlobalDodgeMultiplier:          0.85,
+			CommitThreatWeight:             0.28,
+			ClosingThreatWeight:            0.18,
+			DefensiveBiteWeight:            0.14,
+			FleeingLungeWeight:             0.20,
+			LowResourceRiskFloor:           0.16,
 			TargetMemoryMS:                 1200,
 			NoReadySkillMemoryPolicy:       "observe_only",
 			CandidateCooldownVisibility:    true,

@@ -7,14 +7,6 @@ import (
 	domainmath "server-apeiron/internal/domain/math"
 )
 
-const (
-	defaultCommitThreatWeight   = 0.28
-	defaultClosingThreatWeight  = 0.18
-	defaultDefensiveBiteWeight  = 0.14
-	defaultFleeingLungeWeight   = 0.20
-	defaultLowResourceRiskFloor = 0.16
-)
-
 type Perception struct {
 	TargetVelocityCMPerSec domainmath.Vec3
 	TargetMovementState    string
@@ -63,16 +55,16 @@ func AssessThreat(policy Policy, input Input, toTarget domainmath.Vec3, rangeCM 
 	committed := perception.TargetActionActive || actionStateIsCommitted(perception.TargetSkillState) || actionStateIsCommitted(perception.TargetCombatState)
 	defensive := perception.TargetBlocking || perception.TargetParrying || actionStateIsDefensive(perception.TargetCombatState)
 	if committed {
-		pressure += defaultCommitThreatWeight
+		pressure += policy.CommitThreatWeight
 	}
 	if closing {
-		pressure += defaultClosingThreatWeight
+		pressure += policy.ClosingThreatWeight
 	}
 	if defensive {
-		pressure += defaultDefensiveBiteWeight
+		pressure += policy.DefensiveBiteWeight
 	}
 	if targetResourceLow(perception.TargetResourceCurrent, perception.TargetResourceMax) {
-		pressure += defaultLowResourceRiskFloor
+		pressure += policy.LowResourceRiskFloor
 	}
 
 	vulnerable := !perception.TargetIFrame && !perception.TargetParrying && targetPostureLow(perception.TargetPostureCurrent, perception.TargetPostureMax)
@@ -84,10 +76,10 @@ func AssessThreat(policy Policy, input Input, toTarget domainmath.Vec3, rangeCM 
 		multipliers[policy.DodgeSkillID] = firstPositive(policy.GlobalDodgeMultiplier, 1) * 1.12
 	}
 	if defensive && !perception.TargetIFrame {
-		multipliers["bite"] = 1.0 + defaultDefensiveBiteWeight
+		multipliers["bite"] = 1.0 + policy.DefensiveBiteWeight
 	}
 	if fleeing && rangeCM >= firstPositive(policy.LungeMinRangeCM, policy.DesiredRangeCM) {
-		multipliers["lunge"] = 1.0 + defaultFleeingLungeWeight
+		multipliers["lunge"] = 1.0 + policy.FleeingLungeWeight
 	}
 	if vulnerable {
 		multipliers["bite"] = math.Max(firstPositive(multipliers["bite"], 1), 1.16)

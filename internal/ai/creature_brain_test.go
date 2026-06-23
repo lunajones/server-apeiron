@@ -293,6 +293,11 @@ func testPolicy() Policy {
 		MaulCounterChance:        0.22,
 		DodgeRetreatMultiplier:   0.70,
 		GlobalDodgeMultiplier:    0.85,
+		CommitThreatWeight:       0.28,
+		ClosingThreatWeight:      0.18,
+		DefensiveBiteWeight:      0.14,
+		FleeingLungeWeight:       0.20,
+		LowResourceRiskFloor:     0.16,
 		MinOrbitDurationTicks:    90,
 		SideSwitchCooldownTicks:  45,
 		SetupPolicies: map[string]SkillSetupPolicy{

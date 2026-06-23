@@ -1071,7 +1071,7 @@ func (fakeRuntimeContractSource) GetCreatureBehaviorRuntimeContract(_ context.Co
 		Contract: &dbv1.CreatureBehaviorRuntimeContract{
 			Id:                        req.GetId(),
 			CreatureTemplateId:        "steppe_wolf",
-			PressurePolicyJson:        `{"repeatSkillPenaltyMultiplier":0.65}`,
+			PressurePolicyJson:        `{"repeatSkillPenaltyMultiplier":0.65,"dodgeUnderPressure":true,"maulCounterUnderPressure":true,"maulCounterChance":0.22,"dodgeRetreatMultiplier":0.70,"globalDodgeMultiplier":0.85,"commitThreatWeight":0.28,"closingThreatWeight":0.18,"defensiveBiteWeight":0.14,"fleeingLungeWeight":0.20,"lowResourceRiskFloor":0.16}`,
 			StaminaPolicyJson:         `{"max":100,"dodgeCostMultiplier":0.50,"regenPerSecond":12}`,
 			TargetOpportunityPolicyId: "opportunity_wolf_harasser_v1",
 			OrbitPolicyId:             "orbit_wolf_harasser_combat_walk_v1",
