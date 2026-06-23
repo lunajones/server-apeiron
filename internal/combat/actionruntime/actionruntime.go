@@ -14,7 +14,8 @@ type ActionKind string
 type Phase string
 
 const (
-	ActorKindPlayer ActorKind = "player"
+	ActorKindPlayer   ActorKind = "player"
+	ActorKindCreature ActorKind = "creature"
 
 	ActionKindWeaponBasic   ActionKind = "weapon_basic"
 	ActionKindActiveSkill   ActionKind = "active_skill"

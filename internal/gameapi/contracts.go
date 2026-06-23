@@ -561,6 +561,9 @@ func (c RuntimeContracts) ValidateRequiredCoverage(strictLoadedSource bool) erro
 		if action, ok := c.ActionContracts[skillID]; !ok || action.ID == "" {
 			missing = append(missing, "skill action manifest "+skillID)
 		}
+		if strictLoadedSource {
+			missing = append(missing, validateRuntimeSkillContract(skillID, skill)...)
+		}
 	}
 	if c.WolfPolicy.ContractID == "" || c.WolfPolicy.DodgeSkillID == "" {
 		missing = append(missing, "wolf runtime policy")
@@ -617,6 +620,57 @@ func (c RuntimeContracts) ValidateRequiredCoverage(strictLoadedSource bool) erro
 		return fmt.Errorf("runtime contract coverage incomplete: %s", strings.Join(missing, "; "))
 	}
 	return nil
+}
+
+func validateRuntimeSkillContract(skillID string, skill SkillRuntimeContract) []string {
+	var missing []string
+	if skill.SkillID == "" {
+		missing = append(missing, "skill id "+skillID)
+	}
+	if skill.Damage < 0 {
+		missing = append(missing, "skill damage negative "+skillID)
+	}
+	if skill.PostureDamage < 0 {
+		missing = append(missing, "skill posture damage negative "+skillID)
+	}
+	if skill.Damage <= 0 && skill.PostureDamage <= 0 {
+		return missing
+	}
+	if skill.MaxTargets <= 0 {
+		missing = append(missing, "skill max targets "+skillID)
+	}
+	if len(skill.Hitboxes) == 0 {
+		missing = append(missing, "skill temporal hitbox "+skillID)
+		return missing
+	}
+	hasTemporal := false
+	for _, profile := range skill.Hitboxes {
+		if profile == nil {
+			continue
+		}
+		if profile.GetDamageGroupId() == "" {
+			missing = append(missing, "skill hitbox damage group "+skillID)
+		}
+		if profile.GetHitboxEndMs() > 0 && profile.GetHitboxEndMs() <= profile.GetHitboxStartMs() {
+			missing = append(missing, "skill hitbox timing "+skillID)
+		}
+		motion := profile.GetMotionProfile()
+		if motion == nil || !motion.GetEnabled() {
+			continue
+		}
+		if motion.GetDamageGroupId() == "" {
+			missing = append(missing, "skill motion damage group "+skillID)
+		}
+		if len(motion.GetSamples()) == 0 {
+			missing = append(missing, "skill motion samples "+skillID)
+			continue
+		}
+		hasTemporal = true
+	}
+	if !hasTemporal {
+		missing = append(missing, "skill temporal motion profile "+skillID)
+	}
+	return missing
 }
 
 func validateCombatCoreProfile(profileID string, profile *dbv1.CombatCoreProfile) []string {

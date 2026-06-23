@@ -34,6 +34,35 @@ func TestRecoveryFixtureRuntimeContractsExposeRequiredSkillContracts(t *testing.
 	}
 }
 
+func TestStrictRuntimeCoverageRejectsDamagingSkillWithoutTemporalHitbox(t *testing.T) {
+	contracts := RecoveryFixtureRuntimeContracts()
+	skill := contracts.SkillContracts["player_shield_rush"]
+	skill.Hitboxes = nil
+	contracts.SkillContracts["player_shield_rush"] = skill
+
+	err := contracts.ValidateRequiredCoverage(true)
+	if err == nil {
+		t.Fatal("ValidateRequiredCoverage accepted damaging skill without temporal hitbox")
+	}
+	if !strings.Contains(err.Error(), "skill temporal hitbox player_shield_rush") {
+		t.Fatalf("missing temporal hitbox blocker not reported: %v", err)
+	}
+}
+
+func TestStrictRuntimeCoverageAllowsNonDamagingMovementSkillWithoutHitbox(t *testing.T) {
+	contracts := RecoveryFixtureRuntimeContracts()
+	skill := contracts.SkillContracts["wolf_dodge"]
+	if skill.Damage != 0 || skill.PostureDamage != 0 {
+		t.Fatalf("wolf_dodge fixture unexpectedly damages: %#v", skill)
+	}
+	skill.Hitboxes = nil
+	contracts.SkillContracts["wolf_dodge"] = skill
+
+	if err := contracts.ValidateRequiredCoverage(true); err != nil {
+		t.Fatalf("ValidateRequiredCoverage rejected non-damaging movement skill without hitbox: %v", err)
+	}
+}
+
 func TestRecoveryFixtureRuntimeContractsExposeCreatureSkillContracts(t *testing.T) {
 	contracts := RecoveryFixtureRuntimeContracts()
 	for _, skillID := range []string{"bite", "lunge", "wolf_dodge", "maul"} {
@@ -460,8 +489,8 @@ func (f fakeRuntimeContractSource) GetSkill(_ context.Context, req *dbv1.IdReque
 		Skill: &dbv1.Skill{
 			Id:            req.GetId(),
 			StaminaCost:   fakeSkillStaminaCost(req.GetId()),
-			BaseDamage:    12,
-			PostureDamage: 20,
+			BaseDamage:    fakeSkillDamage(req.GetId()),
+			PostureDamage: fakeSkillPostureDamage(req.GetId()),
 			MaxRange:      300,
 			MaxTargets:    1,
 			IsBlockable:   true,
@@ -484,12 +513,27 @@ func fakeSkillStaminaCost(skillID string) float64 {
 	}
 }
 
+func fakeSkillDamage(skillID string) float64 {
+	if skillID == "wolf_dodge" {
+		return 0
+	}
+	return 12
+}
+
+func fakeSkillPostureDamage(skillID string) float64 {
+	if skillID == "wolf_dodge" {
+		return 0
+	}
+	return 20
+}
+
 func (f fakeRuntimeContractSource) GetSkillHitboxProfiles(_ context.Context, req *dbv1.IdRequest, _ ...grpc.CallOption) (*dbv1.SkillHitboxProfilesResponse, error) {
 	if f.missingSkills[req.GetId()] {
 		return &dbv1.SkillHitboxProfilesResponse{Found: false}, nil
 	}
 	targetType := "enemy"
 	maxTargets := int32(1)
+	damageGroupID := "damage_group_" + req.GetId()
 	return &dbv1.SkillHitboxProfilesResponse{
 		Found: true,
 		Profiles: []*dbv1.SkillHitboxProfile{{
@@ -504,6 +548,20 @@ func (f fakeRuntimeContractSource) GetSkillHitboxProfiles(_ context.Context, req
 			TargetType:    &targetType,
 			MaxTargets:    &maxTargets,
 			Priority:      20,
+			DamageGroupId: damageGroupID,
+			MotionProfile: &dbv1.SkillHitboxMotionProfile{
+				Id:            "motion_" + req.GetId(),
+				Enabled:       true,
+				MotionType:    "timeline_sweep",
+				TimeBasis:     "hitbox_window_normalized",
+				Interpolation: "linear",
+				SweepShape:    "capsule_strip",
+				DamageGroupId: damageGroupID,
+				Samples: []*dbv1.SkillHitboxMotionSample{
+					recoveredHitboxMotionSample(0, 0.00, 40, 0, 90, 90, 0, 120, 45, 90, 0, 0),
+					recoveredHitboxMotionSample(1, 1.00, 120, 0, 90, 90, 0, 120, 45, 180, 0, 0),
+				},
+			},
 		}},
 	}, nil
 }

@@ -645,76 +645,16 @@ func (r *Runtime) updateWolfPolicyLocked(wolf *entityState, player *entityState)
 	selectedSkill := decision.SelectedSkill
 
 	selectedRuntime := r.contracts.skillContract(selectedSkill)
-	motion := movement.ResolveConstantStep(movement.ConstantStepInput{
-		Position:         toDomainVector(wolf.position),
-		Direction:        decision.Direction,
-		SpeedCMPerSecond: decision.SpeedCMPerSec,
-		TickRate:         tickRate,
-	})
-	wolf.position = fromDomainVector(motion.Projected)
-	wolf.velocity = fromDomainVector(motion.Velocity)
-	wolf.yaw = vectorYaw(normalize(vector{x: player.position.x - wolf.position.x, y: player.position.y - wolf.position.y}))
-	wolf.movementState = action
-	if creatureai.PublishesSkill(action) {
-		wolf.skillState = action
-	} else {
+	resolvedMotion := resolveGroundedCreatureDecisionMotion(wolf, decision)
+	applyCreatureDecisionMotion(wolf, player, decision, resolvedMotion)
+	r.publishWolfLocomotionLocked(wolf, decision, selectedRuntime, resolvedMotion, nowTime)
+	r.publishWolfAIStateLocked(wolf, decision, policy, selectedRuntime, rangeCM, lungeMinRangeCM, lungeMaxRangeCM)
+	actionUpdate := r.applyCreatureActionRuntimeLocked(wolf, player, decision, selectedRuntime, start, nowTime)
+	if actionUpdate.Active && wolf.locomotion != nil {
+		wolf.locomotion.Phase = string(actionUpdate.Phase)
+		applyActionInstanceLocomotionTiming(wolf.locomotion, wolf.actionInstance, nowTime)
+	} else if creatureActionMotionComplete(wolf, nowTime) && !creatureai.PublishesSkill(action) {
 		wolf.skillState = "idle"
-	}
-	wolf.locomotion = locomotionFromContractWithOverrides(r.contracts.contractForAbility(selectedSkill), "active", start, wolf.position, r.tick, 0, motion.SpeedCMPerSecond, motion.DistanceCM)
-	wolf.locomotion.MovementMode = "grounded"
-	wolf.locomotion.Action = action
-	wolf.locomotion.AbilityKey = selectedSkill
-	wolf.creatureAI = &gamev1.CreatureAIState{
-		MovementTactic:                        decision.MovementTactic,
-		CombatTactic:                          decision.CombatTactic,
-		Commitment:                            decision.Commitment,
-		CapabilityId:                          policy.CapabilityID,
-		ContractId:                            policy.ContractID,
-		ContractHash:                          policy.ContractHash,
-		OrbitSide:                             decision.OrbitSide,
-		LastReason:                            decision.Reason,
-		TacticalDestination:                   toProto(fromDomainVector(decision.Destination)),
-		BehaviorFamily:                        "beast_harasser",
-		CombatRole:                            "duelist",
-		DecisionScore:                         decision.Score,
-		DesiredRangeCm:                        policy.DesiredRangeCM,
-		ActualRangeCm:                         rangeCM,
-		PathState:                             "direct",
-		LosState:                              "clear",
-		SelectedSkillId:                       selectedSkill,
-		ProfileSource:                         r.contracts.Source,
-		SkillMovementArcHeightCm:              policy.LungeArcHeightCM,
-		SkillMovementArcCurve:                 "low_fast",
-		SkillMovementTakeoffMs:                140,
-		SkillMovementLandingLockMs:            120,
-		SkillWindupMs:                         selectedRuntime.WindupMS,
-		SkillActiveStartMs:                    selectedRuntime.WindupMS,
-		SkillActiveEndMs:                      selectedRuntime.WindupMS + selectedRuntime.ActiveMS,
-		SkillRecoveryMs:                       selectedRuntime.RecoveryMS,
-		SkillActionLockMs:                     selectedRuntime.WindupMS + selectedRuntime.ActiveMS + selectedRuntime.RecoveryMS,
-		SkillMovementType:                     selectedRuntime.MovementAction.ActionType,
-		SkillMovementStartMs:                  selectedRuntime.WindupMS,
-		SkillMovementDurationMs:               selectedRuntime.MovementAction.DurationMS,
-		SkillMovementDistanceCm:               selectedRuntime.MovementAction.DistanceCM,
-		SkillMovementDesiredLandingDistanceCm: lungeMaxRangeCM,
-		SkillMovementMinLandingDistanceCm:     lungeMinRangeCM,
-		SkillMovementStopAtContactRatio:       1,
-	}
-	now := nowTime.UnixMilli()
-	if creatureai.PublishesSkill(action) && selectedSkill != "" {
-		startingSkill := wolf.skillRuntime == nil || wolf.skillRuntime.GetCurrentSkillId() != selectedSkill || wolf.skillRuntime.GetStartedAtMs() <= 0
-		startedAt := now
-		if wolf.skillRuntime != nil && wolf.skillRuntime.GetCurrentSkillId() == selectedSkill && wolf.skillRuntime.GetStartedAtMs() > 0 {
-			startedAt = wolf.skillRuntime.GetStartedAtMs()
-		}
-		wolf.skillRuntime = &gamev1.SkillRuntimeState{CurrentSkillId: selectedSkill, State: action, StartedAtMs: startedAt, LastResolvedAtMs: now}
-		if startingSkill {
-			r.spendCreatureSkillStaminaLocked(wolf, selectedSkill, selectedRuntime)
-			r.startCreatureSkillCooldownLocked(wolf, selectedSkill, selectedRuntime, nowTime)
-		}
-		r.resolveCreatureSkillImpactLocked(wolf, player, selectedRuntime, nowTime)
-	} else {
-		wolf.skillRuntime = &gamev1.SkillRuntimeState{State: "idle", LastResolvedAtMs: now}
 	}
 }
 
@@ -981,6 +921,9 @@ func (r *Runtime) activeCreatureSkillLocked(creature *entityState, now time.Time
 	startedAtMS := creature.skillRuntime.GetStartedAtMs()
 	if skillID == "" || startedAtMS <= 0 {
 		return "", false
+	}
+	if creature.actionInstance != nil && creature.actionInstance.SkillID.String() == skillID {
+		return skillID, creature.actionInstance.PhaseAt(now) != actionruntime.PhaseComplete
 	}
 	contract := r.contracts.skillContract(skillID)
 	duration := durationFromMS(contract.WindupMS + contract.ActiveMS + contract.RecoveryMS)
