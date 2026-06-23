@@ -1036,6 +1036,137 @@ func recoveredCreatureSkillStaminaCost(skillID string) float64 {
 	}
 }
 
+func recoveredCreatureSkillDamage(skillID string) (damage float64, posture float64) {
+	switch skillID {
+	case "bite":
+		return 9, 17.6
+	case "lunge":
+		return 6.5, 19.2
+	case "maul":
+		return 6.5, 19.2
+	default:
+		return 0, 0
+	}
+}
+
+func recoveredCreatureSkillMaxTargets(skillID string) int32 {
+	switch skillID {
+	case "maul":
+		return 2
+	default:
+		return 1
+	}
+}
+
+func recoveredCreatureSkillHitboxes(skillID string) []*dbv1.SkillHitboxProfile {
+	damageGroupID := recoveredCreatureSkillHitboxDamageGroupID(skillID)
+	motionProfile := recoveredCreatureSkillHitboxMotionProfile(skillID)
+	if damageGroupID == "" || motionProfile == nil {
+		return nil
+	}
+	targetType := "enemy"
+	maxTargets := recoveredCreatureSkillMaxTargets(skillID)
+	profile := &dbv1.SkillHitboxProfile{
+		Id:                  recoveredCreatureSkillHitboxID(skillID),
+		SkillId:             skillID,
+		HitboxShape:         "temporal_sweep",
+		TargetType:          &targetType,
+		MaxTargets:          &maxTargets,
+		RequiresLineOfSight: true,
+		CanHitNeutral:       true,
+		DamageGroupId:       damageGroupID,
+		MotionProfile:       motionProfile,
+	}
+	switch skillID {
+	case "bite":
+		profile.HitboxStartMs, profile.HitboxEndMs = 120, 340
+		profile.OffsetX, profile.OffsetY, profile.OffsetZ = 80, 0, 90
+		profile.SizeX, profile.SizeY, profile.SizeZ = 95, 0, 115
+		profile.Radius, profile.Length = 48, 145
+	case "lunge":
+		profile.HitboxStartMs, profile.HitboxEndMs = 3600, 4030
+		profile.OffsetX, profile.OffsetY, profile.OffsetZ = 130, 0, 105
+		profile.SizeX, profile.SizeY, profile.SizeZ = 100, 0, 120
+		profile.Radius, profile.Length = 50, 320
+	case "maul":
+		profile.HitboxStartMs, profile.HitboxEndMs = 180, 440
+		profile.OffsetX, profile.OffsetY, profile.OffsetZ = 80, 0, 100
+		profile.SizeZ = 130
+		profile.Radius, profile.Length, profile.Angle = 62, 170, 140
+	default:
+		return nil
+	}
+	return []*dbv1.SkillHitboxProfile{profile}
+}
+
+func recoveredCreatureSkillHitboxID(skillID string) string {
+	switch skillID {
+	case "bite":
+		return "hitbox_bite_0"
+	case "lunge":
+		return "hitbox_lunge_0"
+	case "maul":
+		return "hitbox_maul_0"
+	default:
+		return ""
+	}
+}
+
+func recoveredCreatureSkillHitboxDamageGroupID(skillID string) string {
+	switch skillID {
+	case "bite":
+		return "wolf_bite_damage"
+	case "lunge":
+		return "wolf_lunge_damage"
+	case "maul":
+		return "wolf_maul_damage"
+	default:
+		return ""
+	}
+}
+
+func recoveredCreatureSkillHitboxMotionProfile(skillID string) *dbv1.SkillHitboxMotionProfile {
+	id, sweepShape, samples := recoveredCreatureSkillHitboxMotionSamples(skillID)
+	if id == "" || len(samples) == 0 {
+		return nil
+	}
+	return &dbv1.SkillHitboxMotionProfile{
+		Id:            id,
+		Enabled:       true,
+		MotionType:    "timeline_sweep",
+		TimeBasis:     "hitbox_window_normalized",
+		Interpolation: "linear",
+		SweepShape:    sweepShape,
+		DamageGroupId: recoveredCreatureSkillHitboxDamageGroupID(skillID),
+		Samples:       samples,
+	}
+}
+
+func recoveredCreatureSkillHitboxMotionSamples(skillID string) (string, string, []*dbv1.SkillHitboxMotionSample) {
+	switch skillID {
+	case "bite":
+		return "motion_wolf_bite_melee_v1", "capsule_strip", []*dbv1.SkillHitboxMotionSample{
+			recoveredHitboxMotionSample(0, 0.00, 45, 0, 85, 90, 0, 115, 45, 70, 0, 0),
+			recoveredHitboxMotionSample(1, 0.55, 80, 0, 90, 95, 0, 115, 48, 125, 0, 0),
+			recoveredHitboxMotionSample(2, 1.00, 95, 0, 85, 90, 0, 115, 45, 145, 0, 0),
+		}
+	case "lunge":
+		return "motion_wolf_lunge_cross_v1", "capsule_strip", []*dbv1.SkillHitboxMotionSample{
+			recoveredHitboxMotionSample(0, 0.00, 60, 0, 90, 100, 0, 120, 50, 100, 0, 0),
+			recoveredHitboxMotionSample(1, 0.55, 140, 0, 110, 100, 0, 120, 50, 230, 0, 0),
+			recoveredHitboxMotionSample(2, 1.00, 210, 0, 90, 100, 0, 120, 50, 320, 0, 0),
+		}
+	case "maul":
+		return "motion_wolf_maul_lateral_counter_v1", "arc_slice", []*dbv1.SkillHitboxMotionSample{
+			recoveredHitboxMotionSample(0, 0.00, 65, 40, 95, 0, 0, 125, 58, 120, -70, -25),
+			recoveredHitboxMotionSample(1, 0.45, 90, 0, 100, 0, 0, 130, 62, 170, -25, 25),
+			recoveredHitboxMotionSample(2, 1.00, 65, -40, 95, 0, 0, 125, 58, 120, 25, 70),
+		}
+	default:
+		return "", "", nil
+	}
+}
+
 func recoveredCreatureSkillContract(skillID string, contractID string, actionType string, reconciliation string, contactPolicy string, distance float64, durationMS, activeMS, recoveryMS, windupMS, skillRecoveryMS, cooldownMS int32) SkillRuntimeContract {
 	action := MovementActionRuntimeContract{
 		ID:                       contractID,
@@ -1062,6 +1193,7 @@ func recoveredCreatureSkillContract(skillID string, contractID string, actionTyp
 		action.LandingDetectionPolicy = "server_grounded_handoff"
 		action.GroundZPolicy = "server_position_is_actor_root"
 	}
+	damage, posture := recoveredCreatureSkillDamage(skillID)
 	return SkillRuntimeContract{
 		SkillID:                  skillID,
 		MovementActionContractID: action.ID,
@@ -1070,17 +1202,20 @@ func recoveredCreatureSkillContract(skillID string, contractID string, actionTyp
 		ActiveMS:                 activeMS,
 		RecoveryMS:               skillRecoveryMS,
 		CooldownMS:               cooldownMS,
-		StaminaCost:              recoveredCreatureSkillStaminaCost(skillID),
 		MovementLockPolicy:       "contract",
 		QueuePolicy:              "none",
 		CancelPolicy:             "none",
 		StartsAtPhase:            "active",
 		HandoffPolicy:            "explicit_recovery_handoff",
 		NormalInputPolicy:        "blocked_during_owned_root",
+		Damage:                   damage,
+		PostureDamage:            posture,
+		StaminaCost:              recoveredCreatureSkillStaminaCost(skillID),
 		TargetPolicy:             "target_direction",
 		ContactPolicy:            contactPolicy,
-		MaxTargets:               1,
+		MaxTargets:               recoveredCreatureSkillMaxTargets(skillID),
 		Blockable:                true,
+		Hitboxes:                 recoveredCreatureSkillHitboxes(skillID),
 		Enabled:                  true,
 	}
 }
