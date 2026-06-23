@@ -415,3 +415,47 @@ Do not add future dodge checks to the broad movement validation by default. Keep
 walk/run/turn, and skill-movement suites small and targeted so regressions point to one authority
 path. During an active local dodge, snapshots may update authoritative action state, but root
 correction must wait for explicit server snap/rejection or the post-dodge handoff.
+
+## 2026-06-23 - Grounded Walk Run Strafe Turn Validation Suite
+
+### Symptom
+
+Manual PIE still reported rubberbanding around base movement: walk/run curves, lateral sprint,
+diagonal sprint, backward movement, A/D reversals, and post-dodge grounded movement. The existing
+automation mixed leap, dodge, M1, R, F, and grounded movement in one long flow, so failures were
+hard to attribute.
+
+### Hypothesis
+
+Before changing movement again, grounded locomotion needed a small dedicated suite that only holds
+walk/run/strafe/backward/diagonal/turn inputs and fails on actual authoritative movement damage:
+server correction, command rejection, segment movement failure, or incoherent high-speed
+`move_stop`.
+
+### Change
+
+- Unreal now supports `-ApeironRunGroundedMovementInputValidation`.
+- The suite runs 23 held-input segments: W walk, W sprint, A/D strafe, A/D lateral sprint, W+A/W+D
+  sprint, S backward walk, S backward run, smooth W curve, aggressive W sprint curves, same/opposite
+  lateral sprint yaw, opposing diagonal sprint yaw, and A/D plus W+A/W+D reversals.
+- The bridge records grounded validation correction/rejection/probe/max-error counters.
+- `SubmitMovementIfNeeded` records `high_speed_move_stop` when a stop command is submitted while
+  local horizontal velocity is still high.
+- The PowerShell runner accepts `-GroundedInputPlayback` and scans the focused log for segment
+  failures, correction events, rejection events, high-speed stops, and existing rubberband
+  signatures.
+
+### Tests
+
+- `PlainTestMapEditor Win64 Development` Unreal build succeeded with `-NoHotReload`.
+- Dedicated Unreal grounded suite passed:
+  `grounded=segments=23/23 failed=0 path=27546.1 corrections=0 rejections=0 probes=902 high_speed_stops=0 max_error=86.5`.
+
+### Guardrail
+
+`probes` are observations, not automatic failures. A grounded movement run fails on corrections,
+rejections, failed segments, incoherent high-speed `move_stop`, or scanner-classified visible
+rubberband signatures. Do not hide future failures by loosening correction/rejection detection; if
+manual PIE still shows rubber while this suite passes, investigate interference from state that this
+suite intentionally excludes: creature contact, action state persistence, post-skill handoff, or
+runtime state surviving across sessions.
