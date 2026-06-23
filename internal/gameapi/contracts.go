@@ -23,6 +23,8 @@ type ContractSource interface {
 }
 
 type ProfileContractSource interface {
+	GetCombatCoreProfile(context.Context, *dbv1.IdRequest, ...grpc.CallOption) (*dbv1.CombatCoreProfileResponse, error)
+	GetCombatDefenseContract(context.Context, *dbv1.IdRequest, ...grpc.CallOption) (*dbv1.CombatDefenseContractResponse, error)
 	GetMovementActionContract(context.Context, *dbv1.IdRequest, ...grpc.CallOption) (*dbv1.MovementActionContractResponse, error)
 	GetMovementReconciliationContract(context.Context, *dbv1.IdRequest, ...grpc.CallOption) (*dbv1.MovementReconciliationContractResponse, error)
 	GetRuntimeMovementReconciliationProfile(context.Context, *dbv1.IdRequest, ...grpc.CallOption) (*dbv1.RuntimeMovementReconciliationProfileResponse, error)
@@ -40,6 +42,8 @@ type RuntimeContracts struct {
 	MovementProfile *gamev1.MovementReconciliationProfile
 	ActionContracts map[string]MovementActionRuntimeContract
 	SkillContracts  map[string]SkillRuntimeContract
+	CombatCore      CombatCoreRuntimeContracts
+	Defense         DefenseRuntimeContracts
 	WolfPolicy      WolfRuntimePolicy
 	CombatModes     []*gamev1.CombatModeSlot
 	LoadIssues      []string
@@ -76,6 +80,18 @@ type SkillRuntimeContract struct {
 	Blockable     bool
 	Hitboxes      []*dbv1.SkillHitboxProfile
 	Enabled       bool
+}
+
+type CombatCoreRuntimeContracts struct {
+	PlayerProfileID   string
+	CreatureProfileID string
+	Profiles          map[string]*dbv1.CombatCoreProfile
+}
+
+type DefenseRuntimeContracts struct {
+	PlayerGuardContractID   string
+	CreatureGuardContractID string
+	Contracts               map[string]*dbv1.CombatDefenseContract
 }
 
 type WolfRuntimePolicy struct {
@@ -171,6 +187,10 @@ type movementActionContractMetadata struct {
 
 const runtimeMovementReconciliationProfileID = "player_default_movement_profile"
 const wolfRuntimeContractID = "contract_wolf_pack_harasser_v1"
+const playerCombatCoreProfileID = "combat_core_player_sword_shield_v1"
+const creatureCombatCoreProfileID = "combat_core_steppe_wolf"
+const playerGuardDefenseContractID = "player_shield_guard_v1"
+const creatureGuardDefenseContractID = "wolf_attack_vs_guard_v1"
 
 func requiredBaseMovementActions() []struct {
 	abilityKey string
@@ -232,6 +252,7 @@ func LoadRuntimeContractsFromDB(ctx context.Context, skills ContractSource, prof
 		contracts.ActionContracts[skillID] = loaded.MovementAction
 	}
 
+	loadCombatRuntimeContracts(ctx, profiles, &contracts)
 	loadWolfBrainRuntimeContracts(ctx, profiles, &contracts)
 
 	if setupResp, err := profiles.GetCreatureSkillSetupPolicies(ctx, &dbv1.IdRequest{Id: contracts.WolfPolicy.ContractID}); err == nil && setupResp.GetFound() {
@@ -275,9 +296,47 @@ func emptyDBRuntimeContracts() RuntimeContracts {
 		Source:          "db_contracts_incomplete",
 		ActionContracts: map[string]MovementActionRuntimeContract{},
 		SkillContracts:  map[string]SkillRuntimeContract{},
+		CombatCore: CombatCoreRuntimeContracts{
+			PlayerProfileID:   playerCombatCoreProfileID,
+			CreatureProfileID: creatureCombatCoreProfileID,
+			Profiles:          map[string]*dbv1.CombatCoreProfile{},
+		},
+		Defense: DefenseRuntimeContracts{
+			PlayerGuardContractID:   playerGuardDefenseContractID,
+			CreatureGuardContractID: creatureGuardDefenseContractID,
+			Contracts:               map[string]*dbv1.CombatDefenseContract{},
+		},
 		WolfPolicy: WolfRuntimePolicy{
 			ContractID: wolfRuntimeContractID,
 		},
+	}
+}
+
+func loadCombatRuntimeContracts(ctx context.Context, profiles ProfileContractSource, contracts *RuntimeContracts) {
+	if contracts == nil || profiles == nil {
+		return
+	}
+	for _, profileID := range []string{contracts.CombatCore.PlayerProfileID, contracts.CombatCore.CreatureProfileID} {
+		if profileID == "" {
+			continue
+		}
+		resp, err := profiles.GetCombatCoreProfile(ctx, &dbv1.IdRequest{Id: profileID})
+		if err != nil || !resp.GetFound() || resp.GetProfile() == nil {
+			contracts.LoadIssues = append(contracts.LoadIssues, "missing combat core profile "+profileID)
+			continue
+		}
+		contracts.CombatCore.Profiles[profileID] = resp.GetProfile()
+	}
+	for _, contractID := range []string{contracts.Defense.PlayerGuardContractID, contracts.Defense.CreatureGuardContractID} {
+		if contractID == "" {
+			continue
+		}
+		resp, err := profiles.GetCombatDefenseContract(ctx, &dbv1.IdRequest{Id: contractID})
+		if err != nil || !resp.GetFound() || resp.GetContract() == nil {
+			contracts.LoadIssues = append(contracts.LoadIssues, "missing combat defense contract "+contractID)
+			continue
+		}
+		contracts.Defense.Contracts[contractID] = resp.GetContract()
 	}
 }
 
@@ -467,6 +526,34 @@ func (c RuntimeContracts) ValidateRequiredCoverage(strictLoadedSource bool) erro
 	if c.WolfPolicy.ContractID == "" || c.WolfPolicy.DodgeSkillID == "" {
 		missing = append(missing, "wolf runtime policy")
 	}
+	for _, profileID := range []string{c.CombatCore.PlayerProfileID, c.CombatCore.CreatureProfileID} {
+		if profileID == "" {
+			missing = append(missing, "combat core profile id")
+			continue
+		}
+		profile := c.CombatCore.Profiles[profileID]
+		if profile == nil {
+			missing = append(missing, "combat core profile "+profileID)
+			continue
+		}
+		if strictLoadedSource {
+			missing = append(missing, validateCombatCoreProfile(profileID, profile)...)
+		}
+	}
+	for _, contractID := range []string{c.Defense.PlayerGuardContractID, c.Defense.CreatureGuardContractID} {
+		if contractID == "" {
+			missing = append(missing, "combat defense contract id")
+			continue
+		}
+		contract := c.Defense.Contracts[contractID]
+		if contract == nil {
+			missing = append(missing, "combat defense contract "+contractID)
+			continue
+		}
+		if strictLoadedSource {
+			missing = append(missing, validateCombatDefenseContract(contractID, contract)...)
+		}
+	}
 	if strictLoadedSource {
 		if c.WolfPolicy.TargetOpportunityPolicyID == "" {
 			missing = append(missing, "wolf target opportunity policy")
@@ -488,6 +575,46 @@ func (c RuntimeContracts) ValidateRequiredCoverage(strictLoadedSource bool) erro
 		return fmt.Errorf("runtime contract coverage incomplete: %s", strings.Join(missing, "; "))
 	}
 	return nil
+}
+
+func validateCombatCoreProfile(profileID string, profile *dbv1.CombatCoreProfile) []string {
+	var missing []string
+	if profile.GetDamageDealtMultiplier() <= 0 {
+		missing = append(missing, "combat core damage dealt "+profileID)
+	}
+	if profile.GetDamageTakenMultiplier() <= 0 {
+		missing = append(missing, "combat core damage taken "+profileID)
+	}
+	if profile.GetMaxPosture() <= 0 {
+		missing = append(missing, "combat core max posture "+profileID)
+	}
+	if profile.GetPostureDamageMultiplier() <= 0 {
+		missing = append(missing, "combat core posture damage "+profileID)
+	}
+	if profile.GetBlockDamageReduction() < 0 {
+		missing = append(missing, "combat core block reduction "+profileID)
+	}
+	if profile.GetParryRewardMultiplier() <= 0 {
+		missing = append(missing, "combat core parry reward "+profileID)
+	}
+	return missing
+}
+
+func validateCombatDefenseContract(contractID string, contract *dbv1.CombatDefenseContract) []string {
+	var missing []string
+	if contract.GetId() == "" {
+		missing = append(missing, "combat defense id "+contractID)
+	}
+	if contract.GetDefenseType() == "" {
+		missing = append(missing, "combat defense type "+contractID)
+	}
+	if contract.GetFrontalArcDeg() <= 0 {
+		missing = append(missing, "combat defense frontal arc "+contractID)
+	}
+	if contract.GetGuardDamageMultiplier() <= 0 {
+		missing = append(missing, "combat defense guard multiplier "+contractID)
+	}
+	return missing
 }
 
 func validateRuntimeMovementReconciliationProfile(profile *gamev1.MovementReconciliationProfile) []string {
@@ -685,6 +812,22 @@ func RecoveryFixtureRuntimeContracts() RuntimeContracts {
 		MovementProfile: recoveredMovementProfile(),
 		ActionContracts: map[string]MovementActionRuntimeContract{},
 		SkillContracts:  map[string]SkillRuntimeContract{},
+		CombatCore: CombatCoreRuntimeContracts{
+			PlayerProfileID:   playerCombatCoreProfileID,
+			CreatureProfileID: creatureCombatCoreProfileID,
+			Profiles: map[string]*dbv1.CombatCoreProfile{
+				playerCombatCoreProfileID:   recoveredPlayerCombatCoreProfile(),
+				creatureCombatCoreProfileID: recoveredCreatureCombatCoreProfile(),
+			},
+		},
+		Defense: DefenseRuntimeContracts{
+			PlayerGuardContractID:   playerGuardDefenseContractID,
+			CreatureGuardContractID: creatureGuardDefenseContractID,
+			Contracts: map[string]*dbv1.CombatDefenseContract{
+				playerGuardDefenseContractID:   recoveredPlayerGuardDefenseContract(),
+				creatureGuardDefenseContractID: recoveredCreatureGuardDefenseContract(),
+			},
+		},
 		WolfPolicy: WolfRuntimePolicy{
 			ContractID:                     wolfRuntimeContractID,
 			ContractHash:                   wolfRuntimeContractID,
@@ -767,6 +910,73 @@ func RecoveryFixtureRuntimeContracts() RuntimeContracts {
 		contracts.ActionContracts[skill.SkillID] = skill.MovementAction
 	}
 	return contracts
+}
+
+func recoveredPlayerCombatCoreProfile() *dbv1.CombatCoreProfile {
+	return &dbv1.CombatCoreProfile{
+		DamageDealtMultiplier:   1,
+		DamageTakenMultiplier:   1,
+		CanBlock:                true,
+		BlockDamageReduction:    1,
+		MaxPosture:              100,
+		PostureDamageMultiplier: 1,
+		PostureBreakDurationMs:  2200,
+		CanParry:                true,
+		ParryWindowMs:           220,
+		ParryRewardMultiplier:   1.4,
+		DodgeIframeMs:           320,
+	}
+}
+
+func recoveredCreatureCombatCoreProfile() *dbv1.CombatCoreProfile {
+	return &dbv1.CombatCoreProfile{
+		DamageDealtMultiplier:   0.95,
+		DamageTakenMultiplier:   1.05,
+		CanBlock:                false,
+		BlockDamageReduction:    0,
+		MaxPosture:              65,
+		PostureDamageMultiplier: 1.15,
+		PostureBreakDurationMs:  1800,
+		CanParry:                false,
+		ParryWindowMs:           0,
+		ParryRewardMultiplier:   1,
+		DodgeIframeMs:           220,
+	}
+}
+
+func recoveredPlayerGuardDefenseContract() *dbv1.CombatDefenseContract {
+	return &dbv1.CombatDefenseContract{
+		Id:                         playerGuardDefenseContractID,
+		Name:                       "Player Shield Guard",
+		Description:                "Recovered DB-equivalent frontal shield guard.",
+		DefenseType:                "shield_block",
+		FrontalArcDeg:              120,
+		DefenderMarginLeftRatio:    0.30,
+		DefenderMarginRightRatio:   0.30,
+		StaminaDamageOnlyOnBlock:   true,
+		HealthDamageOnUnblockedHit: true,
+		PostureDamageOnBlock:       true,
+		GuardDamageMultiplier:      1,
+		BlockStaminaDrainPerSecond: 2,
+		MetadataJson:               `{"source":"recovery_fixture","frontFacing":"control_rotation_yaw"}`,
+	}
+}
+
+func recoveredCreatureGuardDefenseContract() *dbv1.CombatDefenseContract {
+	return &dbv1.CombatDefenseContract{
+		Id:                         creatureGuardDefenseContractID,
+		Name:                       "Wolf Attack Vs Guard",
+		Description:                "Recovered DB-equivalent creature incoming melee guard interaction.",
+		DefenseType:                "incoming_melee",
+		FrontalArcDeg:              120,
+		DefenderMarginLeftRatio:    0.30,
+		DefenderMarginRightRatio:   0.30,
+		StaminaDamageOnlyOnBlock:   true,
+		HealthDamageOnUnblockedHit: true,
+		PostureDamageOnBlock:       true,
+		GuardDamageMultiplier:      1,
+		MetadataJson:               `{"source":"recovery_fixture"}`,
+	}
 }
 
 // recoveredPlayerSkillDamage returns the authoritative base/posture damage for a player
@@ -1306,6 +1516,28 @@ func (c RuntimeContracts) skillContract(skillID string) SkillRuntimeContract {
 		return contract
 	}
 	return SkillRuntimeContract{SkillID: skillID}
+}
+
+func (c RuntimeContracts) combatCoreProfileForEntity(entity *entityState) *dbv1.CombatCoreProfile {
+	profileID := c.CombatCore.PlayerProfileID
+	if entity != nil && strings.EqualFold(entity.entityType, "creature") {
+		profileID = c.CombatCore.CreatureProfileID
+	}
+	if profileID == "" {
+		return nil
+	}
+	return c.CombatCore.Profiles[profileID]
+}
+
+func (c RuntimeContracts) defenseContractForEntity(entity *entityState) *dbv1.CombatDefenseContract {
+	contractID := c.Defense.PlayerGuardContractID
+	if entity != nil && strings.EqualFold(entity.entityType, "creature") {
+		contractID = c.Defense.CreatureGuardContractID
+	}
+	if contractID == "" {
+		return nil
+	}
+	return c.Defense.Contracts[contractID]
 }
 
 func (c RuntimeContracts) movementContractManifest() []*gamev1.MovementActionContractManifest {

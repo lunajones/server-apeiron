@@ -101,6 +101,18 @@ func TestLoadRuntimeContractsFromDBUsesRequiredSkillBindings(t *testing.T) {
 			t.Fatalf("%s base action contract id = %q", action.abilityKey, contracts.ActionContracts[action.abilityKey].ID)
 		}
 	}
+	if profile := contracts.CombatCore.Profiles[playerCombatCoreProfileID]; profile == nil || !profile.GetCanBlock() || profile.GetMaxPosture() != 100 {
+		t.Fatalf("player combat core did not load from DB fake: %#v", profile)
+	}
+	if profile := contracts.CombatCore.Profiles[creatureCombatCoreProfileID]; profile == nil || profile.GetCanBlock() || profile.GetMaxPosture() != 65 {
+		t.Fatalf("creature combat core did not load from DB fake: %#v", profile)
+	}
+	if contract := contracts.Defense.Contracts[playerGuardDefenseContractID]; contract == nil || contract.GetFrontalArcDeg() != 120 || contract.GetDefenseType() != "shield_block" {
+		t.Fatalf("player guard defense contract did not load from DB fake: %#v", contract)
+	}
+	if contract := contracts.Defense.Contracts[creatureGuardDefenseContractID]; contract == nil || contract.GetDefenseType() != "incoming_melee" {
+		t.Fatalf("creature guard defense contract did not load from DB fake: %#v", contract)
+	}
 	if !hasCombatModeSlot(contracts.CombatModes, "mode_sword_shield_bulwark", 3, "player_shield_rush") {
 		t.Fatalf("DB combat mode slots did not load Bulwark F -> Shield Rush: %#v", contracts.CombatModes)
 	}
@@ -139,6 +151,31 @@ func TestLoadRuntimeContractsFromDBUsesRequiredSkillBindings(t *testing.T) {
 	}
 	if !hasCreatureSkillBehaviorBinding(contracts.WolfPolicy.SkillBehaviorBindings, "maul", "pressure", "counter") {
 		t.Fatalf("wolf maul pressure/counter binding missing: %#v", contracts.WolfPolicy.SkillBehaviorBindings)
+	}
+}
+
+func TestLoadRuntimeContractsFromDBDoesNotLeakRecoveredCombatFallback(t *testing.T) {
+	source := fakeRuntimeContractSource{
+		missingCombatCoreProfiles: map[string]bool{playerCombatCoreProfileID: true},
+		missingDefenseContracts:   map[string]bool{playerGuardDefenseContractID: true},
+	}
+	contracts := LoadRuntimeContractsFromDB(context.Background(), source, source)
+
+	err := contracts.ValidateRequiredCoverage(true)
+	if err == nil {
+		t.Fatal("expected missing DB combat contracts to fail strict coverage")
+	}
+	if !strings.Contains(err.Error(), "missing combat core profile "+playerCombatCoreProfileID) {
+		t.Fatalf("coverage error missing combat core failure: %v", err)
+	}
+	if !strings.Contains(err.Error(), "missing combat defense contract "+playerGuardDefenseContractID) {
+		t.Fatalf("coverage error missing defense failure: %v", err)
+	}
+	if got := contracts.CombatCore.Profiles[playerCombatCoreProfileID]; got != nil {
+		t.Fatalf("DB loader leaked recovered player combat core fallback: %#v", got)
+	}
+	if got := contracts.Defense.Contracts[playerGuardDefenseContractID]; got != nil {
+		t.Fatalf("DB loader leaked recovered player guard fallback: %#v", got)
 	}
 }
 
@@ -301,9 +338,86 @@ func TestMovementValidationRuntimeDoesNotSpawnCreature(t *testing.T) {
 }
 
 type fakeRuntimeContractSource struct {
-	missingActions     map[string]bool
-	missingSkills      map[string]bool
-	missingCombatModes bool
+	missingActions            map[string]bool
+	missingSkills             map[string]bool
+	missingCombatCoreProfiles map[string]bool
+	missingDefenseContracts   map[string]bool
+	missingCombatModes        bool
+}
+
+func (f fakeRuntimeContractSource) GetCombatCoreProfile(_ context.Context, req *dbv1.IdRequest, _ ...grpc.CallOption) (*dbv1.CombatCoreProfileResponse, error) {
+	if f.missingCombatCoreProfiles[req.GetId()] {
+		return &dbv1.CombatCoreProfileResponse{Found: false}, nil
+	}
+	switch req.GetId() {
+	case playerCombatCoreProfileID:
+		return &dbv1.CombatCoreProfileResponse{Found: true, Profile: &dbv1.CombatCoreProfile{
+			DamageDealtMultiplier:   1,
+			DamageTakenMultiplier:   1,
+			CanBlock:                true,
+			BlockDamageReduction:    1,
+			MaxPosture:              100,
+			PostureDamageMultiplier: 1,
+			PostureBreakDurationMs:  2200,
+			CanParry:                true,
+			ParryWindowMs:           220,
+			ParryRewardMultiplier:   1.4,
+			DodgeIframeMs:           320,
+		}}, nil
+	case creatureCombatCoreProfileID:
+		return &dbv1.CombatCoreProfileResponse{Found: true, Profile: &dbv1.CombatCoreProfile{
+			DamageDealtMultiplier:   0.95,
+			DamageTakenMultiplier:   1.05,
+			CanBlock:                false,
+			BlockDamageReduction:    0,
+			MaxPosture:              65,
+			PostureDamageMultiplier: 1.15,
+			PostureBreakDurationMs:  1800,
+			CanParry:                false,
+			ParryWindowMs:           0,
+			ParryRewardMultiplier:   1,
+			DodgeIframeMs:           220,
+		}}, nil
+	default:
+		return &dbv1.CombatCoreProfileResponse{Found: false}, nil
+	}
+}
+
+func (f fakeRuntimeContractSource) GetCombatDefenseContract(_ context.Context, req *dbv1.IdRequest, _ ...grpc.CallOption) (*dbv1.CombatDefenseContractResponse, error) {
+	if f.missingDefenseContracts[req.GetId()] {
+		return &dbv1.CombatDefenseContractResponse{Found: false}, nil
+	}
+	switch req.GetId() {
+	case playerGuardDefenseContractID:
+		return &dbv1.CombatDefenseContractResponse{Found: true, Contract: &dbv1.CombatDefenseContract{
+			Id:                         req.GetId(),
+			Name:                       "Player Shield Guard",
+			DefenseType:                "shield_block",
+			FrontalArcDeg:              120,
+			DefenderMarginLeftRatio:    0.30,
+			DefenderMarginRightRatio:   0.30,
+			StaminaDamageOnlyOnBlock:   true,
+			HealthDamageOnUnblockedHit: true,
+			PostureDamageOnBlock:       true,
+			GuardDamageMultiplier:      1,
+			BlockStaminaDrainPerSecond: 2,
+		}}, nil
+	case creatureGuardDefenseContractID:
+		return &dbv1.CombatDefenseContractResponse{Found: true, Contract: &dbv1.CombatDefenseContract{
+			Id:                         req.GetId(),
+			Name:                       "Wolf Attack Vs Guard",
+			DefenseType:                "incoming_melee",
+			FrontalArcDeg:              120,
+			DefenderMarginLeftRatio:    0.30,
+			DefenderMarginRightRatio:   0.30,
+			StaminaDamageOnlyOnBlock:   true,
+			HealthDamageOnUnblockedHit: true,
+			PostureDamageOnBlock:       true,
+			GuardDamageMultiplier:      1,
+		}}, nil
+	default:
+		return &dbv1.CombatDefenseContractResponse{Found: false}, nil
+	}
 }
 
 func (f fakeRuntimeContractSource) GetSkill(_ context.Context, req *dbv1.IdRequest, _ ...grpc.CallOption) (*dbv1.SkillResponse, error) {

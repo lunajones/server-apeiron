@@ -2,6 +2,7 @@ package gameapi
 
 import (
 	"context"
+	"math"
 	"testing"
 
 	gamev1 "server-apeiron/gen/apeiron/game/v1"
@@ -69,11 +70,13 @@ func TestRuntimeSkillImpactAppliesDBContractDamage(t *testing.T) {
 	if !ack.GetAccepted() {
 		t.Fatalf("cast rejected: %s %s", ack.GetRejectionCode(), ack.GetMessage())
 	}
-	if wolf.health != before-8 {
-		t.Fatalf("wolf health = %v, want %v", wolf.health, before-8)
+	wantHealth := before - 8*1.05
+	if math.Abs(wolf.health-wantHealth) > 0.001 {
+		t.Fatalf("wolf health = %v, want %v", wolf.health, wantHealth)
 	}
-	if wolf.posture != wolf.maxPosture-10 {
-		t.Fatalf("wolf posture = %v, want %v", wolf.posture, wolf.maxPosture-10)
+	wantPosture := wolf.maxPosture - 10*1.15
+	if math.Abs(wolf.posture-wantPosture) > 0.001 {
+		t.Fatalf("wolf posture = %v, want %v", wolf.posture, wantPosture)
 	}
 }
 
@@ -85,19 +88,29 @@ func TestRuntimeSkillImpactHonorsDirectionalBlock(t *testing.T) {
 	attachRuntimePlayer(t, runtime, sessionID)
 	player := runtime.ensurePlayerLocked("local_player")
 	wolf := runtime.ensureWolfLocked(player)
-	wolf.position = vector{x: player.position.x + 120, y: player.position.y, z: player.position.z}
-	wolf.yaw = 180
-	wolf.combatState = "blocking"
-	beforeHealth := wolf.health
+	wolf.position = vector{x: player.position.x - 160, y: player.position.y, z: player.position.z}
+	wolf.yaw = 0
+	player.yaw = 180
+	player.combatState = "blocking"
+	beforeHealth := player.health
 
-	if _, err := runtime.SubmitCommand(context.Background(), testRuntimeCastSkillCommand(sessionID, 1, "player_basic_attack_1", gamev1Vector(1, 0, 0))); err != nil {
-		t.Fatalf("SubmitCommand failed: %v", err)
+	contract := runtime.contracts.skillContract("bite")
+	profile := contract.Hitboxes[0]
+	impact, ok := runtime.resolveRuntimeSkillImpact(wolf, player, contract, profile, wolf.position, vector{x: 1, y: 0})
+	if !ok {
+		t.Fatal("expected creature bite impact resolution")
 	}
-	if wolf.health != beforeHealth {
-		t.Fatalf("blocked hit changed health: got %v want %v", wolf.health, beforeHealth)
+	if !impact.Blocked {
+		t.Fatalf("impact was not blocked: %#v", impact)
 	}
-	if wolf.posture != wolf.maxPosture-10 {
-		t.Fatalf("blocked hit should apply posture pressure: got %v want %v", wolf.posture, wolf.maxPosture-10)
+	if impact.DamageApplied != 0 {
+		t.Fatalf("blocked hit applied health damage: got %v", impact.DamageApplied)
+	}
+	if player.health != beforeHealth {
+		t.Fatalf("resolve-only impact mutated player health: got %v want %v", player.health, beforeHealth)
+	}
+	if impact.PostureApplied != contract.PostureDamage {
+		t.Fatalf("blocked hit should apply posture pressure: got %v want %v", impact.PostureApplied, contract.PostureDamage)
 	}
 }
 

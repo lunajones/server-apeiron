@@ -13,8 +13,6 @@ import (
 	"server-apeiron/internal/hitbox"
 )
 
-const recoveredRuntimeDefenseContractID = "recovered_runtime_directional_guard_v1"
-
 type runtimeEntityCombatAdapter struct {
 	state      *entityState
 	components domainentity.Components
@@ -145,9 +143,9 @@ func (r *Runtime) resolveRuntimeSkillImpact(source *entityState, target *entityS
 		Hit:         runtimeCombatHitResult(skill, profile, target, start, dir),
 		Skill:       runtimeCombatSkill(skill),
 		Impact:      runtimeCombatImpactProfile(skill, profile),
-		SourceCore:  runtimeCombatCoreProfile(source),
-		TargetCore:  runtimeCombatCoreProfile(target),
-		Defense:     runtimeCombatDefenseContract(target),
+		SourceCore:  r.runtimeCombatCoreProfile(source),
+		TargetCore:  r.runtimeCombatCoreProfile(target),
+		Defense:     r.runtimeCombatDefenseContract(target),
 		Now:         now,
 		Tick:        r.tick,
 		CurrentTick: r.tick,
@@ -162,6 +160,7 @@ func (r *Runtime) resolveRuntimeSkillImpact(source *entityState, target *entityS
 		DamageApplied:  result.FinalDamage,
 		PostureApplied: result.PostureDamage,
 		Blocked:        result.Blocked,
+		Parried:        result.Parried,
 	}, true
 }
 
@@ -207,40 +206,27 @@ func runtimeCombatImpactProfile(skill SkillRuntimeContract, profile *dbv1.SkillH
 	}
 }
 
-func runtimeCombatCoreProfile(entity *entityState) *dbv1.CombatCoreProfile {
-	return &dbv1.CombatCoreProfile{
-		DamageDealtMultiplier:   1,
-		DamageTakenMultiplier:   1,
-		CanBlock:                runtimeEntityCanBlock(entity),
-		BlockDamageReduction:    1,
-		MaxPosture:              runtimeEntityMaxPosture(entity),
-		PostureDamageMultiplier: 1,
-		CanParry:                true,
-	}
-}
-
-func runtimeEntityCanBlock(entity *entityState) bool {
-	if entity == nil {
-		return false
-	}
-	state := strings.ToLower(strings.TrimSpace(entity.combatState))
-	return state == "blocking" || state == "block" || state == "guard" || strings.EqualFold(entity.entityType, "player")
-}
-
-func runtimeCombatDefenseContract(target *entityState) *dbv1.CombatDefenseContract {
-	if target == nil {
+func (r *Runtime) runtimeCombatCoreProfile(entity *entityState) *dbv1.CombatCoreProfile {
+	if r == nil {
 		return nil
 	}
-	return &dbv1.CombatDefenseContract{
-		Id:                         recoveredRuntimeDefenseContractID,
-		Name:                       "Recovered Runtime Directional Guard",
-		DefenseType:                "directional_guard",
-		FrontalArcDeg:              defaultBlockArcDeg,
-		StaminaDamageOnlyOnBlock:   true,
-		HealthDamageOnUnblockedHit: true,
-		PostureDamageOnBlock:       true,
-		GuardDamageMultiplier:      1,
+	profile := r.contracts.combatCoreProfileForEntity(entity)
+	if profile == nil {
+		return nil
 	}
+	if entity == nil || entity.maxPosture <= 0 || entity.maxPosture == profile.GetMaxPosture() {
+		return profile
+	}
+	copy := *profile
+	copy.MaxPosture = entity.maxPosture
+	return &copy
+}
+
+func (r *Runtime) runtimeCombatDefenseContract(target *entityState) *dbv1.CombatDefenseContract {
+	if r == nil || target == nil {
+		return nil
+	}
+	return r.contracts.defenseContractForEntity(target)
 }
 
 func runtimeEntityRadiusCM(entity *entityState) float64 {
@@ -252,13 +238,6 @@ func runtimeEntityRadiusCM(entity *entityState) float64 {
 	default:
 		return 45
 	}
-}
-
-func runtimeEntityMaxPosture(entity *entityState) float64 {
-	if entity == nil || entity.maxPosture <= 0 {
-		return 100
-	}
-	return entity.maxPosture
 }
 
 func runtimeEntityCurrentSkillID(entity *entityState) string {

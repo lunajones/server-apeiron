@@ -2,6 +2,7 @@ package gameapi
 
 import (
 	"context"
+	"math"
 	"testing"
 	"time"
 
@@ -39,8 +40,9 @@ func TestCreatureTemporalSkillImpactDamagesPlayerOncePerInstance(t *testing.T) {
 	if len(impacts) != 1 {
 		t.Fatalf("impacts = %d, want 1", len(impacts))
 	}
-	if player.health != beforeHealth-contract.Damage {
-		t.Fatalf("player health = %.1f, want %.1f", player.health, beforeHealth-contract.Damage)
+	wantHealth := beforeHealth - contract.Damage*0.95
+	if math.Abs(player.health-wantHealth) > 0.001 {
+		t.Fatalf("player health = %.1f, want %.1f", player.health, wantHealth)
 	}
 	if player.posture != beforePosture-contract.PostureDamage {
 		t.Fatalf("player posture = %.1f, want %.1f", player.posture, beforePosture-contract.PostureDamage)
@@ -50,7 +52,7 @@ func TestCreatureTemporalSkillImpactDamagesPlayerOncePerInstance(t *testing.T) {
 	if len(again) != 0 {
 		t.Fatalf("same creature skill instance applied damage twice: %d impacts", len(again))
 	}
-	if player.health != beforeHealth-contract.Damage {
+	if math.Abs(player.health-wantHealth) > 0.001 {
 		t.Fatalf("player health changed after duplicate resolution: %.1f", player.health)
 	}
 }

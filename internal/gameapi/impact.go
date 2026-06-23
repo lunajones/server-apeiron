@@ -21,6 +21,7 @@ type runtimeSkillImpact struct {
 	DamageApplied  float64
 	PostureApplied float64
 	Blocked        bool
+	Parried        bool
 }
 
 type runtimeSkillImpactCandidate struct {
