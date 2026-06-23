@@ -34,14 +34,14 @@ func newRuntimeEntityCombatAdapter(state *entityState, now time.Time) *runtimeEn
 	components.Movement.Velocity = toDomainVector(state.velocity)
 	components.Movement.Locomotion.AuthoritativeYaw = state.yaw
 	components.Skills.CurrentSkillID = ids.SkillID(runtimeEntityCurrentSkillID(state))
-	components.Skills.State = runtimeEntityCombatPipelineState(state)
+	components.Skills.State = runtimeEntityCombatPipelineStateAt(state, now)
 	if state.skillRuntime != nil {
 		components.Skills.StartedAtMS = state.skillRuntime.GetStartedAtMs()
 		components.Skills.CooldownEndMS = state.skillRuntime.GetCooldownEndMs()
 		components.Skills.LastResolvedAtMS = state.skillRuntime.GetLastResolvedAtMs()
 	}
 	components.Combat.ActionLockedUntil = state.actionLockedUntil
-	if runtimeEntityHasIFrameState(state) {
+	if runtimeEntityHasIFrameStateAt(state, now) {
 		components.Status.Effects = map[string]time.Time{"iframe": now.Add(time.Second)}
 		components.Combat.ControlImmuneUntil = now.Add(time.Second)
 	}
@@ -183,6 +183,10 @@ func (r *Runtime) resolveRuntimeSkillImpact(source *entityState, target *entityS
 		PostureApplied:         result.PostureDamage,
 		Blocked:                result.Blocked,
 		Parried:                result.Parried,
+		Evaded:                 result.Evaded,
+		Reason:                 result.Reason,
+		TargetPipelineState:    runtimeEntityCombatPipelineStateAt(target, now),
+		TargetIFrame:           runtimeEntityHasIFrameStateAt(target, now),
 	}, true
 }
 
@@ -325,8 +329,15 @@ func runtimeEntityCurrentSkillID(entity *entityState) string {
 }
 
 func runtimeEntityCombatPipelineState(entity *entityState) string {
+	return runtimeEntityCombatPipelineStateAt(entity, time.Now())
+}
+
+func runtimeEntityCombatPipelineStateAt(entity *entityState, now time.Time) string {
 	if entity == nil {
 		return ""
+	}
+	if runtimeEntityOwnedDodgeMotionActiveAt(entity, now) {
+		return "dodge"
 	}
 	state := strings.ToLower(strings.TrimSpace(entity.combatState))
 	switch state {
@@ -338,6 +349,33 @@ func runtimeEntityCombatPipelineState(entity *entityState) string {
 }
 
 func runtimeEntityHasIFrameState(entity *entityState) bool {
-	state := runtimeEntityCombatPipelineState(entity)
+	return runtimeEntityHasIFrameStateAt(entity, time.Now())
+}
+
+func runtimeEntityHasIFrameStateAt(entity *entityState, now time.Time) bool {
+	state := runtimeEntityCombatPipelineStateAt(entity, now)
 	return state == "iframe" || state == "evade" || state == "dodge" || strings.Contains(state, "iframe")
+}
+
+func runtimeEntityOwnedDodgeMotionActiveAt(entity *entityState, now time.Time) bool {
+	if entity == nil || entity.actionMotion == nil || entity.actionMotion.MotionSource != "owned_locomotion" {
+		return false
+	}
+	motion := entity.actionMotion
+	if !strings.EqualFold(strings.TrimSpace(motion.Contract.ActionType), "dodge") &&
+		!strings.EqualFold(strings.TrimSpace(motion.Contract.AbilityKey), "dodge") {
+		return false
+	}
+	if motion.StartedAt.IsZero() {
+		return false
+	}
+	duration := durationFromMS(motion.Contract.DurationMS)
+	if duration <= 0 {
+		duration = durationFromMS(motion.Contract.ActiveMS + motion.Contract.RecoveryMS)
+	}
+	if duration <= 0 {
+		return false
+	}
+	elapsed := now.Sub(motion.StartedAt)
+	return elapsed >= 0 && elapsed <= duration
 }

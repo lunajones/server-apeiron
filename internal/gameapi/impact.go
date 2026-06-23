@@ -3,6 +3,7 @@ package gameapi
 import (
 	"math"
 	"sort"
+	"time"
 
 	dbv1 "db-apeiron/gen/apeiron/v1"
 )
@@ -29,6 +30,10 @@ type runtimeSkillImpact struct {
 	PostureApplied         float64
 	Blocked                bool
 	Parried                bool
+	Evaded                 bool
+	Reason                 string
+	TargetPipelineState    string
+	TargetIFrame           bool
 }
 
 type runtimeSkillImpactCandidate struct {
@@ -91,9 +96,40 @@ func (r *Runtime) applySkillImpactAt(source *entityState, skill SkillRuntimeCont
 		}
 		target.health = clampMin(target.health-impact.DamageApplied, 0)
 		target.posture = clampMin(target.posture-impact.PostureApplied, 0)
+		r.respawnPlayerAfterFatalDamageLocked(target)
 		impacts = append(impacts, impact)
 	}
 	return impacts
+}
+
+func (r *Runtime) respawnPlayerAfterFatalDamageLocked(target *entityState) {
+	if r == nil || target == nil || target.entityType != "player" || target.health > 0 {
+		return
+	}
+	if target.maxHealth > 0 {
+		target.health = target.maxHealth
+	} else {
+		target.health = 100
+		target.maxHealth = 100
+	}
+	if target.maxPosture > 0 {
+		target.posture = target.maxPosture
+	}
+	if target.maxStamina > 0 {
+		target.stamina = target.maxStamina
+	}
+	target.velocity = vector{}
+	target.movementState = "grounded"
+	target.combatState = "ready"
+	target.skillState = "idle"
+	target.skillRuntime = nil
+	target.actionInstance = nil
+	target.actionMotion = nil
+	target.actionHandoffUntil = time.Time{}
+	target.actionHandoffAction = ""
+	target.actionLockedUntil = time.Time{}
+	target.actionLockReason = ""
+	target.locomotion = r.locomotion("grounded", "respawn", "", "complete", target.position, target.position, 0)
 }
 
 func runtimeSkillCanTarget(source *entityState, target *entityState) bool {

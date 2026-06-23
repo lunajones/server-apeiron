@@ -40,6 +40,10 @@ func (r *Runtime) damageEventsFromImpactsLocked(impacts []runtimeSkillImpact) []
 			"posture_damage":           formatImpactFloat(impact.PostureApplied),
 			"blocked":                  strconv.FormatBool(impact.Blocked),
 			"parried":                  strconv.FormatBool(impact.Parried),
+			"evaded":                   strconv.FormatBool(impact.Evaded),
+			"pipeline_reason":          impact.Reason,
+			"target_pipeline_state":    impact.TargetPipelineState,
+			"target_iframe":            strconv.FormatBool(impact.TargetIFrame),
 			"control_applied":          strconv.FormatBool(len(impact.StatusApplied) > 0),
 			"status_applied":           strings.Join(impact.StatusApplied, ","),
 			"control_type":             impact.ControlType,
@@ -52,6 +56,8 @@ func (r *Runtime) damageEventsFromImpactsLocked(impacts []runtimeSkillImpact) []
 		}
 		reason := "hit"
 		switch {
+		case impact.Evaded:
+			reason = "evaded"
 		case impact.Parried:
 			reason = "parried"
 		case impact.Blocked:

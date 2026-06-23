@@ -399,6 +399,44 @@ runtime, so player dodge could not spend authoritative stamina.
 - ACK and generic snapshot correction now defer root correction while local dodge prediction is
   active unless the server explicitly requests a snap/rejection.
 
+## 2026-06-23 - Dodge IFrame Bound To Owned Motion Contract
+
+### Symptom
+
+Manual PIE showed wolf lunge hits landing during player dodge. The client submitted dodge and
+published `DodgeActive`, but damage events still arrived as `reason=hit` instead of `evaded`.
+Some later snapshots also kept reconciling against `DodgeActive`, making the player feel trapped
+or snapped back after being hit around dodge timing.
+
+### Hypothesis
+
+The combat pipeline was relying too much on transient `skillState` / `combatState` strings to
+detect dodge iframe. Those strings can be cleared or overwritten by action/impact transitions while
+the authoritative owned dodge root motion is still active.
+
+### Change
+
+- Runtime combat adapter now derives dodge defense from active `owned_locomotion` action motion
+  whose movement contract action/ability is `dodge`.
+- Creature perception uses the same iframe helper, so AI and damage resolution agree about whether
+  the player is currently invulnerable.
+- Damage events now expose `evaded`, `pipeline_reason`, `target_pipeline_state`, and
+  `target_iframe` metadata for live log validation.
+- Fatal player damage now immediately respawns the player with full health/stamina/posture and
+  clears transient action locks/root motion, keeping live combat validation running without server
+  restarts.
+
+### Validation
+
+- `go build ./...` in `server-apeiron` passed.
+- Unit tests intentionally not used in this recovery pass; runtime PIE validation is the gate.
+
+### Guardrail
+
+Dodge iframe must be owned by the active movement action contract, not by a fragile display state.
+Future changes must not make creature damage, AI perception, and client locomotion infer dodge
+defense through separate state strings.
+
 ### Tests
 
 - `go test ./internal/gameapi`

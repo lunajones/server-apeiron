@@ -832,6 +832,7 @@ func creaturePerceptionFromTarget(target *entityState, now time.Time) creatureai
 	}
 	combatState := strings.ToLower(strings.TrimSpace(target.combatState))
 	skillState := strings.ToLower(strings.TrimSpace(target.skillState))
+	targetIFrame := runtimeEntityHasIFrameStateAt(target, now)
 	return creatureai.Perception{
 		TargetVelocityCMPerSec: toDomainVector(target.velocity),
 		TargetMovementState:    target.movementState,
@@ -840,7 +841,7 @@ func creaturePerceptionFromTarget(target *entityState, now time.Time) creatureai
 		TargetActionActive:     target.actionInstance != nil && target.actionInstance.PhaseAt(now) != actionruntime.PhaseComplete,
 		TargetBlocking:         combatState == "blocking" || combatState == "block" || combatState == "guard",
 		TargetParrying:         combatState == "parry" || combatState == "parry_active" || combatState == "perfect_block",
-		TargetIFrame:           combatState == "iframe" || combatState == "evade" || combatState == "dodge" || skillState == "dodge",
+		TargetIFrame:           targetIFrame || combatState == "iframe" || combatState == "evade" || combatState == "dodge" || skillState == "dodge",
 		TargetResourceCurrent:  target.stamina,
 		TargetResourceMax:      target.maxStamina,
 		TargetPostureCurrent:   target.posture,
