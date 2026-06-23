@@ -555,6 +555,15 @@ func (c RuntimeContracts) ValidateRequiredCoverage(strictLoadedSource bool) erro
 		if skill.MovementAction.ID == "" {
 			missing = append(missing, "skill movement action "+skillID)
 		}
+		if skill.StartsAtPhase == "" {
+			missing = append(missing, "skill movement starts phase "+skillID)
+		}
+		if skill.HandoffPolicy == "" {
+			missing = append(missing, "skill movement handoff policy "+skillID)
+		}
+		if skill.NormalInputPolicy == "" {
+			missing = append(missing, "skill movement normal input policy "+skillID)
+		}
 		if skill.MovementAction.ReconciliationContractID == "" {
 			missing = append(missing, "skill movement reconciliation "+skillID)
 		}

@@ -645,11 +645,20 @@ func (r *Runtime) updateWolfPolicyLocked(wolf *entityState, player *entityState)
 	selectedSkill := decision.SelectedSkill
 
 	selectedRuntime := r.contracts.skillContract(selectedSkill)
-	resolvedMotion := resolveGroundedCreatureDecisionMotion(wolf, decision)
-	applyCreatureDecisionMotion(wolf, player, decision, resolvedMotion)
+	actionUpdate := r.applyCreatureActionRuntimeLocked(wolf, player, decision, selectedRuntime, start, nowTime)
+	resolvedMotion := creatureDecisionMotion{Start: start}
+	if !actionUpdate.RootMotionApplied {
+		resolvedMotion = resolveGroundedCreatureDecisionMotion(wolf, decision)
+		applyCreatureDecisionMotion(wolf, player, decision, resolvedMotion)
+	} else {
+		resolvedMotion.Motion.Start = toDomainVector(start)
+		resolvedMotion.Motion.Projected = toDomainVector(wolf.position)
+		resolvedMotion.Motion.Velocity = toDomainVector(wolf.velocity)
+		resolvedMotion.Motion.DistanceCM = distance(start, wolf.position)
+		resolvedMotion.Motion.SpeedCMPerSecond = length(wolf.velocity)
+	}
 	r.publishWolfLocomotionLocked(wolf, decision, selectedRuntime, resolvedMotion, nowTime)
 	r.publishWolfAIStateLocked(wolf, decision, policy, selectedRuntime, rangeCM, lungeMinRangeCM, lungeMaxRangeCM)
-	actionUpdate := r.applyCreatureActionRuntimeLocked(wolf, player, decision, selectedRuntime, start, nowTime)
 	if actionUpdate.Active && wolf.locomotion != nil {
 		wolf.locomotion.Phase = string(actionUpdate.Phase)
 		applyActionInstanceLocomotionTiming(wolf.locomotion, wolf.actionInstance, nowTime)
@@ -670,10 +679,6 @@ func (r *Runtime) resolveCreatureSkillImpactLocked(creature *entityState, player
 	if !skillHasTemporalImpactWindowAt(skill, elapsedMS) {
 		return nil
 	}
-	instanceKey := fmt.Sprintf("%d:%s:%d", creature.id, skill.SkillID, startedAtMS)
-	if _, resolved := creature.resolvedSkillImpacts[instanceKey]; resolved {
-		return nil
-	}
 
 	dir := normalize(vector{x: player.position.x - creature.position.x, y: player.position.y - creature.position.y})
 	if dir == (vector{}) {
@@ -687,14 +692,22 @@ func (r *Runtime) resolveCreatureSkillImpactLocked(creature *entityState, player
 		reach = maxSkillHitboxReachCM(skill)
 	}
 	end := vector{x: creature.position.x + dir.x*reach, y: creature.position.y + dir.y*reach, z: creature.position.z}
-	impacts := r.applySkillImpactAt(creature, skill, creature.position, end, dir, elapsedMS)
-	if len(impacts) > 0 {
-		if creature.resolvedSkillImpacts == nil {
-			creature.resolvedSkillImpacts = map[string]struct{}{}
-		}
-		creature.resolvedSkillImpacts[instanceKey] = struct{}{}
+	instanceID := ""
+	startedAt := time.UnixMilli(startedAtMS)
+	if creature.actionInstance != nil && creature.actionInstance.SkillID.String() == skill.SkillID {
+		instanceID = creature.actionInstance.InstanceID
+		startedAt = creature.actionInstance.StartedAt
 	}
-	return impacts
+	return r.resolveSkillImpactScheduleLocked(skillImpactScheduleFromActionInstance(
+		creature,
+		skill,
+		instanceID,
+		startedAt,
+		creature.position,
+		end,
+		dir,
+		elapsedMS,
+	))
 }
 
 func skillHasTemporalImpactWindowAt(skill SkillRuntimeContract, elapsedMS float64) bool {
@@ -1198,7 +1211,16 @@ func (r *Runtime) applySkill(player *entityState, cmd *gamev1.PlayerCommand) {
 		CooldownEndMs:    time.UnixMilli(now).Add(durationFromMS(skillContract.CooldownMS)).UnixMilli(),
 		LastResolvedAtMs: now,
 	}
-	r.applySkillImpact(player, skillContract, start, fromDomainVector(fullMotion.Projected), dir)
+	r.resolveSkillImpactScheduleLocked(skillImpactScheduleFromActionInstance(
+		player,
+		skillContract,
+		instance.InstanceID,
+		instance.StartedAt,
+		start,
+		fromDomainVector(fullMotion.Projected),
+		dir,
+		skillImpactEvaluationElapsedMS(skillContract),
+	))
 }
 
 func (r *Runtime) applyDefense(player *entityState, cmd *gamev1.PlayerCommand) {

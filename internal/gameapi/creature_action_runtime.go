@@ -9,12 +9,14 @@ import (
 	creatureai "server-apeiron/internal/ai"
 	"server-apeiron/internal/combat/actionruntime"
 	"server-apeiron/internal/domain/ids"
+	"server-apeiron/internal/movement"
 )
 
 type creatureActionRuntimeUpdate struct {
-	Started bool
-	Active  bool
-	Phase   actionruntime.Phase
+	Started           bool
+	Active            bool
+	RootMotionApplied bool
+	Phase             actionruntime.Phase
 }
 
 func (r *Runtime) applyCreatureActionRuntimeLocked(creature *entityState, target *entityState, decision creatureai.Decision, contract SkillRuntimeContract, start vector, now time.Time) creatureActionRuntimeUpdate {
@@ -54,10 +56,11 @@ func (r *Runtime) applyCreatureActionRuntimeLocked(creature *entityState, target
 	}
 	creature.skillState = string(phase)
 	creature.combatState = "committed"
+	rootMotionApplied := r.applyCreatureSkillRootMotionLocked(creature, target, decision, contract, instance, now)
 	if target != nil {
 		r.resolveCreatureSkillImpactLocked(creature, target, contract, now)
 	}
-	return creatureActionRuntimeUpdate{Started: started, Active: true, Phase: phase}
+	return creatureActionRuntimeUpdate{Started: started, Active: true, RootMotionApplied: rootMotionApplied, Phase: phase}
 }
 
 func (r *Runtime) shouldStartCreatureActionInstanceLocked(creature *entityState, skillID string, now time.Time) bool {
@@ -85,7 +88,7 @@ func (r *Runtime) clearCreatureActionRuntimeLocked(creature *entityState, now ti
 }
 
 func (r *Runtime) newCreatureActionInstance(creature *entityState, skillID string, contract SkillRuntimeContract, start vector, now time.Time) actionruntime.Instance {
-	timing := actionTimingFromSkillContract(contract)
+	timing := creatureActionTimingFromSkillContract(contract)
 	commandID := creatureActionCommandID(creature, skillID, r.tick)
 	return actionruntime.NewInstance(actionruntime.NewInstanceSpec{
 		InstanceID:           actionruntime.NewInstanceID(ids.RuntimeEntityID(creature.id), skillID, commandID, r.tick, r.tick),
@@ -106,6 +109,22 @@ func (r *Runtime) newCreatureActionInstance(creature *entityState, skillID strin
 		GlobalLockedUntil:    now.Add(timing.Cooldown),
 		RecoveryEndsAt:       now.Add(timing.Windup + timing.Active + timing.Recovery),
 	})
+}
+
+func creatureActionTimingFromSkillContract(contract SkillRuntimeContract) actionruntime.Timing {
+	timing := actionTimingFromSkillContract(contract)
+	movementDuration := movement.ActionDuration(contract.MovementAction)
+	if movementDuration <= 0 {
+		return timing
+	}
+	movementOffset := creatureSkillMovementStartOffset(timing, contract)
+	actionDuration := timing.Windup + timing.Active + timing.Recovery
+	requiredDuration := movementOffset + movementDuration
+	if requiredDuration > actionDuration {
+		timing.Recovery += requiredDuration - actionDuration
+		timing.ActionLock = timing.Windup + timing.Active + timing.Recovery
+	}
+	return timing
 }
 
 func actionTimingFromSkillContract(contract SkillRuntimeContract) actionruntime.Timing {
@@ -158,4 +177,86 @@ func creatureActionMotionComplete(creature *entityState, now time.Time) bool {
 		return true
 	}
 	return creature.actionInstance.PhaseAt(now) == actionruntime.PhaseComplete
+}
+
+func (r *Runtime) applyCreatureSkillRootMotionLocked(creature *entityState, target *entityState, decision creatureai.Decision, contract SkillRuntimeContract, instance *actionruntime.Instance, now time.Time) bool {
+	if creature == nil || instance == nil || contract.MovementAction.ID == "" {
+		return false
+	}
+	if movement.ActionDistance(contract.MovementAction, 0) <= 0 || movement.ActionDuration(contract.MovementAction) <= 0 {
+		return false
+	}
+	rootStart := creatureSkillMovementStartAt(*instance, contract)
+	if now.Before(rootStart) {
+		return false
+	}
+	if creature.actionMotion == nil || creature.actionMotion.SkillID != decision.SelectedSkill || creature.actionMotion.CommandID != instance.InstanceID {
+		r.startCreatureSkillRootMotionLocked(creature, target, decision, contract, *instance, rootStart)
+	}
+	if creature.actionMotion == nil {
+		return false
+	}
+	r.advanceActionMotionLocked(creature, now)
+	return true
+}
+
+func (r *Runtime) startCreatureSkillRootMotionLocked(creature *entityState, target *entityState, decision creatureai.Decision, contract SkillRuntimeContract, instance actionruntime.Instance, rootStart time.Time) {
+	if creature == nil {
+		return
+	}
+	dir := creatureSkillRootDirection(creature, target, decision)
+	fullMotion := movement.ResolveActionMotion(movement.ActionMotionInput{
+		Position:  toDomainVector(creature.position),
+		Direction: toDomainVector(dir),
+		Contract:  contract.MovementAction,
+	})
+	if fullMotion.Stopped || fullMotion.DistanceCM <= 0 {
+		return
+	}
+	creature.actionMotion = &actionMotionState{
+		SkillID:           decision.SelectedSkill,
+		CommandID:         instance.InstanceID,
+		Sequence:          instance.CommandSequence,
+		StartedAt:         rootStart,
+		StartPosition:     creature.position,
+		ProjectedPosition: fromDomainVector(fullMotion.Projected),
+		Direction:         dir,
+		Contract:          contract.MovementAction,
+		NormalInputPolicy: contract.NormalInputPolicy,
+		TotalDistanceCM:   fullMotion.DistanceCM,
+	}
+}
+
+func creatureSkillRootDirection(creature *entityState, target *entityState, decision creatureai.Decision) vector {
+	if target != nil && creature != nil {
+		dir := normalize(vector{x: target.position.x - creature.position.x, y: target.position.y - creature.position.y})
+		if dir != (vector{}) {
+			return dir
+		}
+	}
+	dir := fromDomainVector(flattenDomainDirection(decision.Direction))
+	if dir != (vector{}) {
+		return normalize(dir)
+	}
+	if creature != nil {
+		return yawVector(creature.yaw)
+	}
+	return vector{x: 1}
+}
+
+func creatureSkillMovementStartAt(instance actionruntime.Instance, contract SkillRuntimeContract) time.Time {
+	return instance.StartedAt.Add(creatureSkillMovementStartOffset(instance.Timing, contract))
+}
+
+func creatureSkillMovementStartOffset(timing actionruntime.Timing, contract SkillRuntimeContract) time.Duration {
+	switch strings.ToLower(strings.TrimSpace(contract.StartsAtPhase)) {
+	case "windup", "startup", "accepted", "start", "":
+		return 0
+	case "recovery":
+		return timing.Windup + timing.Active
+	case "active", "cast":
+		return timing.Windup
+	default:
+		return timing.Windup
+	}
 }

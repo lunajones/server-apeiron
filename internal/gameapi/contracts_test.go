@@ -49,6 +49,29 @@ func TestStrictRuntimeCoverageRejectsDamagingSkillWithoutTemporalHitbox(t *testi
 	}
 }
 
+func TestStrictRuntimeCoverageRejectsSkillWithoutMovementPhasePolicies(t *testing.T) {
+	contracts := RecoveryFixtureRuntimeContracts()
+	skill := contracts.SkillContracts["lunge"]
+	skill.StartsAtPhase = ""
+	skill.HandoffPolicy = ""
+	skill.NormalInputPolicy = ""
+	contracts.SkillContracts["lunge"] = skill
+
+	err := contracts.ValidateRequiredCoverage(true)
+	if err == nil {
+		t.Fatal("ValidateRequiredCoverage accepted skill without movement phase policies")
+	}
+	for _, want := range []string{
+		"skill movement starts phase lunge",
+		"skill movement handoff policy lunge",
+		"skill movement normal input policy lunge",
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("missing blocker %q in %v", want, err)
+		}
+	}
+}
+
 func TestStrictRuntimeCoverageAllowsNonDamagingMovementSkillWithoutHitbox(t *testing.T) {
 	contracts := RecoveryFixtureRuntimeContracts()
 	skill := contracts.SkillContracts["wolf_dodge"]

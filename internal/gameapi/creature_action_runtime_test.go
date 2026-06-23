@@ -8,6 +8,7 @@ import (
 	creatureai "server-apeiron/internal/ai"
 	"server-apeiron/internal/combat/actionruntime"
 	domainmath "server-apeiron/internal/domain/math"
+	"server-apeiron/internal/movement"
 )
 
 func TestWolfSkillStartsCreatureActionInstanceAndRuntimePhase(t *testing.T) {
@@ -91,6 +92,100 @@ func TestWolfActionRuntimeDoesNotRestartActiveSkillLifecycle(t *testing.T) {
 	wantStamina := staminaAfterStart + runtime.contracts.WolfPolicy.StaminaRegenPerSecond/tickRate
 	if math.Abs(wolf.stamina-wantStamina) > 0.001 {
 		t.Fatalf("active lunge spent stamina twice: got %.2f want %.2f", wolf.stamina, wantStamina)
+	}
+}
+
+func TestWolfLungeWindupUsesSetupMovementBeforeSkillRootMotion(t *testing.T) {
+	runtime := NewRuntimeWithContracts(RecoveryFixtureRuntimeContracts())
+	player := runtime.ensurePlayerLocked("local_player")
+	wolf := runtime.ensureWolfLocked(player)
+
+	wolf.position = vector{x: player.position.x + 520, y: player.position.y, z: player.position.z}
+	start := wolf.position
+	runtime.tick = 325
+	runtime.updateWolfPolicyLocked(wolf, player)
+
+	if wolf.creatureAI.GetSelectedSkillId() != "lunge" {
+		t.Fatalf("selected skill = %q, want lunge", wolf.creatureAI.GetSelectedSkillId())
+	}
+	if wolf.actionInstance == nil {
+		t.Fatal("lunge did not create action instance")
+	}
+	if phase := wolf.actionInstance.PhaseAt(time.Now()); phase != actionruntime.PhaseWindup {
+		t.Fatalf("initial lunge phase = %q, want windup", phase)
+	}
+	if wolf.actionMotion != nil {
+		t.Fatalf("lunge root motion started during windup: %#v", wolf.actionMotion)
+	}
+	if moved := distance(start, wolf.position); moved <= 0 {
+		t.Fatalf("lunge windup did not use setup movement, moved %.2f", moved)
+	}
+	if wolf.position.z != start.z {
+		t.Fatalf("lunge setup changed grounded z: %.2f -> %.2f", start.z, wolf.position.z)
+	}
+}
+
+func TestWolfLungeActivePhaseUsesSkillRootMotionOwner(t *testing.T) {
+	runtime := NewRuntimeWithContracts(RecoveryFixtureRuntimeContracts())
+	player := runtime.ensurePlayerLocked("local_player")
+	wolf := runtime.ensureWolfLocked(player)
+
+	wolf.position = vector{x: player.position.x + 520, y: player.position.y, z: player.position.z}
+	runtime.tick = 326
+	runtime.updateWolfPolicyLocked(wolf, player)
+
+	if wolf.actionInstance == nil || wolf.skillRuntime == nil {
+		t.Fatal("lunge did not start action runtime")
+	}
+	contract := runtime.contracts.skillContract("lunge")
+	activeElapsed := durationFromMS(contract.WindupMS) + 220*time.Millisecond
+	startedAt := time.Now().Add(-activeElapsed)
+	wolf.actionInstance.StartedAt = startedAt
+	wolf.skillRuntime.StartedAtMs = startedAt.UnixMilli()
+	wolf.actionMotion = nil
+	before := wolf.position
+
+	runtime.tick = 327
+	runtime.updateWolfPolicyLocked(wolf, player)
+
+	if wolf.actionMotion == nil {
+		t.Fatal("active lunge did not create skill root motion")
+	}
+	if wolf.actionMotion.SkillID != "lunge" {
+		t.Fatalf("action motion skill = %q, want lunge", wolf.actionMotion.SkillID)
+	}
+	if wolf.actionMotion.CommandID != wolf.actionInstance.InstanceID {
+		t.Fatalf("action motion command id = %q, want action instance %q", wolf.actionMotion.CommandID, wolf.actionInstance.InstanceID)
+	}
+	if moved := distance(before, wolf.position); moved <= 0 {
+		t.Fatalf("active lunge root motion did not advance, moved %.2f", moved)
+	}
+	if wolf.locomotion == nil || wolf.locomotion.GetActionDistanceTraveled() <= 0 {
+		t.Fatalf("active lunge locomotion did not publish action distance: %#v", wolf.locomotion)
+	}
+	if wolf.position.z != before.z {
+		t.Fatalf("active lunge changed server root z: %.2f -> %.2f", before.z, wolf.position.z)
+	}
+}
+
+func TestCreatureActionTimingExtendsUntilSkillRootMotionCompletes(t *testing.T) {
+	runtime := NewRuntimeWithContracts(RecoveryFixtureRuntimeContracts())
+	player := runtime.ensurePlayerLocked("local_player")
+	wolf := runtime.ensureWolfLocked(player)
+	contract := runtime.contracts.skillContract("maul")
+	startedAt := time.Now()
+
+	instance := runtime.newCreatureActionInstance(wolf, "maul", contract, wolf.position, startedAt)
+	required := creatureSkillMovementStartOffset(instance.Timing, contract) + movement.ActionDuration(contract.MovementAction)
+
+	if got := instance.Timing.Windup + instance.Timing.Active + instance.Timing.Recovery; got < required {
+		t.Fatalf("maul action duration = %s, want at least movement start + movement duration", got)
+	}
+	if phase := instance.PhaseAt(startedAt.Add(required - 80*time.Millisecond)); phase == actionruntime.PhaseComplete {
+		t.Fatalf("maul completed before movement contract could finish")
+	}
+	if phase := instance.PhaseAt(startedAt.Add(required + 10*time.Millisecond)); phase != actionruntime.PhaseComplete {
+		t.Fatalf("maul phase after root completion = %q, want complete", phase)
 	}
 }
 

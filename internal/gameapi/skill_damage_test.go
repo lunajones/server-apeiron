@@ -80,6 +80,47 @@ func TestRuntimeSkillImpactAppliesDBContractDamage(t *testing.T) {
 	}
 }
 
+func TestRuntimePlayerSkillImpactSchedulerDedupesActionInstance(t *testing.T) {
+	t.Parallel()
+
+	runtime := NewRuntimeWithContracts(RecoveryFixtureRuntimeContracts())
+	sessionID := "runtime-player-impact-scheduler-dedupe"
+	attachRuntimePlayer(t, runtime, sessionID)
+	player := runtime.ensurePlayerLocked("local_player")
+	wolf := runtime.ensureWolfLocked(player)
+	wolf.position = vector{x: player.position.x + 120, y: player.position.y, z: player.position.z}
+
+	ack, err := runtime.SubmitCommand(context.Background(), testRuntimeCastSkillCommand(sessionID, 1, "player_basic_attack_1", gamev1Vector(1, 0, 0)))
+	if err != nil {
+		t.Fatalf("SubmitCommand failed: %v", err)
+	}
+	if !ack.GetAccepted() {
+		t.Fatalf("cast rejected: %s %s", ack.GetRejectionCode(), ack.GetMessage())
+	}
+	if player.actionInstance == nil {
+		t.Fatal("player basic attack did not create action instance")
+	}
+
+	healthAfterFirstImpact := wolf.health
+	contract := runtime.contracts.skillContract("player_basic_attack_1")
+	again := runtime.resolveSkillImpactScheduleLocked(skillImpactScheduleFromActionInstance(
+		player,
+		contract,
+		player.actionInstance.InstanceID,
+		player.actionInstance.StartedAt,
+		player.position,
+		vector{x: player.position.x + 240, y: player.position.y, z: player.position.z},
+		vector{x: 1},
+		skillImpactEvaluationElapsedMS(contract),
+	))
+	if len(again) != 0 {
+		t.Fatalf("same player action instance applied duplicate impacts: %d", len(again))
+	}
+	if wolf.health != healthAfterFirstImpact {
+		t.Fatalf("duplicate player action changed wolf health: %.2f -> %.2f", healthAfterFirstImpact, wolf.health)
+	}
+}
+
 func TestRuntimeSkillImpactHonorsDirectionalBlock(t *testing.T) {
 	t.Parallel()
 
