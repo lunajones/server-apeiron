@@ -406,6 +406,29 @@ func TestRuntimeReadinessAcceptsRecoveredFixtureForDevTests(t *testing.T) {
 	}
 }
 
+func TestRuntimeStatsExposeContractCoverageByCategory(t *testing.T) {
+	runtime := NewRuntimeWithContracts(RuntimeContracts{Source: "db_contracts"})
+	resp, err := runtime.RuntimeStats(context.Background(), &gamev1.Empty{})
+	if err != nil {
+		t.Fatalf("RuntimeStats failed: %v", err)
+	}
+	if resp.GetPhaseStatus()["contract_source"] != "db_contracts" {
+		t.Fatalf("contract source status missing: %#v", resp.GetPhaseStatus())
+	}
+	if resp.GetPhaseStatus()["contracts.runtime_movement_profile"] != "blocked" {
+		t.Fatalf("movement coverage status = %#v", resp.GetPhaseStatus())
+	}
+
+	fixtureRuntime := NewRuntimeWithContracts(RecoveryFixtureRuntimeContracts())
+	fixtureResp, err := fixtureRuntime.RuntimeStats(context.Background(), &gamev1.Empty{})
+	if err != nil {
+		t.Fatalf("fixture RuntimeStats failed: %v", err)
+	}
+	if fixtureResp.GetPhaseStatus()["contracts.skill_runtime_contracts"] != "ready" {
+		t.Fatalf("fixture skill contract coverage status = %#v", fixtureResp.GetPhaseStatus())
+	}
+}
+
 func TestWolfMaulPublishesSelectedSkillMovementContract(t *testing.T) {
 	runtime := NewRuntimeWithContracts(RecoveryFixtureRuntimeContracts())
 	player := runtime.ensurePlayerLocked("local_player")

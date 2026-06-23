@@ -1080,6 +1080,66 @@ func TestRuntimePostSkillHandoffReturnsSprintStrafeForCurrentBulwarkSkills(t *te
 	}
 }
 
+func TestRuntimeLateralSprintInputDuringSkillRootDoesNotApplyNormalMove(t *testing.T) {
+	t.Parallel()
+
+	for _, skillID := range []string{
+		"player_basic_attack_1",
+		"player_basic_attack_2",
+		"player_basic_attack_3",
+		"player_shield_bash",
+		"player_shield_rush",
+	} {
+		t.Run(skillID, func(t *testing.T) {
+			t.Parallel()
+
+			runtime := NewRuntimeWithOptions(RecoveryFixtureRuntimeContracts(), RuntimeOptions{MovementValidation: true})
+			sessionID := "runtime-integration-lateral-input-during-root-" + skillID
+			if _, err := runtime.OpenSession(context.Background(), &gamev1.OpenSessionRequest{
+				Context: &gamev1.RequestContext{SessionId: sessionID},
+			}); err != nil {
+				t.Fatalf("OpenSession failed: %v", err)
+			}
+			if _, err := runtime.AttachPlayer(context.Background(), &gamev1.AttachPlayerRequest{
+				Context:  &gamev1.RequestContext{SessionId: sessionID},
+				PlayerId: "local_player",
+			}); err != nil {
+				t.Fatalf("AttachPlayer failed: %v", err)
+			}
+			player := runtime.ensurePlayerLocked("local_player")
+			start := player.position
+
+			castAck, err := runtime.SubmitCommand(context.Background(), testRuntimeCastSkillCommand(sessionID, 1, skillID, gamev1Vector(1, 0, 0)))
+			if err != nil {
+				t.Fatalf("cast submit failed: %v", err)
+			}
+			if !castAck.GetAccepted() {
+				t.Fatalf("cast rejected: %s %s", castAck.GetRejectionCode(), castAck.GetMessage())
+			}
+			if player.actionMotion == nil {
+				t.Fatal("moving skill did not create action motion")
+			}
+
+			moveAck, err := runtime.SubmitCommand(context.Background(), testRuntimeMoveCommand(sessionID, 2, gamev1Vector(0, 1, 0), 1, true, nil))
+			if err != nil {
+				t.Fatalf("lateral sprint submit failed: %v", err)
+			}
+			if !moveAck.GetAccepted() {
+				t.Fatalf("lateral sprint during root rejected: %s %s", moveAck.GetRejectionCode(), moveAck.GetMessage())
+			}
+			if player.locomotion == nil || player.locomotion.GetAction() != "grounded_skill" {
+				t.Fatalf("lateral sprint stole action root: %#v", player.locomotion)
+			}
+			if math.Abs(player.position.y-start.y) > 0.001 {
+				t.Fatalf("lateral sprint applied normal Y movement during %s root: startY=%.3f gotY=%.3f", skillID, start.y, player.position.y)
+			}
+			if player.position.x < start.x {
+				t.Fatalf("skill root moved backwards after lateral sprint: startX=%.3f gotX=%.3f", start.x, player.position.x)
+			}
+		})
+	}
+}
+
 func TestRuntimeCombatModeSwitchKeepsBulwarkAndVanguardSlotsAuthoritative(t *testing.T) {
 	t.Parallel()
 

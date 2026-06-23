@@ -74,6 +74,7 @@ func (r *Runtime) publishWolfAIStateLocked(wolf *entityState, decision creaturea
 	if wolf == nil {
 		return
 	}
+	movementPresentation := creatureSkillMovementPresentationFromContract(contract)
 	wolf.creatureAI = &gamev1.CreatureAIState{
 		MovementTactic:                        decision.MovementTactic,
 		CombatTactic:                          decision.CombatTactic,
@@ -95,20 +96,20 @@ func (r *Runtime) publishWolfAIStateLocked(wolf *entityState, decision creaturea
 		ProfileSource:                         r.contracts.Source,
 		SkillMovementArcHeightCm:              policy.LungeArcHeightCM,
 		SkillMovementArcCurve:                 "low_fast",
-		SkillMovementTakeoffMs:                140,
-		SkillMovementLandingLockMs:            120,
+		SkillMovementTakeoffMs:                movementPresentation.TakeoffMS,
+		SkillMovementLandingLockMs:            movementPresentation.LandingLockMS,
 		SkillWindupMs:                         contract.WindupMS,
 		SkillActiveStartMs:                    contract.WindupMS,
 		SkillActiveEndMs:                      contract.WindupMS + contract.ActiveMS,
 		SkillRecoveryMs:                       contract.RecoveryMS,
 		SkillActionLockMs:                     contract.WindupMS + contract.ActiveMS + contract.RecoveryMS,
 		SkillMovementType:                     contract.MovementAction.ActionType,
-		SkillMovementStartMs:                  contract.WindupMS,
-		SkillMovementDurationMs:               contract.MovementAction.DurationMS,
-		SkillMovementDistanceCm:               contract.MovementAction.DistanceCM,
+		SkillMovementStartMs:                  movementPresentation.MovementStartMS,
+		SkillMovementDurationMs:               movementPresentation.MovementDuration,
+		SkillMovementDistanceCm:               movementPresentation.MovementDistance,
 		SkillMovementDesiredLandingDistanceCm: lungeMaxRangeCM,
 		SkillMovementMinLandingDistanceCm:     lungeMinRangeCM,
-		SkillMovementStopAtContactRatio:       1,
+		SkillMovementStopAtContactRatio:       movementPresentation.StopAtContactRate,
 	}
 }
 

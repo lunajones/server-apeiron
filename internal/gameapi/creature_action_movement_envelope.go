@@ -1,0 +1,153 @@
+package gameapi
+
+import (
+	"strings"
+	"time"
+
+	"server-apeiron/internal/combat/actionruntime"
+	"server-apeiron/internal/movement"
+)
+
+type creatureActionMovementEnvelope struct {
+	SkillID              string
+	ContactPolicy        string
+	MovementStartsAt     time.Time
+	MovementEndsAt       time.Time
+	AirborneStartsAt     time.Time
+	AirborneEndsAt       time.Time
+	LandingStartsAt      time.Time
+	LandingEndsAt        time.Time
+	HandoffAt            time.Time
+	RootMotionActive     bool
+	AirborneActive       bool
+	LandingInertiaActive bool
+	Complete             bool
+	AllowsPassthrough    bool
+	StopsAtContact       bool
+}
+
+type creatureSkillMovementPresentation struct {
+	MovementStartMS   int32
+	TakeoffMS         int32
+	LandingLockMS     int32
+	MovementDuration  int32
+	MovementDistance  float64
+	StopAtContactRate float64
+}
+
+func creatureActionMovementEnvelopeAt(instance actionruntime.Instance, contract SkillRuntimeContract, now time.Time) creatureActionMovementEnvelope {
+	rootStartOffset := creatureSkillMovementStartOffset(instance.Timing, contract)
+	movementDuration := movement.ActionDuration(contract.MovementAction)
+	rootStart := instance.StartedAt.Add(rootStartOffset)
+	rootEnd := rootStart.Add(movementDuration)
+	airborneDuration := creatureSkillAirborneDuration(contract)
+	airborneEnd := rootStart.Add(airborneDuration)
+	if airborneDuration <= 0 || airborneEnd.After(rootEnd) {
+		airborneEnd = rootStart
+	}
+	handoff := rootEnd
+	if actionEnd := instance.StartedAt.Add(instance.Timing.Windup + instance.Timing.Active + instance.Timing.Recovery); actionEnd.After(handoff) {
+		handoff = actionEnd
+	}
+	envelope := creatureActionMovementEnvelope{
+		SkillID:           contract.SkillID,
+		ContactPolicy:     normalizeCreatureContactPolicy(contract.ContactPolicy, contract.MovementAction.ContactPolicy),
+		MovementStartsAt:  rootStart,
+		MovementEndsAt:    rootEnd,
+		AirborneStartsAt:  rootStart,
+		AirborneEndsAt:    airborneEnd,
+		LandingStartsAt:   airborneEnd,
+		LandingEndsAt:     rootEnd,
+		HandoffAt:         handoff,
+		AllowsPassthrough: creatureContactPolicyAllowsPassthrough(contract.ContactPolicy, contract.MovementAction.ContactPolicy),
+		StopsAtContact:    creatureContactPolicyStopsAtContact(contract.ContactPolicy, contract.MovementAction.ContactPolicy),
+	}
+	if movementDuration <= 0 {
+		envelope.MovementEndsAt = rootStart
+		envelope.LandingEndsAt = rootStart
+		envelope.HandoffAt = instance.StartedAt.Add(instance.Timing.Windup + instance.Timing.Active + instance.Timing.Recovery)
+	}
+	envelope.RootMotionActive = !now.Before(envelope.MovementStartsAt) && now.Before(envelope.MovementEndsAt)
+	envelope.AirborneActive = airborneDuration > 0 && !now.Before(envelope.AirborneStartsAt) && now.Before(envelope.AirborneEndsAt)
+	envelope.LandingInertiaActive = envelope.LandingEndsAt.After(envelope.LandingStartsAt) && !now.Before(envelope.LandingStartsAt) && now.Before(envelope.LandingEndsAt)
+	envelope.Complete = !now.Before(envelope.HandoffAt)
+	return envelope
+}
+
+func creatureSkillMovementPresentationFromContract(contract SkillRuntimeContract) creatureSkillMovementPresentation {
+	timing := creatureActionTimingFromSkillContract(contract)
+	startOffset := creatureSkillMovementStartOffset(timing, contract)
+	duration := movement.ActionDuration(contract.MovementAction)
+	airborne := creatureSkillAirborneDuration(contract)
+	landing := duration - airborne
+	if landing < 0 {
+		landing = 0
+	}
+	return creatureSkillMovementPresentation{
+		MovementStartMS:   durationMillis(startOffset),
+		TakeoffMS:         durationMillis(startOffset),
+		LandingLockMS:     durationMillis(landing),
+		MovementDuration:  durationMillis(duration),
+		MovementDistance:  movement.ActionDistance(contract.MovementAction, 0),
+		StopAtContactRate: creatureSkillMovementStopAtContactRate(contract),
+	}
+}
+
+func creatureSkillAirborneDuration(contract SkillRuntimeContract) time.Duration {
+	if contract.MovementAction.AirborneDurationMS > 0 {
+		return time.Duration(contract.MovementAction.AirborneDurationMS) * time.Millisecond
+	}
+	if strings.EqualFold(contract.MovementAction.ActionType, "leap") && contract.MovementAction.ActiveMS > 0 {
+		return time.Duration(contract.MovementAction.ActiveMS) * time.Millisecond
+	}
+	return 0
+}
+
+func creatureSkillMovementStopAtContactRate(contract SkillRuntimeContract) float64 {
+	if creatureContactPolicyAllowsPassthrough(contract.ContactPolicy, contract.MovementAction.ContactPolicy) {
+		return 1
+	}
+	if creatureContactPolicyStopsAtContact(contract.ContactPolicy, contract.MovementAction.ContactPolicy) {
+		return 0
+	}
+	return 1
+}
+
+func normalizeCreatureContactPolicy(values ...string) string {
+	for _, value := range values {
+		normalized := strings.ToLower(strings.TrimSpace(value))
+		if normalized != "" {
+			return normalized
+		}
+	}
+	return ""
+}
+
+func creatureContactPolicyAllowsPassthrough(values ...string) bool {
+	for _, value := range values {
+		normalized := strings.ToLower(strings.TrimSpace(value))
+		if normalized == "" {
+			continue
+		}
+		if strings.Contains(normalized, "passthrough") || strings.Contains(normalized, "phase_through") || strings.Contains(normalized, "phase-through") {
+			return true
+		}
+	}
+	return false
+}
+
+func creatureContactPolicyStopsAtContact(values ...string) bool {
+	for _, value := range values {
+		normalized := strings.ToLower(strings.TrimSpace(value))
+		if normalized == "" {
+			continue
+		}
+		if strings.Contains(normalized, "passthrough") || strings.Contains(normalized, "iframe") {
+			return false
+		}
+		if strings.Contains(normalized, "contact") || strings.Contains(normalized, "block") || strings.Contains(normalized, "carry") {
+			return true
+		}
+	}
+	return false
+}

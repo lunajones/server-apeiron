@@ -488,6 +488,18 @@ func splitCoverageBlockers(err error) []string {
 func (r *Runtime) RuntimeStats(ctx context.Context, _ *gamev1.Empty) (*gamev1.RuntimeStatsResponse, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	phaseStatus := map[string]string{"runtime": "recovered_in_memory"}
+	if r.contracts.Source != "" {
+		phaseStatus["contract_source"] = r.contracts.Source
+	}
+	coverage := r.contracts.CoverageReport(r.contracts.Source == "db_contracts")
+	for _, category := range coverage.Categories {
+		if category.Ready {
+			phaseStatus["contracts."+category.Name] = "ready"
+			continue
+		}
+		phaseStatus["contracts."+category.Name] = "blocked"
+	}
 	return &gamev1.RuntimeStatsResponse{
 		Tick:                 r.serverTickLocked(),
 		ActiveRegions:        1,
@@ -495,7 +507,7 @@ func (r *Runtime) RuntimeStats(ctx context.Context, _ *gamev1.Empty) (*gamev1.Ru
 		ActiveEntities:       uint32(len(r.entities)),
 		AverageFrameMs:       0.2,
 		P95FrameMs:           0.5,
-		PhaseStatus:          map[string]string{"runtime": "recovered_in_memory"},
+		PhaseStatus:          phaseStatus,
 		SpawnedCreatureCount: uint64(r.spawnedCreatureCountLocked()),
 	}, nil
 }

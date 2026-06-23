@@ -168,6 +168,90 @@ func TestWolfLungeActivePhaseUsesSkillRootMotionOwner(t *testing.T) {
 	}
 }
 
+func TestWolfLungeMovementEnvelopeKeepsLandingInertiaAfterAirbornePhase(t *testing.T) {
+	runtime := NewRuntimeWithContracts(RecoveryFixtureRuntimeContracts())
+	player := runtime.ensurePlayerLocked("local_player")
+	wolf := runtime.ensureWolfLocked(player)
+	contract := runtime.contracts.skillContract("lunge")
+	startedAt := time.Now()
+	instance := runtime.newCreatureActionInstance(wolf, "lunge", contract, wolf.position, startedAt)
+	rootStart := creatureSkillMovementStartAt(instance, contract)
+	airborneEnd := rootStart.Add(creatureSkillAirborneDuration(contract))
+	landingTick := airborneEnd.Add(40 * time.Millisecond)
+
+	envelope := creatureActionMovementEnvelopeAt(instance, contract, landingTick)
+	if !envelope.RootMotionActive {
+		t.Fatalf("lunge root motion inactive during landing inertia: %#v", envelope)
+	}
+	if envelope.AirborneActive {
+		t.Fatalf("lunge still airborne during landing inertia: %#v", envelope)
+	}
+	if !envelope.LandingInertiaActive {
+		t.Fatalf("lunge did not expose landing inertia window: %#v", envelope)
+	}
+	if !envelope.AllowsPassthrough {
+		t.Fatalf("lunge contact policy should allow passthrough: %#v", envelope)
+	}
+	if envelope.StopsAtContact {
+		t.Fatalf("lunge should not stop at normal body contact: %#v", envelope)
+	}
+}
+
+func TestWolfLungeMovementPresentationIsContractDerived(t *testing.T) {
+	runtime := NewRuntimeWithContracts(RecoveryFixtureRuntimeContracts())
+	contract := runtime.contracts.skillContract("lunge")
+	presentation := creatureSkillMovementPresentationFromContract(contract)
+	wantStart := durationMillis(creatureSkillMovementStartOffset(creatureActionTimingFromSkillContract(contract), contract))
+	wantLanding := durationMillis(movement.ActionDuration(contract.MovementAction) - creatureSkillAirborneDuration(contract))
+
+	if presentation.MovementStartMS != wantStart {
+		t.Fatalf("movement start ms = %d, want contract offset %d", presentation.MovementStartMS, wantStart)
+	}
+	if presentation.TakeoffMS != wantStart {
+		t.Fatalf("takeoff ms = %d, want movement start %d", presentation.TakeoffMS, wantStart)
+	}
+	if presentation.LandingLockMS != wantLanding {
+		t.Fatalf("landing lock ms = %d, want movement duration-airborne %d", presentation.LandingLockMS, wantLanding)
+	}
+	if presentation.MovementDuration != contract.MovementAction.DurationMS {
+		t.Fatalf("movement duration = %d, want contract duration %d", presentation.MovementDuration, contract.MovementAction.DurationMS)
+	}
+	if presentation.MovementDistance != contract.MovementAction.DistanceCM {
+		t.Fatalf("movement distance = %.1f, want contract distance %.1f", presentation.MovementDistance, contract.MovementAction.DistanceCM)
+	}
+	if presentation.StopAtContactRate != 1 {
+		t.Fatalf("passthrough lunge stop-at-contact rate = %.2f, want 1", presentation.StopAtContactRate)
+	}
+}
+
+func TestWolfPublishedAIStateUsesContractMovementPresentation(t *testing.T) {
+	runtime := NewRuntimeWithContracts(RecoveryFixtureRuntimeContracts())
+	player := runtime.ensurePlayerLocked("local_player")
+	wolf := runtime.ensureWolfLocked(player)
+
+	wolf.position = vector{x: player.position.x + 520, y: player.position.y, z: player.position.z}
+	runtime.tick = 328
+	runtime.updateWolfPolicyLocked(wolf, player)
+
+	if wolf.creatureAI == nil {
+		t.Fatal("wolf AI state was not published")
+	}
+	contract := runtime.contracts.skillContract(wolf.creatureAI.GetSelectedSkillId())
+	presentation := creatureSkillMovementPresentationFromContract(contract)
+	if wolf.creatureAI.GetSkillMovementTakeoffMs() != presentation.TakeoffMS {
+		t.Fatalf("published takeoff = %d, want %d", wolf.creatureAI.GetSkillMovementTakeoffMs(), presentation.TakeoffMS)
+	}
+	if wolf.creatureAI.GetSkillMovementLandingLockMs() != presentation.LandingLockMS {
+		t.Fatalf("published landing lock = %d, want %d", wolf.creatureAI.GetSkillMovementLandingLockMs(), presentation.LandingLockMS)
+	}
+	if wolf.creatureAI.GetSkillMovementStartMs() != presentation.MovementStartMS {
+		t.Fatalf("published movement start = %d, want %d", wolf.creatureAI.GetSkillMovementStartMs(), presentation.MovementStartMS)
+	}
+	if wolf.creatureAI.GetSkillMovementDistanceCm() != presentation.MovementDistance {
+		t.Fatalf("published movement distance = %.1f, want %.1f", wolf.creatureAI.GetSkillMovementDistanceCm(), presentation.MovementDistance)
+	}
+}
+
 func TestCreatureActionTimingExtendsUntilSkillRootMotionCompletes(t *testing.T) {
 	runtime := NewRuntimeWithContracts(RecoveryFixtureRuntimeContracts())
 	player := runtime.ensurePlayerLocked("local_player")

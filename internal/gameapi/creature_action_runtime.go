@@ -186,12 +186,12 @@ func (r *Runtime) applyCreatureSkillRootMotionLocked(creature *entityState, targ
 	if movement.ActionDistance(contract.MovementAction, 0) <= 0 || movement.ActionDuration(contract.MovementAction) <= 0 {
 		return false
 	}
-	rootStart := creatureSkillMovementStartAt(*instance, contract)
-	if now.Before(rootStart) {
+	envelope := creatureActionMovementEnvelopeAt(*instance, contract, now)
+	if !envelope.RootMotionActive {
 		return false
 	}
 	if creature.actionMotion == nil || creature.actionMotion.SkillID != decision.SelectedSkill || creature.actionMotion.CommandID != instance.InstanceID {
-		r.startCreatureSkillRootMotionLocked(creature, target, decision, contract, *instance, rootStart)
+		r.startCreatureSkillRootMotionLocked(creature, target, decision, contract, *instance, envelope.MovementStartsAt)
 	}
 	if creature.actionMotion == nil {
 		return false
