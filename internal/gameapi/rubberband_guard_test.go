@@ -164,6 +164,7 @@ func TestRubberbandGuardSprintForwardBasicChainDoesNotLoseGroundedHandoff(t *tes
 		assertSkillRootLocomotion(t, h.player, skillID)
 		assertNoImmediateTeleport(t, start, h.player.position, skillID)
 		h.forceComplete()
+		expirePlayerSkillCooldownsForTest(h.player)
 		h.move(forward, true, &yaw)
 		assertGroundedMoveLocomotion(t, h.player, fmt.Sprintf("post-basic-%d", i))
 	}
@@ -296,6 +297,114 @@ func TestRubberbandGuardLeapDodgeTurnBaselineSurvivesSkillPressure(t *testing.T)
 	}
 }
 
+func TestRubberbandGuardLeapLandingHandoffReleasesOwnedRoot(t *testing.T) {
+	t.Parallel()
+
+	h := newRuntimeGuardHarness(t, "rubber-guard-leap-landing-handoff")
+	leapAck := h.leap(gamev1Vector(1, 0, 0))
+	if h.player.actionMotion == nil {
+		t.Fatal("leap did not start owned action motion")
+	}
+
+	landing := testRuntimeMoveCommand(h.sessionID, h.nextSequence(), gamev1Vector(0, 0, 0), 0, false, nil)
+	landing.GetMove().HandoffAction = "leap"
+	landing.GetMove().HandoffSequence = leapAck.GetSequence()
+	landing.GetMove().HandoffClientTick = leapAck.GetSequence()
+	landing.GetMove().HandoffPosition = gamev1Vector(140, 0, 0)
+	landing.GetMove().HandoffVelocity = gamev1Vector(0, 0, 0)
+	h.submit(landing)
+
+	if h.player.actionMotion != nil {
+		t.Fatalf("leap handoff left owned root active: %#v", h.player.actionMotion)
+	}
+	if h.player.locomotion == nil {
+		t.Fatal("leap handoff did not publish locomotion")
+	}
+	if h.player.locomotion.GetAction() != "leap" || h.player.locomotion.GetPhase() != "complete" {
+		t.Fatalf("leap handoff locomotion = action %q phase %q, want leap/complete", h.player.locomotion.GetAction(), h.player.locomotion.GetPhase())
+	}
+
+	h.move(gamev1Vector(0, 1, 0), true, floatPtr(90))
+	assertGroundedMoveLocomotion(t, h.player, "post-leap-handoff")
+}
+
+func TestRubberbandGuardDodgeSnapshotPublishesAuthoritativeTimeline(t *testing.T) {
+	t.Parallel()
+
+	h := newRuntimeGuardHarness(t, "rubber-guard-dodge-timeline")
+	h.dodge(gamev1Vector(0, 1, 0))
+	if h.player.actionMotion == nil {
+		t.Fatal("dodge did not start owned action motion")
+	}
+	contract := h.player.actionMotion.Contract
+	h.snapshotAtActionElapsed(100 * time.Millisecond)
+
+	loco := h.player.locomotion
+	if loco == nil {
+		t.Fatal("dodge snapshot did not publish locomotion")
+	}
+	if loco.GetAction() != "dodge" || loco.GetAbilityKey() != "dodge" {
+		t.Fatalf("dodge locomotion action=%q ability=%q, want dodge/dodge", loco.GetAction(), loco.GetAbilityKey())
+	}
+	if loco.GetPhase() == "" || loco.GetPhase() == "complete" || loco.GetPhase() == "exit_handoff" {
+		t.Fatalf("dodge mid-action phase=%q, want active/recovery timeline phase", loco.GetPhase())
+	}
+	if loco.GetPhaseElapsedMs() <= 0 {
+		t.Fatalf("dodge phase elapsed=%d, want positive server timeline", loco.GetPhaseElapsedMs())
+	}
+	if loco.GetPhaseRemainingMs() <= 0 || loco.GetPhaseRemainingMs() >= contract.DurationMS {
+		t.Fatalf("dodge phase remaining=%d, want within contract duration %d", loco.GetPhaseRemainingMs(), contract.DurationMS)
+	}
+}
+
+func TestRubberbandGuardDodgeExitHandoffStopsLocalCarryAndReleasesLock(t *testing.T) {
+	t.Parallel()
+
+	h := newRuntimeGuardHarness(t, "rubber-guard-dodge-exit-handoff")
+	h.dodge(gamev1Vector(0, 1, 0))
+	if h.player.actionMotion == nil {
+		t.Fatal("dodge did not start owned action motion")
+	}
+	contract := h.player.actionMotion.Contract
+	h.snapshotAtActionElapsed(durationFromMS(contract.DurationMS) + 20*time.Millisecond)
+
+	if h.player.actionMotion != nil {
+		t.Fatalf("dodge completion left action motion active: %#v", h.player.actionMotion)
+	}
+	if h.player.movementState != "grounded" || h.player.skillState != "idle" || h.player.combatState != "ready" {
+		t.Fatalf("dodge completion state movement=%q skill=%q combat=%q, want grounded/idle/ready", h.player.movementState, h.player.skillState, h.player.combatState)
+	}
+	if !h.player.actionLockedUntil.IsZero() || h.player.actionLockReason != "" {
+		t.Fatalf("dodge completion left action lock until=%v reason=%q", h.player.actionLockedUntil, h.player.actionLockReason)
+	}
+
+	loco := h.player.locomotion
+	if loco == nil {
+		t.Fatal("dodge completion did not publish locomotion")
+	}
+	if loco.GetAction() != "dodge" || loco.GetPhase() != "exit_handoff" {
+		t.Fatalf("dodge completion locomotion action=%q phase=%q, want dodge/exit_handoff", loco.GetAction(), loco.GetPhase())
+	}
+	if !loco.GetLandingHandoffActive() {
+		t.Fatal("dodge completion did not publish exit handoff")
+	}
+	if loco.GetLandingExitSpeed() != 0 {
+		t.Fatalf("dodge exit speed=%.2f, want 0 so client cannot keep sliding", loco.GetLandingExitSpeed())
+	}
+	if want := h.runtime.contracts.MovementProfile.GetDodgeCarryHandoffMs(); loco.GetPhaseRemainingMs() != want {
+		t.Fatalf("dodge exit remaining=%d, want profile dodge handoff %d", loco.GetPhaseRemainingMs(), want)
+	}
+
+	h.player.actionHandoffUntil = time.Now().Add(-time.Millisecond)
+	h.snapshotAtActionElapsed(durationFromMS(contract.DurationMS) + 200*time.Millisecond)
+	if h.player.locomotion.GetPhase() != "complete" || h.player.locomotion.GetLandingHandoffActive() {
+		t.Fatalf("expired dodge handoff phase=%q handoff=%v, want complete/false", h.player.locomotion.GetPhase(), h.player.locomotion.GetLandingHandoffActive())
+	}
+
+	h.move(gamev1Vector(1, 0, 0), true, floatPtr(0))
+	assertGroundedMoveLocomotion(t, h.player, "post-dodge-handoff")
+}
+
 func TestRubberbandGuardRepeatedShieldSkillsWhileSprintingForward(t *testing.T) {
 	t.Parallel()
 
@@ -309,6 +418,7 @@ func TestRubberbandGuardRepeatedShieldSkillsWhileSprintingForward(t *testing.T) 
 		assertGroundedMoveLocomotion(t, h.player, fmt.Sprintf("pre-shield-%d", i))
 		skillID := skills[i%len(skills)]
 		start := h.player.position
+		expirePlayerSkillCooldownsForTest(h.player)
 		h.cast(skillID, forward)
 		assertSkillRootLocomotion(t, h.player, skillID)
 		assertNoImmediateTeleport(t, start, h.player.position, skillID)

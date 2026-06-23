@@ -214,3 +214,106 @@ Any new movement/reconciliation field must be added in one slice across DB migra
 proto/repository mapping, server runtime validation, Unreal parsing, and Unreal profile validation.
 Do not add new `PositiveOr(..., literal)` gameplay behavior unless the literal is provably a
 non-runtime safety default and missing authoritative data is logged or rejected.
+
+## 2026-06-23 - Core Contract Startup Gate, Player Cooldowns, And Dodge Contract Retention
+
+### Symptom
+
+PIE logs showed `TurnFlow submit_blocked_missing_contract` for early movement/turn input before
+the `turn` movement action payload was cached. The same test pass also showed active Bulwark skills
+could be spammed because player skill runtime published `CooldownEndMs` but the gameapi command gate
+did not enforce a player cooldown map. Dodge could keep a post-stop carry based on stale local
+fallback phase values after authoritative contract state had already been loaded.
+
+### Change
+
+- Unreal now refuses normal movement submission, dodge, and leap while core movement contracts
+  (`turn`, `dodge`, `leap`) are not ready. This removes the startup window where the client could
+  predict yaw/locomotion before the authoritative contract payload arrived.
+- `gameapi` now tracks player active-skill cooldowns with `playerCooldownUntil`, mirroring the
+  existing creature cooldown ownership but excluding basic attacks.
+- Cast ACK metadata now includes `skill_cooldown_ms`, `cooldown_until_ms`, and
+  `cooldown_remaining_ms` when a player active skill starts or is rejected by cooldown.
+- Shield Bash and Shield Rush canonical cooldowns moved to DB/fixture contracts:
+  `R = 26000ms`, `F = 32000ms`.
+- Shield Rush movement distance/speed was reduced by 10% in DB and fixture contracts:
+  `960cm/1148cm/s -> 864cm/1033.2cm/s`.
+- Unreal dodge stop paths no longer reset the loaded dodge phase/curve back to local literal
+  defaults after the authoritative contract has been cached.
+- Added `TestActiveSkillCooldownBlocksRecastAfterRootMotionCompletes`; updated rubberband stress
+  tests to explicitly expire cooldowns when the test purpose is reconciliation rather than cooldown.
+
+### Effect
+
+The curve-rubber startup path is gated by contract readiness instead of fallback yaw behavior.
+R/F cooldown is now server-authoritative and visible to the client. Dodge stop keeps the loaded
+contract as the live movement truth instead of reverting to default local phase numbers.
+
+### Guardrail
+
+Do not fix movement rubber by changing normal movement feel or lateral sprint caps. First verify
+the relevant movement action contract is loaded before prediction, then check whether the server
+and client publish the same action/phase/reconciliation fields. Active skill cooldowns belong to
+the action runtime gate; basic attacks stay cooldown-free unless a future weapon contract explicitly
+changes that rule.
+
+## 2026-06-23 - Dodge Exit Handoff Stops Local Carry
+
+### Symptom
+
+Manual PIE showed player dodge sometimes becoming an infinite horizontal slide, followed by
+rubberbanding/teleport back and blocked movement. The same pass showed the restored dodge distance
+felt too short.
+
+### Hypothesis
+
+The server could be ending dodge correctly while the Unreal stop path still preserved residual local
+velocity. If the client seeds grounded carry from its current velocity after an authoritative
+zero-speed dodge handoff, it can keep moving after the server-owned dodge has ended.
+
+### Cause
+
+- Server owned-locomotion snapshots did not publish reliable phase elapsed/remaining values for
+  dodge, so the client could lose the authoritative dodge timeline.
+- Server did not publish an explicit dodge `exit_handoff` state with a zero exit speed when the
+  owned dodge root completed.
+- Unreal `StopLocalDodgePrediction` treated an authoritative dodge `exit_handoff` with zero exit
+  speed as eligible for generic carry because local horizontal velocity was still nonzero. That
+  seeded `GroundedCarryHandoff` with the current local speed and created the infinite slide.
+- Unreal `SubmitMove` used a separate `sprint` movement contract hash while server normal movement
+  is contract-owned by `move`; sprint is a movement parameter/profile, not a different movement
+  action contract in the current DB.
+
+### Change
+
+- `gameapi` now publishes phase elapsed/remaining for owned locomotion through the shared movement
+  contract timing path.
+- `gameapi` publishes dodge completion as `phase=exit_handoff`,
+  `movement_mode=grounded_handoff`, `landing_handoff_active=true`, and
+  `landing_exit_speed=0`, then expires it to `complete`.
+- `gameapi` clears owned-locomotion action lock/state when dodge completes.
+- Unreal `StopLocalDodgePrediction` now treats authoritative dodge `exit_handoff` with no exit
+  speed as a command to clear grounded carry and zero horizontal velocity, not as permission to
+  reuse local residual speed.
+- Unreal `SubmitMove` now submits the `move` contract hash for normal movement; sprint remains a
+  movement parameter.
+- Dodge distance tuning moved through the DB/fixture movement action contract:
+  `260cm / 812.5cm/s -> 360cm / 1125cm/s`, preserving `320ms` duration and the full iframe
+  contract.
+
+### Tests
+
+- `go test ./internal/movement ./internal/gameapi`
+- `go test ./...` in `server-apeiron`
+- `go test ./...` in `db-apeiron`
+- `PlainTestMapEditor Win64 Development` Unreal build succeeded with `-NoHotReload`.
+- Runtime DB check confirmed `ProfileDataService.GetMovementActionContract(dodge_v1_full_iframe)`
+  returns `distanceCm=360`, `baseSpeedCmS=1125`, `reconciliationContractId=dodge_reconciliation`,
+  and `inputPolicy=blocked_during_owned_root`.
+
+### Guardrail
+
+Do not reintroduce generic grounded carry on dodge `exit_handoff` unless the server explicitly
+publishes a positive `landing_exit_speed`. Dodge is an owned root action: client prediction may
+mirror the contract, but the end of the action must be released by the authoritative handoff, not
+by residual local velocity.

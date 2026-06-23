@@ -189,6 +189,14 @@ func TestRuntimeRejectsDodgeAndLeapWhenMovementContractIsMissing(t *testing.T) {
 				}
 			},
 		},
+		{
+			name:        "turn",
+			abilityKey:  "turn",
+			commandType: gamev1.CommandType_COMMAND_TYPE_TURN,
+			command: func(sessionID string, sequence uint64) *gamev1.PlayerCommand {
+				return testRuntimeTurnCommand(sessionID, sequence, 90)
+			},
+		},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
 			t.Parallel()
@@ -552,12 +560,14 @@ func TestRuntimeSprintStrafeYawInversionInterleavedWithSkills(t *testing.T) {
 
 		if i%3 == 1 {
 			skillID := skills[(i/3)%len(skills)]
+			expirePlayerSkillCooldownsForTest(player)
 			submit(testRuntimeCastSkillCommand(sessionID, sequence, skillID, gamev1Vector(1, 0, 0)))
 			sequence++
 			if player.locomotion == nil || player.locomotion.GetAction() != "grounded_skill" {
 				t.Fatalf("iteration %d expected skill locomotion after cast", i)
 			}
 			forceCompleteRuntimeAction(t, runtime, sessionID, player)
+			expirePlayerSkillCooldownsForTest(player)
 		}
 
 		if player.locomotion != nil && player.locomotion.GetTargetSpeed() > 0 && player.locomotion.GetTargetSpeed() < 20 {
@@ -713,6 +723,7 @@ func TestRuntimeShiftStrafeYawInversionKeepsMoveReconciled(t *testing.T) {
 
 		// Keep the engine in an aggressive curve while throwing short skill windows.
 		if i%3 == 2 {
+			expirePlayerSkillCooldownsForTest(player)
 			submit(testRuntimeCastSkillCommand(sessionID, sequence, "player_shield_bash", dir))
 			sequence++
 			if player.locomotion == nil || player.locomotion.GetAction() != "grounded_skill" {
@@ -722,6 +733,7 @@ func TestRuntimeShiftStrafeYawInversionKeepsMoveReconciled(t *testing.T) {
 				t.Fatalf("iteration %d shield bash reconciliation=%q expected grounded_skill_action", i, player.locomotion.GetReconciliationMode())
 			}
 			forceCompleteRuntimeAction(t, runtime, sessionID, player)
+			expirePlayerSkillCooldownsForTest(player)
 		}
 	}
 
@@ -870,6 +882,7 @@ func TestRuntimeShiftRunRepeatedShieldSkillsReturnForwardMove(t *testing.T) {
 			t.Fatalf("iteration %d pre-skill move did not advance: speed=%.2f distance=%.2f", i, safeSpeed(player.locomotion), safeDistance(player.locomotion))
 		}
 
+		expirePlayerSkillCooldownsForTest(player)
 		submit(testRuntimeCastSkillCommand(sessionID, sequence, skills[i%len(skills)], forward))
 		sequence++
 		if player.locomotion == nil || player.locomotion.GetAction() != "grounded_skill" {
@@ -880,6 +893,7 @@ func TestRuntimeShiftRunRepeatedShieldSkillsReturnForwardMove(t *testing.T) {
 		}
 
 		forceCompleteRuntimeAction(t, runtime, sessionID, player)
+		expirePlayerSkillCooldownsForTest(player)
 		submit(testRuntimeMoveCommand(sessionID, sequence, forward, 1, true, &yaw))
 		sequence++
 		if player.locomotion == nil || player.locomotion.GetAction() != "move" {
@@ -1403,6 +1417,12 @@ func forceCompleteRuntimeAction(t *testing.T, runtime *Runtime, sessionID string
 		IncludeFullState: true,
 	}); err != nil {
 		t.Fatalf("GetSnapshot force-complete failed: %v", err)
+	}
+}
+
+func expirePlayerSkillCooldownsForTest(player *entityState) {
+	if player != nil {
+		player.playerCooldownUntil = nil
 	}
 }
 

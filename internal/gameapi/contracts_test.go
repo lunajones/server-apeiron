@@ -166,8 +166,8 @@ func TestDevFixturePlayerShieldKitMatchesCanonicalMotionGeometry(t *testing.T) {
 		},
 		{
 			skillID:      "player_shield_rush",
-			distanceCM:   960,
-			baseSpeedCMS: 1148,
+			distanceCM:   864,
+			baseSpeedCMS: 1033.2,
 			sweepShape:   "box_strip",
 			lengths:      []float64{34, 44, 54},
 			offsetsX:     []float64{8, 10, 12},
@@ -609,11 +609,11 @@ func TestLoadRuntimeContractsFromDBUsesRequiredSkillBindings(t *testing.T) {
 	if effects := contracts.SkillContracts["player_shield_rush"].ControlEffects; len(effects) != 1 || effects[0].GetStatusEffectId() != "impact_shield_rush_carry_push" {
 		t.Fatalf("DB skill impact control effects did not load for Shield Rush: %#v", effects)
 	}
-	if action := contracts.SkillContracts["player_shield_rush"].MovementAction; action.DistanceCM != 960 || action.DurationMS != 1100 || action.ActiveMS != 720 || action.RecoveryMS != 260 {
-		t.Fatalf("Shield Rush movement envelope = distance %.1f duration %d active %d recovery %d, want canonical 960/1100/720/260", action.DistanceCM, action.DurationMS, action.ActiveMS, action.RecoveryMS)
+	if action := contracts.SkillContracts["player_shield_rush"].MovementAction; action.DistanceCM != 864 || action.DurationMS != 1100 || action.ActiveMS != 720 || action.RecoveryMS != 260 {
+		t.Fatalf("Shield Rush movement envelope = distance %.1f duration %d active %d recovery %d, want canonical 864/1100/720/260", action.DistanceCM, action.DurationMS, action.ActiveMS, action.RecoveryMS)
 	}
-	if effects := contracts.SkillContracts["player_shield_rush"].ControlEffects; effects[0].GetDistanceCm() != 960 {
-		t.Fatalf("Shield Rush control distance = %.1f, want canonical 960", effects[0].GetDistanceCm())
+	if effects := contracts.SkillContracts["player_shield_rush"].ControlEffects; effects[0].GetDistanceCm() != 864 {
+		t.Fatalf("Shield Rush control distance = %.1f, want canonical 864", effects[0].GetDistanceCm())
 	}
 	if impact := contracts.SkillContracts["player_shield_rush"].Impact; impact == nil || impact.GetImpactType() != "blunt" {
 		t.Fatalf("DB skill impact profile did not load for Shield Rush: %#v", impact)
@@ -1558,15 +1558,15 @@ func fakeMovementActionContract(id string, abilityKey string, actionType string,
 		durationMS = 320
 		activeMS = 260
 		recoveryMS = 60
-		distanceCM = 260
-		baseSpeedCMS = 812.5
+		distanceCM = 360
+		baseSpeedCMS = 1125
 		contactPolicy = "iframe"
 	case "shield_rush_front_contact_v1":
 		durationMS = 1100
 		activeMS = 720
 		recoveryMS = 260
-		distanceCM = 960
-		baseSpeedCMS = 1148
+		distanceCM = 864
+		baseSpeedCMS = 1033.2
 		contactPolicy = "multi_target_carry_push"
 		metadata = `{"ability_key":"player_shield_rush","front_contact_offset_cm":8,"front_contact_depth_cm":54,"source":"test_db_contract"}`
 	case "shield_bash_front_push_v1":

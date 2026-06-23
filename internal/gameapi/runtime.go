@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"net"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -95,8 +96,11 @@ type entityState struct {
 	skillRuntime                *gamev1.SkillRuntimeState
 	actionInstance              *actionruntime.Instance
 	actionMotion                *actionMotionState
+	actionHandoffUntil          time.Time
+	actionHandoffAction         string
 	combatMode                  *gamev1.CombatModeState
 	creatureAI                  *gamev1.CreatureAIState
+	playerCooldownUntil         map[string]time.Time
 	creatureCooldownUntil       map[string]time.Time
 	creatureActiveSetupPolicyID string
 
@@ -327,6 +331,21 @@ func (r *Runtime) SubmitCommand(ctx context.Context, cmd *gamev1.PlayerCommand) 
 			r.queueAckLocked(cmd.GetContext().GetSessionId(), ack)
 			return ack, nil
 		}
+		if cooldownUntil, onCooldown := r.playerSkillCooldownLocked(player, resolvedPlayerSkillID(player, cmd.GetCastSkill().GetSkillId()), now); onCooldown {
+			ack := r.ackLocked(cmd, player, false, "cooldown_active", "skill cooldown is active")
+			if ack.Metadata == nil {
+				ack.Metadata = map[string]string{}
+			}
+			skillID := resolvedPlayerSkillID(player, cmd.GetCastSkill().GetSkillId())
+			cooldownMS := r.contracts.skillContract(skillID).CooldownMS
+			ack.Metadata["skill_id"] = skillID
+			ack.Metadata["ability_key"] = skillID
+			ack.Metadata["skill_cooldown_ms"] = strconv.FormatInt(int64(cooldownMS), 10)
+			ack.Metadata["cooldown_until_ms"] = strconv.FormatInt(cooldownUntil.UnixMilli(), 10)
+			ack.Metadata["cooldown_remaining_ms"] = strconv.FormatInt(cooldownUntil.Sub(now).Milliseconds(), 10)
+			r.queueAckLocked(cmd.GetContext().GetSessionId(), ack)
+			return ack, nil
+		}
 	}
 
 	switch cmd.GetType() {
@@ -338,6 +357,11 @@ func (r *Runtime) SubmitCommand(ctx context.Context, cmd *gamev1.PlayerCommand) 
 		}
 		r.applyMove(player, cmd)
 	case gamev1.CommandType_COMMAND_TYPE_TURN:
+		if ok, code, message := r.canApplyMovementActionContract("turn", r.contracts.contractForAbility("turn")); !ok {
+			ack := r.ackLocked(cmd, player, false, code, message)
+			r.queueAckLocked(cmd.GetContext().GetSessionId(), ack)
+			return ack, nil
+		}
 		r.applyTurn(player, cmd)
 	case gamev1.CommandType_COMMAND_TYPE_DODGE:
 		if ok, code, message := r.canApplyMovementActionContract("dodge", r.contracts.contractForAbility("dodge")); !ok {
@@ -428,6 +452,46 @@ func resetPlayerCommandReplayState(player *entityState) {
 	player.processedCommandOrder = nil
 }
 
+func resolvedPlayerSkillID(player *entityState, requestedSkillID string) string {
+	if requestedSkillID == "" || requestedSkillID == "player_basic_attack" {
+		return nextBasicAttack(player)
+	}
+	return requestedSkillID
+}
+
+func isPlayerBasicAttackSkillID(skillID string) bool {
+	return skillID == "player_basic_attack" || strings.HasPrefix(skillID, "player_basic_attack_")
+}
+
+func (r *Runtime) playerSkillCooldownLocked(player *entityState, skillID string, now time.Time) (time.Time, bool) {
+	if player == nil || skillID == "" || isPlayerBasicAttackSkillID(skillID) {
+		return time.Time{}, false
+	}
+	if player.playerCooldownUntil == nil {
+		player.playerCooldownUntil = map[string]time.Time{}
+		return time.Time{}, false
+	}
+	until, ok := player.playerCooldownUntil[skillID]
+	if !ok {
+		return time.Time{}, false
+	}
+	if now.Before(until) {
+		return until, true
+	}
+	delete(player.playerCooldownUntil, skillID)
+	return time.Time{}, false
+}
+
+func (r *Runtime) startPlayerSkillCooldownLocked(player *entityState, skillID string, contract SkillRuntimeContract, now time.Time) {
+	if player == nil || skillID == "" || isPlayerBasicAttackSkillID(skillID) || contract.CooldownMS <= 0 {
+		return
+	}
+	if player.playerCooldownUntil == nil {
+		player.playerCooldownUntil = map[string]time.Time{}
+	}
+	player.playerCooldownUntil[skillID] = now.Add(durationFromMS(contract.CooldownMS))
+}
+
 func playerCommandReplayKey(cmd *gamev1.PlayerCommand) string {
 	if cmd == nil {
 		return ""
@@ -455,10 +519,7 @@ func (r *Runtime) canApplyMovementActionContract(abilityKey string, contract Mov
 }
 
 func (r *Runtime) canApplySkillContract(requestedSkillID string, player *entityState) (bool, string, string) {
-	skillID := requestedSkillID
-	if skillID == "" || skillID == "player_basic_attack" {
-		skillID = nextBasicAttack(player)
-	}
+	skillID := resolvedPlayerSkillID(player, requestedSkillID)
 	contract := r.contracts.skillContract(skillID)
 	if !contract.Enabled || contract.SkillID == "" {
 		return false, "missing_skill_contract", "skill runtime contract is not loaded: " + skillID
@@ -1081,7 +1142,9 @@ func (r *Runtime) isBasicAttackCommandLockedByCombatMode(player *entityState, cm
 }
 
 func (r *Runtime) applyMove(player *entityState, cmd *gamev1.PlayerCommand) {
-	if r.advanceActionMotionLocked(player, time.Now()) {
+	move := cmd.GetMove()
+	handoffApplied := r.applyMoveHandoffLocked(player, cmd, move)
+	if !handoffApplied && r.advanceActionMotionLocked(player, time.Now()) {
 		if player.actionMotion != nil && blocksNormalInputDuringOwnedRoot(player.actionMotion.NormalInputPolicy) {
 			player.lastSequence = cmd.GetSequence()
 			player.lastClientTick = cmd.GetClientTick()
@@ -1089,12 +1152,21 @@ func (r *Runtime) applyMove(player *entityState, cmd *gamev1.PlayerCommand) {
 		}
 	}
 
-	move := cmd.GetMove()
 	dir := normalize(fromProto(move.GetDirection()))
 	if dir == (vector{}) {
 		player.velocity = vector{}
 		player.movementState = "idle"
-		player.locomotion = r.locomotion("grounded", "move_stop", "move", "recovery", player.position, player.position, cmd.GetSequence())
+		if handoffApplied {
+			contract := r.contracts.contractForAbility("jump")
+			player.locomotion = locomotionFromContractWithOverrides(contract, "complete", player.position, player.position, r.tick, cmd.GetSequence(), 0, 0)
+			player.locomotion.MovementMode = "grounded"
+			player.locomotion.Action = "leap"
+			player.locomotion.AbilityKey = "jump"
+			player.locomotion.LandingHandoffActive = false
+			player.locomotion.LastUpdatedTick = r.tick
+		} else {
+			player.locomotion = r.locomotion("grounded", "move_stop", "move", "recovery", player.position, player.position, cmd.GetSequence())
+		}
 		return
 	}
 	facingYaw := player.yaw
@@ -1124,6 +1196,58 @@ func (r *Runtime) applyMove(player *entityState, cmd *gamev1.PlayerCommand) {
 	player.locomotion.MovementMode = "grounded"
 	player.locomotion.Action = "move"
 	player.locomotion.AbilityKey = "move"
+}
+
+func (r *Runtime) applyMoveHandoffLocked(player *entityState, cmd *gamev1.PlayerCommand, move *gamev1.MoveCommand) bool {
+	if player == nil || move == nil {
+		return false
+	}
+	handoffAction := strings.ToLower(strings.TrimSpace(move.GetHandoffAction()))
+	if handoffAction == "" {
+		return false
+	}
+	if handoffAction != "leap" {
+		return false
+	}
+	motion := player.actionMotion
+	if motion != nil {
+		if motion.Contract.ActionType != "leap" {
+			return false
+		}
+		if move.GetHandoffSequence() > 0 && motion.Sequence > 0 && move.GetHandoffSequence() != motion.Sequence {
+			return false
+		}
+	}
+
+	if pos := move.GetHandoffPosition(); pos != nil {
+		player.position = fromProto(pos)
+	}
+	handoffVelocity := fromProto(move.GetHandoffVelocity())
+	handoffVelocity.z = 0
+	player.velocity = handoffVelocity
+	player.movementState = "grounded"
+	player.skillState = "idle"
+	player.combatState = "ready"
+	player.actionMotion = nil
+	player.actionLockedUntil = time.Time{}
+	player.actionLockReason = ""
+	if player.actionInstance != nil && string(player.actionInstance.SkillID) == "jump" {
+		player.actionInstance = nil
+	}
+
+	contract := r.contracts.contractForAbility("jump")
+	start := player.position
+	if motion != nil {
+		start = motion.StartPosition
+	}
+	player.locomotion = locomotionFromContractWithOverrides(contract, "complete", start, player.position, r.tick, cmd.GetSequence(), 0, distance(start, player.position))
+	player.locomotion.MovementMode = "grounded"
+	player.locomotion.Action = "leap"
+	player.locomotion.AbilityKey = "jump"
+	player.locomotion.ClientActionSequence = move.GetHandoffSequence()
+	player.locomotion.LastUpdatedTick = r.tick
+	player.locomotion.LandingHandoffActive = false
+	return true
 }
 
 // blockSpeedWalkFraction caps movement while blocking: the player moves at most at half
@@ -1259,10 +1383,7 @@ func (r *Runtime) skillActionLockedLocked(player *entityState) (string, bool) {
 
 func (r *Runtime) applySkill(player *entityState, cmd *gamev1.PlayerCommand) {
 	cast := cmd.GetCastSkill()
-	skillID := cast.GetSkillId()
-	if skillID == "" || skillID == "player_basic_attack" {
-		skillID = nextBasicAttack(player)
-	}
+	skillID := resolvedPlayerSkillID(player, cast.GetSkillId())
 	dir := normalize(fromProto(cast.GetAimDirection()))
 	if dir == (vector{}) {
 		dir = yawVector(player.yaw)
@@ -1315,6 +1436,7 @@ func (r *Runtime) applySkill(player *entityState, cmd *gamev1.PlayerCommand) {
 		CooldownEndMs:    time.UnixMilli(now).Add(durationFromMS(skillContract.CooldownMS)).UnixMilli(),
 		LastResolvedAtMs: now,
 	}
+	r.startPlayerSkillCooldownLocked(player, skillID, skillContract, nowTime)
 	r.enqueueSkillImpactScheduleLocked(skillImpactScheduleFromActionInstance(
 		player,
 		skillContract,
@@ -1384,6 +1506,7 @@ func (r *Runtime) newActionInstance(player *entityState, cmd *gamev1.PlayerComma
 
 func (r *Runtime) refreshActionRuntimeStatesLocked(now time.Time) {
 	for _, entity := range r.entities {
+		r.refreshCompletedActionHandoffLocked(entity, now)
 		r.advanceActionMotionLocked(entity, now)
 		if entity.actionInstance == nil || entity.skillRuntime == nil {
 			continue
@@ -1403,6 +1526,28 @@ func (r *Runtime) refreshActionRuntimeStatesLocked(now time.Time) {
 		}
 		entity.skillState = string(phase)
 	}
+}
+
+func (r *Runtime) refreshCompletedActionHandoffLocked(entity *entityState, now time.Time) {
+	if entity == nil || entity.actionHandoffUntil.IsZero() || now.Before(entity.actionHandoffUntil) {
+		return
+	}
+	action := entity.actionHandoffAction
+	entity.actionHandoffUntil = time.Time{}
+	entity.actionHandoffAction = ""
+	if entity.locomotion == nil || action == "" || !strings.EqualFold(entity.locomotion.GetAction(), action) {
+		return
+	}
+	entity.locomotion.Phase = "complete"
+	entity.locomotion.MovementMode = "grounded"
+	entity.locomotion.PhaseElapsedMs = 0
+	entity.locomotion.PhaseRemainingMs = 0
+	entity.locomotion.TargetSpeed = 0
+	entity.locomotion.EffectiveSpeed = 0
+	entity.locomotion.LandingHandoffActive = false
+	entity.locomotion.LandingExitDirection = nil
+	entity.locomotion.LandingExitSpeed = 0
+	entity.locomotion.LastUpdatedTick = r.tick
 }
 
 func (r *Runtime) advanceActionMotionLocked(entity *entityState, now time.Time) bool {
@@ -1446,6 +1591,7 @@ func (r *Runtime) advanceActionMotionLocked(entity *entityState, now time.Time) 
 		}
 	}
 	entity.locomotion = locomotionFromContractWithOverrides(motion.Contract, phase, motion.StartPosition, entity.position, r.tick, motion.Sequence, progress.SpeedCMPerSecond, progress.DistanceCM)
+	applyActionMotionLocomotionTiming(entity.locomotion, motion, now)
 	entity.locomotion.ActionDistanceTraveled = distanceCM
 	entity.locomotion.ActionProjectedPosition = toProto(entity.position)
 	entity.locomotion.ClientActionSequence = motion.Sequence
@@ -1464,11 +1610,63 @@ func (r *Runtime) advanceActionMotionLocked(entity *entityState, now time.Time) 
 		} else {
 			entity.locomotion.ActionDistanceTraveled = distanceCM
 		}
+		r.applyOwnedLocomotionExitHandoffLocked(entity, motion, now)
 		r.completeActionMotionLocked(entity, motion)
 		entity.actionMotion = nil
 		return false
 	}
 	return true
+}
+
+func applyActionMotionLocomotionTiming(state *gamev1.LocomotionState, motion *actionMotionState, now time.Time) {
+	if state == nil || motion == nil || motion.StartedAt.IsZero() {
+		return
+	}
+	elapsed := now.Sub(motion.StartedAt)
+	if elapsed < 0 {
+		elapsed = 0
+	}
+	phase, elapsedMS, remainingMS := locomotionResolver.ResolvePhase(elapsed, 0, motion.Contract.ActiveMS, motion.Contract.RecoveryMS)
+	state.Phase = phase
+	state.PhaseElapsedMs = elapsedMS
+	state.PhaseRemainingMs = remainingMS
+}
+
+func (r *Runtime) applyOwnedLocomotionExitHandoffLocked(entity *entityState, motion *actionMotionState, now time.Time) {
+	if entity == nil || motion == nil || entity.locomotion == nil || motion.MotionSource != "owned_locomotion" {
+		return
+	}
+	if motion.Contract.ActionType != "dodge" {
+		entity.locomotion.Phase = "complete"
+		entity.locomotion.PhaseElapsedMs = 0
+		entity.locomotion.PhaseRemainingMs = 0
+		entity.locomotion.LandingHandoffActive = false
+		entity.locomotion.LandingExitDirection = nil
+		entity.locomotion.LandingExitSpeed = 0
+		return
+	}
+	handoffMS := int32(0)
+	if r.contracts.MovementProfile != nil {
+		handoffMS = r.contracts.MovementProfile.GetDodgeCarryHandoffMs()
+	}
+	if handoffMS <= 0 {
+		entity.locomotion.Phase = "complete"
+		entity.locomotion.PhaseElapsedMs = 0
+		entity.locomotion.PhaseRemainingMs = 0
+		entity.locomotion.LandingHandoffActive = false
+		entity.locomotion.LandingExitDirection = nil
+		entity.locomotion.LandingExitSpeed = 0
+		return
+	}
+	entity.locomotion.MovementMode = "grounded_handoff"
+	entity.locomotion.Phase = "exit_handoff"
+	entity.locomotion.PhaseElapsedMs = 0
+	entity.locomotion.PhaseRemainingMs = handoffMS
+	entity.locomotion.LandingHandoffActive = true
+	entity.locomotion.LandingExitDirection = toProto(motion.Direction)
+	entity.locomotion.LandingExitSpeed = 0
+	entity.actionHandoffUntil = now.Add(time.Duration(handoffMS) * time.Millisecond)
+	entity.actionHandoffAction = "dodge"
 }
 
 func (r *Runtime) completeActionMotionLocked(entity *entityState, motion *actionMotionState) {
@@ -1496,6 +1694,12 @@ func (r *Runtime) completeActionMotionLocked(entity *entityState, motion *action
 			entity.locomotion.ActionDistanceTraveled = distance(entity.position, motion.StartPosition)
 			entity.locomotion.LastUpdatedTick = r.tick
 		}
+	case "owned_locomotion":
+		entity.movementState = "grounded"
+		entity.skillState = "idle"
+		entity.combatState = "ready"
+		entity.actionLockedUntil = time.Time{}
+		entity.actionLockReason = ""
 	}
 }
 
@@ -1553,6 +1757,15 @@ func (r *Runtime) ackLocked(cmd *gamev1.PlayerCommand, player *entityState, acce
 		metadata["contract_hash"] = contractHash(contract)
 		metadata["movement_action_contract_hash"] = contractHash(contract)
 		metadata["movement_action_contract_sync_state"] = "confirmed"
+		if skillContract := r.contracts.skillContract(skillID); skillContract.CooldownMS > 0 {
+			metadata["skill_cooldown_ms"] = strconv.FormatInt(int64(skillContract.CooldownMS), 10)
+			if player != nil {
+				if cooldownUntil, onCooldown := r.playerSkillCooldownLocked(player, skillID, time.Now()); onCooldown {
+					metadata["cooldown_until_ms"] = strconv.FormatInt(cooldownUntil.UnixMilli(), 10)
+					metadata["cooldown_remaining_ms"] = strconv.FormatInt(cooldownUntil.Sub(time.Now()).Milliseconds(), 10)
+				}
+			}
+		}
 		if player != nil && player.actionInstance != nil {
 			metadata["action_instance_id"] = player.actionInstance.InstanceID
 			metadata["action_phase"] = string(player.actionInstance.PhaseAt(time.Now()))
@@ -1848,6 +2061,9 @@ func swordShieldCombatMode(active string, slots []*gamev1.CombatModeSlot) *gamev
 }
 
 func nextBasicAttack(player *entityState) string {
+	if player == nil || player.skillRuntime == nil {
+		return "player_basic_attack_1"
+	}
 	switch player.skillRuntime.GetCurrentSkillId() {
 	case "player_basic_attack_1":
 		return "player_basic_attack_2"

@@ -251,10 +251,10 @@ func TestSnapshotDamageEventCarriesAppliedControlMetadata(t *testing.T) {
 	if got := metadata["control_release_policy"]; got != "multi_target_carry_push_forward_release" {
 		t.Fatalf("control_release_policy = %q", got)
 	}
-	if got := metadata["control_distance_cm"]; got != "960.000" {
+	if got := metadata["control_distance_cm"]; got != "864.000" {
 		t.Fatalf("control_distance_cm = %q", got)
 	}
-	if got := metadata["control_speed_cm_s"]; got != "1333.333" {
+	if got := metadata["control_speed_cm_s"]; got != "1200.000" {
 		t.Fatalf("control_speed_cm_s = %q", got)
 	}
 	if got := metadata["control_direction_policy"]; got != "source_forward" {

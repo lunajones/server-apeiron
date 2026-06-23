@@ -95,3 +95,58 @@ func TestSkillRejectedDuringGroundedSkillRootMotion(t *testing.T) {
 		t.Fatalf("rejection code = %q, want action_locked", second.GetRejectionCode())
 	}
 }
+
+func TestActiveSkillCooldownBlocksRecastAfterRootMotionCompletes(t *testing.T) {
+	t.Parallel()
+
+	runtime := NewRuntimeWithOptions(DevFixtureRuntimeContracts(), RuntimeOptions{MovementValidation: true})
+	sessionID := "runtime-active-skill-cooldown"
+
+	if _, err := runtime.OpenSession(context.Background(), &gamev1.OpenSessionRequest{
+		Context: &gamev1.RequestContext{SessionId: sessionID},
+	}); err != nil {
+		t.Fatalf("OpenSession failed: %v", err)
+	}
+	if _, err := runtime.AttachPlayer(context.Background(), &gamev1.AttachPlayerRequest{
+		Context:  &gamev1.RequestContext{SessionId: sessionID},
+		PlayerId: "local_player",
+	}); err != nil {
+		t.Fatalf("AttachPlayer failed: %v", err)
+	}
+
+	first, err := runtime.SubmitCommand(context.Background(),
+		testRuntimeCastSkillCommand(sessionID, 1, "player_shield_rush", gamev1Vector(1, 0, 0)))
+	if err != nil {
+		t.Fatalf("first cast submit failed: %v", err)
+	}
+	if !first.GetAccepted() {
+		t.Fatalf("first cast rejected: %s %s", first.GetRejectionCode(), first.GetMessage())
+	}
+
+	player := runtime.players["local_player"]
+	forceCompleteRuntimeAction(t, runtime, sessionID, player)
+
+	recast, err := runtime.SubmitCommand(context.Background(),
+		testRuntimeCastSkillCommand(sessionID, 2, "player_shield_rush", gamev1Vector(1, 0, 0)))
+	if err != nil {
+		t.Fatalf("recast submit failed: %v", err)
+	}
+	if recast.GetAccepted() {
+		t.Fatal("shield rush recast was accepted while cooldown was active")
+	}
+	if recast.GetRejectionCode() != "cooldown_active" {
+		t.Fatalf("recast rejection code = %q, want cooldown_active", recast.GetRejectionCode())
+	}
+	if recast.GetMetadata()["cooldown_remaining_ms"] == "" {
+		t.Fatalf("cooldown rejection metadata missing remaining time: %#v", recast.GetMetadata())
+	}
+
+	basic, err := runtime.SubmitCommand(context.Background(),
+		testRuntimeCastSkillCommand(sessionID, 3, "player_basic_attack", gamev1Vector(1, 0, 0)))
+	if err != nil {
+		t.Fatalf("basic submit failed: %v", err)
+	}
+	if !basic.GetAccepted() {
+		t.Fatalf("basic attack should not be blocked by active skill cooldown: %s %s", basic.GetRejectionCode(), basic.GetMessage())
+	}
+}

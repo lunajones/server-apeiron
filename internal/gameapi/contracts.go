@@ -1405,7 +1405,7 @@ func DevFixtureRuntimeContracts() RuntimeContracts {
 	for _, contract := range []MovementActionRuntimeContract{
 		{ID: "grounded_move_v1", AbilityKey: "move", ActionType: "move", DurationMS: 180, ActiveMS: 120, RecoveryMS: 60, ReconciliationContractID: "grounded_move_reconciliation", ReconciliationCategory: "grounded_move_reconciliation", PhaseWindowPolicy: "server_authoritative", PredictionErrorPolicy: "bounded_smooth_correction"},
 		{ID: "turn_v1_rate_limited_contextual", AbilityKey: "turn", ActionType: "turn", DurationMS: 180, ActiveMS: 120, RecoveryMS: 60, YawRateDegPerSec: 720, ReconciliationContractID: "turn_reconciliation", ReconciliationCategory: "turn_reconciliation", PhaseWindowPolicy: "server_authoritative", PredictionErrorPolicy: "bounded_smooth_correction"},
-		{ID: "dodge_v1_full_iframe", AbilityKey: "dodge", ActionType: "dodge", DurationMS: 320, ActiveMS: 260, RecoveryMS: 60, DistanceCM: 260, BaseSpeedCMS: 812.5, SpeedCurveSamples: fixtureMovementCurve("dodge_v1_full_iframe"), VerticalCurveSamples: fixtureVerticalCurve("dodge_v1_full_iframe"), ReconciliationContractID: "dodge_reconciliation", ReconciliationCategory: "dodge_reconciliation", PhaseWindowPolicy: "server_authoritative", PredictionErrorPolicy: "bounded_smooth_correction"},
+		{ID: "dodge_v1_full_iframe", AbilityKey: "dodge", ActionType: "dodge", DurationMS: 320, ActiveMS: 260, RecoveryMS: 60, DistanceCM: 360, BaseSpeedCMS: 1125, SpeedCurveSamples: fixtureMovementCurve("dodge_v1_full_iframe"), VerticalCurveSamples: fixtureVerticalCurve("dodge_v1_full_iframe"), ReconciliationContractID: "dodge_reconciliation", ReconciliationCategory: "dodge_reconciliation", PhaseWindowPolicy: "server_authoritative", PredictionErrorPolicy: "bounded_smooth_correction"},
 		{ID: "jump_v1_authoritative_grounded_handoff", AbilityKey: "jump", ActionType: "leap", DurationMS: 620, AirborneDurationMS: 560, ActiveMS: 560, RecoveryMS: 60, DistanceCM: 280, BaseSpeedCMS: 452, SpeedCurveSamples: fixtureMovementCurve("jump_v1_authoritative_grounded_handoff"), VerticalCurveSamples: fixtureVerticalCurve("jump_v1_authoritative_grounded_handoff"), JumpZVelocity: 620, GravityScale: 1, ExpectedApexMS: 310, LandingDetectionPolicy: "server_grounded_handoff", GroundZPolicy: "server_position_is_actor_root", AllowsAirControl: true, AirControlModifier: 0.35, ReconciliationContractID: "leap_reconciliation", ReconciliationCategory: "leap_reconciliation", PhaseWindowPolicy: "server_authoritative", PredictionErrorPolicy: "bounded_smooth_correction"},
 	} {
 		contracts.ActionContracts[contract.AbilityKey] = contract
@@ -1415,7 +1415,7 @@ func DevFixtureRuntimeContracts() RuntimeContracts {
 		fixtureSkillContract("player_basic_attack_2", 42, 370, 150, 120),
 		fixtureSkillContract("player_basic_attack_3", 252, 620, 260, 180),
 		fixtureSkillContract("player_shield_bash", 95, 300, 170, 120),
-		fixtureSkillContract("player_shield_rush", 960, 1100, 720, 260),
+		fixtureSkillContract("player_shield_rush", 864, 1100, 720, 260),
 		fixtureCreatureSkillContract("bite", "wolf_bite_melee_commit_v1", "grounded_skill", "grounded_skill_action_reconciliation", "melee_contact", 0, 520, 220, 180, 120, 180, 900),
 		fixtureCreatureSkillContract("lunge", "low_fast_lunge_v1", "leap", "leap_reconciliation", "airborne_passthrough", 918, 860, 380, 240, 3600, 520, 7200),
 		fixtureCreatureSkillContract("wolf_dodge", "wolf_dodge_lateral_leap_v1", "dodge", "dodge_reconciliation", "iframe", 210, 520, 420, 100, 0, 100, 0),
@@ -1739,6 +1739,7 @@ func fixtureSkillContract(skillID string, distance float64, durationMS, activeMS
 		Hitboxes:                 fixturePlayerSkillHitboxes(skillID),
 		ActiveMS:                 activeMS,
 		RecoveryMS:               recoveryMS,
+		CooldownMS:               fixturePlayerSkillCooldownMS(skillID),
 		MovementLockPolicy:       "skill_root_motion_owner",
 		QueuePolicy:              "queue_after_recovery",
 		CancelPolicy:             "contract_cancel_windows",
@@ -1748,6 +1749,17 @@ func fixtureSkillContract(skillID string, distance float64, durationMS, activeMS
 		TargetPolicy:             "aim_direction",
 		ContactPolicy:            action.ContactPolicy,
 		Enabled:                  true,
+	}
+}
+
+func fixturePlayerSkillCooldownMS(skillID string) int32 {
+	switch skillID {
+	case "player_shield_bash":
+		return 26000
+	case "player_shield_rush":
+		return 32000
+	default:
+		return 0
 	}
 }
 
@@ -1762,7 +1774,7 @@ func fixturePlayerSkillBaseSpeedCMS(skillID string) float64 {
 	case "player_shield_bash":
 		return 541
 	case "player_shield_rush":
-		return 1148
+		return 1033.2
 	default:
 		return 0
 	}
@@ -1849,8 +1861,8 @@ func fixtureSkillControlEffect(skillID string) *dbv1.SkillControlEffect {
 			DurationMs:      720,
 			ControlType:     "carry_push",
 			ReleasePolicyId: "multi_target_carry_push_forward_release",
-			DistanceCm:      960,
-			SpeedCmS:        fixtureControlSpeedCMS(960, 720),
+			DistanceCm:      864,
+			SpeedCmS:        fixtureControlSpeedCMS(864, 720),
 			DirectionPolicy: "source_forward",
 		}
 	case "maul":
