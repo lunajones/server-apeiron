@@ -16,6 +16,7 @@ import (
 
 type ContractSource interface {
 	GetSkill(context.Context, *dbv1.IdRequest, ...grpc.CallOption) (*dbv1.SkillResponse, error)
+	GetSkillImpactProfile(context.Context, *dbv1.IdRequest, ...grpc.CallOption) (*dbv1.SkillImpactProfileResponse, error)
 	GetSkillActionTiming(context.Context, *dbv1.IdRequest, ...grpc.CallOption) (*dbv1.SkillActionTimingResponse, error)
 	GetSkillMovementActionBinding(context.Context, *dbv1.IdRequest, ...grpc.CallOption) (*dbv1.SkillMovementActionBindingResponse, error)
 	GetSkillHitboxProfiles(context.Context, *dbv1.IdRequest, ...grpc.CallOption) (*dbv1.SkillHitboxProfilesResponse, error)
@@ -89,14 +90,16 @@ type SkillRuntimeContract struct {
 	// them from the DB Skill (GetSkill -> base_damage/posture_damage/max_range). The
 	// recovered runtime falls back to the canonical seed values (recoveredPlayerSkillDamage)
 	// when the DB is unavailable.
-	Damage        float64
-	PostureDamage float64
-	StaminaCost   float64
-	Range         float64
-	MaxTargets    int32
-	Blockable     bool
-	Hitboxes      []*dbv1.SkillHitboxProfile
-	Enabled       bool
+	Damage         float64
+	PostureDamage  float64
+	StaminaCost    float64
+	Range          float64
+	MaxTargets     int32
+	Blockable      bool
+	Impact         *dbv1.SkillImpactProfile
+	ControlEffects []*dbv1.SkillControlEffect
+	Hitboxes       []*dbv1.SkillHitboxProfile
+	Enabled        bool
 }
 
 type CombatCoreRuntimeContracts struct {
@@ -873,7 +876,32 @@ func validateRuntimeSkillContract(skillID string, skill SkillRuntimeContract) []
 	if !hasTemporal {
 		missing = append(missing, "skill temporal motion profile "+skillID)
 	}
+	if skillContactPolicyRequiresControlEffect(skill.ContactPolicy) && len(enabledSkillControlEffects(skill.ControlEffects)) == 0 {
+		missing = append(missing, "skill impact control effect "+skillID)
+	}
 	return missing
+}
+
+func skillContactPolicyRequiresControlEffect(policy string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(policy))
+	return strings.Contains(normalized, "push") ||
+		strings.Contains(normalized, "carry") ||
+		strings.Contains(normalized, "knockback") ||
+		strings.Contains(normalized, "control")
+}
+
+func enabledSkillControlEffects(effects []*dbv1.SkillControlEffect) []*dbv1.SkillControlEffect {
+	if len(effects) == 0 {
+		return nil
+	}
+	out := make([]*dbv1.SkillControlEffect, 0, len(effects))
+	for _, effect := range effects {
+		if effect == nil || !effect.GetEnabled() || strings.TrimSpace(effect.GetStatusEffectId()) == "" {
+			continue
+		}
+		out = append(out, effect)
+	}
+	return out
 }
 
 func validateCombatCoreProfile(profileID string, profile *dbv1.CombatCoreProfile) []string {
@@ -1033,6 +1061,13 @@ func loadSkillRuntimeContract(ctx context.Context, skills ContractSource, skillI
 		contract.Range = s.GetMaxRange()
 		contract.MaxTargets = s.GetMaxTargets()
 		contract.Blockable = s.GetIsBlockable()
+	}
+	if impactResp, err := skills.GetSkillImpactProfile(ctx, &dbv1.IdRequest{Id: skillID}); err == nil && impactResp.GetFound() {
+		impact := impactResp.GetProfile()
+		contract.Impact = impact
+		if impact != nil {
+			contract.ControlEffects = enabledSkillControlEffects(impact.GetControlEffects())
+		}
 	}
 	if hitboxResp, err := skills.GetSkillHitboxProfiles(ctx, &dbv1.IdRequest{Id: skillID}); err == nil && hitboxResp.GetFound() {
 		contract.Hitboxes = hitboxResp.GetProfiles()
@@ -1498,6 +1533,7 @@ func recoveredVerticalCurve(contractID string) []movement.MovementActionCurvePoi
 }
 
 func recoveredSkillContract(skillID string, distance float64, durationMS, activeMS, recoveryMS int32) SkillRuntimeContract {
+	contactPolicy := recoveredPlayerSkillContactPolicy(skillID)
 	action := MovementActionRuntimeContract{
 		ID:                       skillID + "_contract",
 		AbilityKey:               skillID,
@@ -1516,9 +1552,10 @@ func recoveredSkillContract(skillID string, distance float64, durationMS, active
 		PhaseWindowPolicy:      "server_authoritative",
 		PredictionErrorPolicy:  "bounded_smooth_correction",
 		RootMotionOwner:        "skill",
-		ContactPolicy:          "authoritative_contact",
+		ContactPolicy:          contactPolicy,
 	}
 	damage, posture := recoveredPlayerSkillDamage(skillID)
+	impact := recoveredSkillImpactProfile(skillID, posture)
 	return SkillRuntimeContract{
 		SkillID:                  skillID,
 		MovementActionContractID: action.ID,
@@ -1527,6 +1564,8 @@ func recoveredSkillContract(skillID string, distance float64, durationMS, active
 		PostureDamage:            posture,
 		MaxTargets:               recoveredPlayerSkillMaxTargets(skillID),
 		Blockable:                true,
+		Impact:                   impact,
+		ControlEffects:           enabledSkillControlEffects(impact.GetControlEffects()),
 		Hitboxes:                 recoveredPlayerSkillHitboxes(skillID),
 		ActiveMS:                 activeMS,
 		RecoveryMS:               recoveryMS,
@@ -1539,6 +1578,70 @@ func recoveredSkillContract(skillID string, distance float64, durationMS, active
 		TargetPolicy:             "aim_direction",
 		ContactPolicy:            action.ContactPolicy,
 		Enabled:                  true,
+	}
+}
+
+func recoveredPlayerSkillContactPolicy(skillID string) string {
+	switch skillID {
+	case "player_basic_attack_3":
+		return "carry_contact_forward_release"
+	case "player_shield_bash":
+		return "multi_target_push_forward_release"
+	case "player_shield_rush":
+		return "multi_target_carry_push_forward_release"
+	default:
+		return "authoritative_contact"
+	}
+}
+
+func recoveredSkillImpactProfile(skillID string, posture float64) *dbv1.SkillImpactProfile {
+	impactType := "physical"
+	if strings.Contains(skillID, "shield") || skillID == "player_basic_attack_3" {
+		impactType = "blunt"
+	}
+	profile := &dbv1.SkillImpactProfile{
+		SkillId:               skillID,
+		ImpactType:            impactType,
+		PoiseDamage:           posture,
+		GuardDamageMultiplier: 1,
+	}
+	if control := recoveredSkillControlEffect(skillID); control != nil {
+		profile.ControlEffects = []*dbv1.SkillControlEffect{control}
+	}
+	return profile
+}
+
+func recoveredSkillControlEffect(skillID string) *dbv1.SkillControlEffect {
+	switch skillID {
+	case "player_basic_attack_3":
+		return &dbv1.SkillControlEffect{
+			Id:              "player_basic_attack_3_impact_control",
+			Enabled:         true,
+			StatusEffectId:  "impact_shield_drive_push",
+			DurationMs:      180,
+			ControlType:     "push",
+			ReleasePolicyId: "carry_contact_forward_release",
+		}
+	case "player_shield_bash":
+		return &dbv1.SkillControlEffect{
+			Id:              "player_shield_bash_impact_control",
+			Enabled:         true,
+			StatusEffectId:  "impact_shield_bash_push",
+			DurationMs:      220,
+			ControlType:     "push",
+			ReleasePolicyId: "multi_target_push_forward_release",
+		}
+	case "player_shield_rush":
+		return &dbv1.SkillControlEffect{
+			Id:              "player_shield_rush_impact_control",
+			Enabled:         true,
+			StatusEffectId:  "impact_shield_rush_carry_push",
+			DurationMs:      430,
+			ControlType:     "carry_push",
+			ReleasePolicyId: "multi_target_carry_push_forward_release",
+		}
+	default:
+		return nil
 	}
 }
 
@@ -1715,6 +1818,7 @@ func recoveredCreatureSkillContract(skillID string, contractID string, actionTyp
 		action.GroundZPolicy = "server_position_is_actor_root"
 	}
 	damage, posture := recoveredCreatureSkillDamage(skillID)
+	impact := recoveredSkillImpactProfile(skillID, posture)
 	return SkillRuntimeContract{
 		SkillID:                  skillID,
 		MovementActionContractID: action.ID,
@@ -1736,6 +1840,7 @@ func recoveredCreatureSkillContract(skillID string, contractID string, actionTyp
 		ContactPolicy:            contactPolicy,
 		MaxTargets:               recoveredCreatureSkillMaxTargets(skillID),
 		Blockable:                true,
+		Impact:                   impact,
 		Hitboxes:                 recoveredCreatureSkillHitboxes(skillID),
 		Enabled:                  true,
 	}

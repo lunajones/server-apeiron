@@ -137,6 +137,26 @@ func TestStrictRuntimeCoverageRejectsSkillWithoutMovementPhasePolicies(t *testin
 	}
 }
 
+func TestStrictRuntimeCoverageRejectsPushContactSkillWithoutControlEffect(t *testing.T) {
+	contracts := RecoveryFixtureRuntimeContracts()
+	skill := contracts.SkillContracts["player_shield_rush"]
+	skill.ControlEffects = nil
+	if skill.Impact != nil {
+		copy := *skill.Impact
+		copy.ControlEffects = nil
+		skill.Impact = &copy
+	}
+	contracts.SkillContracts["player_shield_rush"] = skill
+
+	err := contracts.ValidateRequiredCoverage(true)
+	if err == nil {
+		t.Fatal("ValidateRequiredCoverage accepted push contact skill without control effect")
+	}
+	if !strings.Contains(err.Error(), "skill impact control effect player_shield_rush") {
+		t.Fatalf("missing push control blocker not reported: %v", err)
+	}
+}
+
 func TestStrictRuntimeCoverageRejectsIncompleteMovementActionContract(t *testing.T) {
 	contracts := RecoveryFixtureRuntimeContracts()
 	action := contracts.ActionContracts["player_shield_rush"]
@@ -306,6 +326,12 @@ func TestLoadRuntimeContractsFromDBUsesRequiredSkillBindings(t *testing.T) {
 	}
 	if !hasCombatModeSlot(contracts.CombatModes, "mode_sword_shield_bulwark", 0, "player_basic_attack_1") {
 		t.Fatalf("DB combat mode slots did not load Bulwark M1 -> basic attack: %#v", contracts.CombatModes)
+	}
+	if effects := contracts.SkillContracts["player_shield_rush"].ControlEffects; len(effects) != 1 || effects[0].GetStatusEffectId() != "impact_shield_rush_carry_push" {
+		t.Fatalf("DB skill impact control effects did not load for Shield Rush: %#v", effects)
+	}
+	if impact := contracts.SkillContracts["player_shield_rush"].Impact; impact == nil || impact.GetImpactType() != "blunt" {
+		t.Fatalf("DB skill impact profile did not load for Shield Rush: %#v", impact)
 	}
 	if !hasEmptyCombatModeSlot(contracts.CombatModes, "mode_sword_shield_vanguard", 0) {
 		t.Fatalf("Vanguard M1 should be present but empty/disabled until implemented: %#v", contracts.CombatModes)
@@ -804,6 +830,21 @@ func (f fakeRuntimeContractSource) GetSkill(_ context.Context, req *dbv1.IdReque
 			IsBlockable:   true,
 		},
 	}, nil
+}
+
+func (f fakeRuntimeContractSource) GetSkillImpactProfile(_ context.Context, req *dbv1.IdRequest, _ ...grpc.CallOption) (*dbv1.SkillImpactProfileResponse, error) {
+	if f.missingSkills[req.GetId()] {
+		return &dbv1.SkillImpactProfileResponse{Found: false}, nil
+	}
+	_, posture := recoveredPlayerSkillDamage(req.GetId())
+	if posture == 0 {
+		_, posture = recoveredCreatureSkillDamage(req.GetId())
+	}
+	profile := recoveredSkillImpactProfile(req.GetId(), posture)
+	if profile == nil {
+		return &dbv1.SkillImpactProfileResponse{Found: false}, nil
+	}
+	return &dbv1.SkillImpactProfileResponse{Found: true, Profile: profile}, nil
 }
 
 func fakeSkillStaminaCost(skillID string) float64 {

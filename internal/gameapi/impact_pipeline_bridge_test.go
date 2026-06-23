@@ -88,3 +88,30 @@ func TestRuntimeSkillImpactCarriesTargetImpactResponseProfile(t *testing.T) {
 		t.Fatal("impact type was not populated")
 	}
 }
+
+func TestRuntimeSkillImpactAppliesContractControlEffects(t *testing.T) {
+	t.Parallel()
+
+	runtime := NewRuntimeWithContracts(RecoveryFixtureRuntimeContracts())
+	sessionID := "runtime-skill-impact-control-effect"
+	attachRuntimePlayer(t, runtime, sessionID)
+	player := runtime.ensurePlayerLocked("local_player")
+	wolf := runtime.ensureWolfLocked(player)
+	wolf.position = vector{x: player.position.x + 120, y: player.position.y, z: player.position.z}
+
+	contract := runtime.contracts.skillContract("player_shield_rush")
+	profile := contract.Hitboxes[0]
+	impact, ok := runtime.resolveRuntimeSkillImpact(player, wolf, contract, profile, player.position, vector{x: 1, y: 0})
+	if !ok {
+		t.Fatal("expected Shield Rush impact resolution")
+	}
+	if len(impact.StatusApplied) != 1 || impact.StatusApplied[0] != "impact_shield_rush_carry_push" {
+		t.Fatalf("control status was not applied through pipeline: %#v", impact.StatusApplied)
+	}
+	if impact.ControlType != "carry_push" {
+		t.Fatalf("control type = %q", impact.ControlType)
+	}
+	if impact.ControlReleasePolicy != "multi_target_carry_push_forward_release" {
+		t.Fatalf("release policy = %q", impact.ControlReleasePolicy)
+	}
+}

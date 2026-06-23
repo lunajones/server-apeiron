@@ -40,6 +40,10 @@ func (r *Runtime) damageEventsFromImpactsLocked(impacts []runtimeSkillImpact) []
 			"posture_damage":          formatImpactFloat(impact.PostureApplied),
 			"blocked":                 strconv.FormatBool(impact.Blocked),
 			"parried":                 strconv.FormatBool(impact.Parried),
+			"control_applied":         strconv.FormatBool(len(impact.StatusApplied) > 0),
+			"status_applied":          strings.Join(impact.StatusApplied, ","),
+			"control_type":            impact.ControlType,
+			"control_release_policy":  impact.ControlReleasePolicy,
 			"damage_pipeline":         "combat_impact_resolution_v1",
 			"feedback_authority":      "server_damage_event",
 		}

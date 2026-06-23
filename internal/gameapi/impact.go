@@ -20,6 +20,9 @@ type runtimeSkillImpact struct {
 	SkillID               string
 	ImpactType            string
 	ImpactResponseProfile string
+	StatusApplied         []string
+	ControlType           string
+	ControlReleasePolicy  string
 	DamageApplied         float64
 	PostureApplied        float64
 	Blocked               bool

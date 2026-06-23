@@ -145,27 +145,32 @@ func (r *Runtime) resolveRuntimeSkillImpact(source *entityState, target *entityS
 	sourceEntity := newRuntimeEntityCombatAdapter(source, now)
 	targetEntity := newRuntimeEntityCombatAdapter(target, now)
 	result, err := pipeline.Apply(context.Background(), combat.DamageContext{
-		Source:      sourceEntity,
-		Target:      targetEntity,
-		Hit:         runtimeCombatHitResult(skill, profile, target, start, dir),
-		Skill:       runtimeCombatSkill(skill),
-		Impact:      runtimeCombatImpactProfile(skill, profile),
-		SourceCore:  r.runtimeCombatCoreProfile(source),
-		TargetCore:  r.runtimeCombatCoreProfile(target),
-		Defense:     r.runtimeCombatDefenseContract(target),
-		Now:         now,
-		Tick:        r.tick,
-		CurrentTick: r.tick,
+		Source:         sourceEntity,
+		Target:         targetEntity,
+		Hit:            runtimeCombatHitResult(skill, profile, target, start, dir),
+		Skill:          runtimeCombatSkill(skill),
+		Impact:         runtimeCombatImpactProfile(skill, profile),
+		ControlEffects: skill.ControlEffects,
+		SourceCore:     r.runtimeCombatCoreProfile(source),
+		TargetCore:     r.runtimeCombatCoreProfile(target),
+		Defense:        r.runtimeCombatDefenseContract(target),
+		Now:            now,
+		Tick:           r.tick,
+		CurrentTick:    r.tick,
 	})
 	if err != nil {
 		return runtimeSkillImpact{}, false
 	}
+	controlType, releasePolicy := runtimeSkillImpactControlMetadata(skill.ControlEffects, result.StatusApplied)
 	return runtimeSkillImpact{
 		SourceID:              source.id,
 		TargetID:              target.id,
 		SkillID:               skill.SkillID,
 		ImpactType:            runtimeImpactType(skill, profile),
 		ImpactResponseProfile: combat.ImpactResponseProfileForEntity(targetEntity),
+		StatusApplied:         append([]string(nil), result.StatusApplied...),
+		ControlType:           controlType,
+		ControlReleasePolicy:  releasePolicy,
 		DamageApplied:         result.FinalDamage,
 		PostureApplied:        result.PostureDamage,
 		Blocked:               result.Blocked,
@@ -174,6 +179,9 @@ func (r *Runtime) resolveRuntimeSkillImpact(source *entityState, target *entityS
 }
 
 func runtimeImpactType(skill SkillRuntimeContract, profile *dbv1.SkillHitboxProfile) string {
+	if skill.Impact != nil && strings.TrimSpace(skill.Impact.GetImpactType()) != "" {
+		return strings.TrimSpace(skill.Impact.GetImpactType())
+	}
 	if profile != nil && strings.TrimSpace(profile.GetHitboxShape()) != "" {
 		return strings.TrimSpace(profile.GetHitboxShape())
 	}
@@ -214,12 +222,42 @@ func runtimeCombatSkill(skill SkillRuntimeContract) *dbv1.Skill {
 }
 
 func runtimeCombatImpactProfile(skill SkillRuntimeContract, profile *dbv1.SkillHitboxProfile) *dbv1.SkillImpactProfile {
+	if skill.Impact != nil {
+		return skill.Impact
+	}
+	impactType := "physical"
+	if profile != nil && strings.TrimSpace(profile.GetHitboxShape()) != "" {
+		impactType = strings.TrimSpace(profile.GetHitboxShape())
+	}
 	return &dbv1.SkillImpactProfile{
 		SkillId:               skill.SkillID,
-		ImpactType:            profile.GetHitboxShape(),
+		ImpactType:            impactType,
 		PoiseDamage:           skill.PostureDamage,
 		GuardDamageMultiplier: 1,
 	}
+}
+
+func runtimeSkillImpactControlMetadata(effects []*dbv1.SkillControlEffect, applied []string) (string, string) {
+	if len(effects) == 0 || len(applied) == 0 {
+		return "", ""
+	}
+	appliedSet := make(map[string]struct{}, len(applied))
+	for _, statusID := range applied {
+		if statusID == "" {
+			continue
+		}
+		appliedSet[statusID] = struct{}{}
+	}
+	for _, effect := range effects {
+		if effect == nil {
+			continue
+		}
+		if _, ok := appliedSet[effect.GetStatusEffectId()]; !ok {
+			continue
+		}
+		return strings.TrimSpace(effect.GetControlType()), strings.TrimSpace(effect.GetReleasePolicyId())
+	}
+	return "", ""
 }
 
 func (r *Runtime) runtimeCombatCoreProfile(entity *entityState) *dbv1.CombatCoreProfile {

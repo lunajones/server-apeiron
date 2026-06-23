@@ -202,6 +202,53 @@ func TestSnapshotEmitsDamageEventWithImpactResponseProfile(t *testing.T) {
 	}
 }
 
+func TestSnapshotDamageEventCarriesAppliedControlMetadata(t *testing.T) {
+	t.Parallel()
+
+	runtime := NewRuntimeWithContracts(RecoveryFixtureRuntimeContracts())
+	sessionID := "runtime-impact-event-control"
+	attachRuntimePlayer(t, runtime, sessionID)
+	player := runtime.ensurePlayerLocked("local_player")
+	wolf := runtime.ensureWolfLocked(player)
+	wolf.position = vector{x: player.position.x + 120, y: player.position.y, z: player.position.z}
+
+	contract := runtime.contracts.skillContract("player_shield_rush")
+	startedAt := time.Now().Add(-time.Duration(skillImpactEvaluationElapsedMS(contract)+20) * time.Millisecond)
+	runtime.enqueueSkillImpactScheduleLocked(skillImpactScheduleFromActionInstance(
+		player,
+		contract,
+		"test-impact-event-control",
+		startedAt,
+		player.position,
+		vector{x: wolf.position.x, y: wolf.position.y, z: wolf.position.z},
+		vector{x: 1, y: 0},
+		skillImpactEvaluationElapsedMS(contract)+20,
+	))
+
+	snapshot, err := runtime.GetSnapshot(context.Background(), &gamev1.SnapshotRequest{
+		Context: &gamev1.RequestContext{SessionId: sessionID},
+	})
+	if err != nil {
+		t.Fatalf("GetSnapshot failed: %v", err)
+	}
+	if len(snapshot.GetEvents()) == 0 {
+		t.Fatal("snapshot did not emit damage event")
+	}
+	metadata := snapshot.GetEvents()[0].GetMetadata()
+	if got := metadata["control_applied"]; got != "true" {
+		t.Fatalf("control_applied = %q", got)
+	}
+	if got := metadata["status_applied"]; got != "impact_shield_rush_carry_push" {
+		t.Fatalf("status_applied = %q", got)
+	}
+	if got := metadata["control_type"]; got != "carry_push" {
+		t.Fatalf("control_type = %q", got)
+	}
+	if got := metadata["control_release_policy"]; got != "multi_target_carry_push_forward_release" {
+		t.Fatalf("control_release_policy = %q", got)
+	}
+}
+
 func TestRuntimeSkillImpactHonorsDirectionalBlock(t *testing.T) {
 	t.Parallel()
 
