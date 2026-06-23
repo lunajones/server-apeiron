@@ -72,7 +72,8 @@ evidence to audit, not final authority. Normal gameplay must be DB/profile/contr
    - Done: 2026-06-23 slice added creature root-motion contact response using contract policy plus hitbox geometry, preserving lunge passthrough and stopping maul before overlap.
    - Done: 2026-06-23 slice retuned the wolf baseline from DB behavior contracts, slowed normal chase/orbit/retreat movement, widened the preferred combat ring, and made grounded tactical creature motion clamp to player/creature body contact instead of entering the player capsule.
    - Done: 2026-06-23 slice restored maul target-control parity: DB seeds `impact_wolf_maul_lateral_grab`, runtime requires `lateral_counter_contact` skills to carry control effects, and impact-control motion can follow the source action direction instead of a hardcoded forward vector.
-   - Remaining: Unreal grounding validation and any remaining visual/presentation mismatch.
+   - Done: 2026-06-23 Unreal slice removed local planar body prediction for creature skill movement when an authoritative locomotion contract is present; server snapshots remain the only XY movement owner, while the placeholder keeps contract-timed vertical/tilt presentation only.
+   - Remaining: PIE validation for final visual grounding and any remaining visual/presentation mismatch.
 2. `P0`: Re-audit player movement / skill movement authority.
    - Verify no duplicate position authority, no stale recovery handoff, no normal input fighting skill movement.
    - Protected baselines: leap, dodge, turn.
