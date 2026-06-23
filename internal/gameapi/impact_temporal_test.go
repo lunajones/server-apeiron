@@ -87,3 +87,68 @@ func TestTemporalArcImpactUsesCurrentAngleSlice(t *testing.T) {
 		t.Fatal("temporal arc missed a target from the active late angle slice")
 	}
 }
+
+func TestPlayerShieldRushUsesShortShieldFaceBeforeCarry(t *testing.T) {
+	t.Parallel()
+
+	runtime := NewRuntimeWithContracts(DevFixtureRuntimeContracts())
+	skill := runtime.contracts.skillContract("player_shield_rush")
+	start := vector{}
+	dir := vector{x: 1}
+	end := vector{x: skillRangeToCM(skill.Range)}
+	closeTarget := vector{x: 36}
+	futureTarget := vector{x: 120}
+
+	if _, ok := skillRuntimeHitboxContainsAt(skill, start, end, dir, futureTarget, 160); ok {
+		t.Fatal("shield rush hit a future target through an invisible long front wall at hitbox start")
+	}
+	if _, ok := skillRuntimeHitboxContainsAt(skill, start, end, dir, closeTarget, 160); !ok {
+		t.Fatal("shield rush missed the close shield-face contact at hitbox start")
+	}
+	if _, ok := skillRuntimeHitboxContainsAt(skill, start, end, dir, vector{x: 60}, 880); !ok {
+		t.Fatal("shield rush missed a target reached by the temporal shield face at the end of the hitbox")
+	}
+}
+
+func TestPlayerShieldBashIsNarrowTemporalContact(t *testing.T) {
+	t.Parallel()
+
+	runtime := NewRuntimeWithContracts(DevFixtureRuntimeContracts())
+	skill := runtime.contracts.skillContract("player_shield_bash")
+	start := vector{}
+	dir := vector{x: 1}
+	end := vector{x: skillRangeToCM(skill.Range)}
+
+	if _, ok := skillRuntimeHitboxContainsAt(skill, start, end, dir, vector{x: 100, y: 80}, 110); ok {
+		t.Fatal("shield bash hit outside the narrowed frontal contact width")
+	}
+	if _, ok := skillRuntimeHitboxContainsAt(skill, start, end, dir, vector{x: 100, y: 60}, 110); !ok {
+		t.Fatal("shield bash missed a target inside the narrowed frontal contact width")
+	}
+	if _, ok := skillRuntimeHitboxContainsAt(skill, start, end, dir, vector{x: 240}, 110); ok {
+		t.Fatal("shield bash hit a target before the temporal contact reached it")
+	}
+	if _, ok := skillRuntimeHitboxContainsAt(skill, start, end, dir, vector{x: 220}, 280); !ok {
+		t.Fatal("shield bash missed a target reached by the late temporal contact")
+	}
+}
+
+func TestPlayerShieldDriveGrowsLengthWithoutGrowingWidth(t *testing.T) {
+	t.Parallel()
+
+	runtime := NewRuntimeWithContracts(DevFixtureRuntimeContracts())
+	skill := runtime.contracts.skillContract("player_basic_attack_3")
+	start := vector{}
+	dir := vector{x: 1}
+	end := vector{x: skillRangeToCM(skill.Range)}
+
+	if _, ok := skillRuntimeHitboxContainsAt(skill, start, end, dir, vector{x: 110}, 180); ok {
+		t.Fatal("shield drive initial contact length is too large")
+	}
+	if _, ok := skillRuntimeHitboxContainsAt(skill, start, end, dir, vector{x: 230}, 440); !ok {
+		t.Fatal("shield drive final contact length did not reach the intended forward target")
+	}
+	if _, ok := skillRuntimeHitboxContainsAt(skill, start, end, dir, vector{x: 130, y: 55}, 440); ok {
+		t.Fatal("shield drive widened laterally instead of only growing forward length")
+	}
+}

@@ -51,7 +51,7 @@ func TestRuntimeSkillImpactUsesCombatPipelineIframe(t *testing.T) {
 	attachRuntimePlayer(t, runtime, sessionID)
 	player := runtime.ensurePlayerLocked("local_player")
 	wolf := runtime.ensureWolfLocked(player)
-	wolf.position = vector{x: player.position.x + 120, y: player.position.y, z: player.position.z}
+	wolf.position = vector{x: player.position.x + 50, y: player.position.y, z: player.position.z}
 	wolf.combatState = "iframe"
 	beforeHealth := wolf.health
 	beforePosture := wolf.posture

@@ -179,7 +179,7 @@ func TestSnapshotEmitsDamageEventWithImpactResponseProfile(t *testing.T) {
 		player.position,
 		vector{x: wolf.position.x, y: wolf.position.y, z: wolf.position.z},
 		vector{x: 1, y: 0},
-		evaluationMS,
+		0,
 	))
 
 	snapshot, err := runtime.GetSnapshot(context.Background(), &gamev1.SnapshotRequest{
@@ -211,12 +211,15 @@ func TestSnapshotDamageEventCarriesAppliedControlMetadata(t *testing.T) {
 	attachRuntimePlayer(t, runtime, sessionID)
 	player := runtime.ensurePlayerLocked("local_player")
 	wolf := runtime.ensureWolfLocked(player)
-	wolf.position = vector{x: player.position.x + 120, y: player.position.y, z: player.position.z}
+	wolf.position = vector{x: player.position.x + 50, y: player.position.y, z: player.position.z}
 
 	contract := runtime.contracts.skillContract("player_shield_rush")
-	evaluationMS := runtimeSkillImpactSnapshotElapsedMS(contract)
+	evaluationMS := 520.0
+	if _, ok := skillRuntimeHitboxContainsAt(contract, player.position, vector{x: wolf.position.x, y: wolf.position.y, z: wolf.position.z}, vector{x: 1, y: 0}, wolf.position, evaluationMS); !ok {
+		t.Fatal("test setup target is outside Shield Rush temporal contact at evaluation time")
+	}
 	startedAt := time.Now().Add(-time.Duration(evaluationMS) * time.Millisecond)
-	runtime.enqueueSkillImpactScheduleLocked(skillImpactScheduleFromActionInstance(
+	if !runtime.enqueueSkillImpactScheduleLocked(skillImpactScheduleFromActionInstance(
 		player,
 		contract,
 		"test-impact-event-control",
@@ -224,19 +227,18 @@ func TestSnapshotDamageEventCarriesAppliedControlMetadata(t *testing.T) {
 		player.position,
 		vector{x: wolf.position.x, y: wolf.position.y, z: wolf.position.z},
 		vector{x: 1, y: 0},
-		evaluationMS,
-	))
+		0,
+	)) {
+		t.Fatal("failed to enqueue Shield Rush impact schedule")
+	}
 
-	snapshot, err := runtime.GetSnapshot(context.Background(), &gamev1.SnapshotRequest{
-		Context: &gamev1.RequestContext{SessionId: sessionID},
-	})
-	if err != nil {
-		t.Fatalf("GetSnapshot failed: %v", err)
+	events := runtime.damageEventsFromImpactsLocked(
+		runtime.runPendingSkillImpactSchedulesLocked(startedAt.Add(time.Duration(evaluationMS+1) * time.Millisecond)),
+	)
+	if len(events) == 0 {
+		t.Fatal("impact scheduler did not emit damage event")
 	}
-	if len(snapshot.GetEvents()) == 0 {
-		t.Fatal("snapshot did not emit damage event")
-	}
-	metadata := snapshot.GetEvents()[0].GetMetadata()
+	metadata := events[0].GetMetadata()
 	if got := metadata["control_applied"]; got != "true" {
 		t.Fatalf("control_applied = %q", got)
 	}

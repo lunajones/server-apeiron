@@ -1605,9 +1605,9 @@ func fixturePlayerSkillHitboxMotionSamples(skillID string) (string, string, []*d
 	switch skillID {
 	case "player_basic_attack_1":
 		return "motion_player_basic_attack_1_forward_v1", "box_strip", []*dbv1.SkillHitboxMotionSample{
-			fixtureHitboxMotionSample(0, 0.00, 0, 0, 90, 42, 84, 150, 42, 42, 0, 0),
-			fixtureHitboxMotionSample(1, 0.50, 0, 0, 90, 70, 84, 150, 42, 70, 0, 0),
-			fixtureHitboxMotionSample(2, 1.00, 0, 0, 90, 84, 84, 150, 42, 84, 0, 0),
+			fixtureHitboxMotionSample(0, 0.00, 0, 0, 90, 28, 52, 150, 26, 28, 0, 0),
+			fixtureHitboxMotionSample(1, 0.50, 0, 0, 90, 46, 52, 150, 26, 46, 0, 0),
+			fixtureHitboxMotionSample(2, 1.00, 0, 0, 90, 64, 52, 150, 26, 64, 0, 0),
 		}
 	case "player_basic_attack_2":
 		return "motion_player_basic_attack_2_right_to_left_v1", "arc_slice", []*dbv1.SkillHitboxMotionSample{
@@ -1617,21 +1617,21 @@ func fixturePlayerSkillHitboxMotionSamples(skillID string) (string, string, []*d
 		}
 	case "player_basic_attack_3":
 		return "motion_player_basic_attack_3_shield_drive_v1", "capsule_strip", []*dbv1.SkillHitboxMotionSample{
-			fixtureHitboxMotionSample(0, 0.00, 0, 0, 95, 84, 0, 155, 42, 120, 0, 0),
-			fixtureHitboxMotionSample(1, 0.55, 0, 0, 95, 84, 0, 155, 42, 200, 0, 0),
+			fixtureHitboxMotionSample(0, 0.00, 0, 0, 95, 84, 0, 155, 42, 42, 0, 0),
+			fixtureHitboxMotionSample(1, 0.55, 0, 0, 95, 84, 0, 155, 42, 140, 0, 0),
 			fixtureHitboxMotionSample(2, 1.00, 0, 0, 95, 84, 0, 155, 42, 252, 0, 0),
 		}
 	case "player_shield_bash":
 		return "motion_player_shield_bash_front_push_v1", "capsule_strip", []*dbv1.SkillHitboxMotionSample{
-			fixtureHitboxMotionSample(0, 0.00, 45, 0, 95, 190, 0, 160, 95, 95, 0, 0),
-			fixtureHitboxMotionSample(1, 0.50, 85, 0, 95, 190, 0, 160, 95, 160, 0, 0),
-			fixtureHitboxMotionSample(2, 1.00, 120, 0, 95, 190, 0, 160, 95, 210, 0, 0),
+			fixtureHitboxMotionSample(0, 0.00, 45, 0, 95, 132, 0, 160, 66, 75, 0, 0),
+			fixtureHitboxMotionSample(1, 0.50, 72, 0, 95, 132, 0, 160, 66, 120, 0, 0),
+			fixtureHitboxMotionSample(2, 1.00, 92, 0, 95, 132, 0, 160, 66, 160, 0, 0),
 		}
 	case "player_shield_rush":
-		return "motion_player_shield_rush_front_contact_v1", "capsule_strip", []*dbv1.SkillHitboxMotionSample{
-			fixtureHitboxMotionSample(0, 0.00, 24, 0, 100, 190, 0, 160, 96, 130, 0, 0),
-			fixtureHitboxMotionSample(1, 0.50, 84, 0, 100, 190, 0, 160, 96, 240, 0, 0),
-			fixtureHitboxMotionSample(2, 1.00, 120, 0, 100, 190, 0, 160, 96, 315, 0, 0),
+		return "motion_player_shield_rush_front_contact_v1", "box_strip", []*dbv1.SkillHitboxMotionSample{
+			fixtureHitboxMotionSample(0, 0.00, 8, 0, 100, 34, 224, 160, 112, 34, 0, 0),
+			fixtureHitboxMotionSample(1, 0.50, 10, 0, 100, 44, 224, 160, 112, 44, 0, 0),
+			fixtureHitboxMotionSample(2, 1.00, 12, 0, 100, 54, 224, 160, 112, 54, 0, 0),
 		}
 	default:
 		return "", "", nil

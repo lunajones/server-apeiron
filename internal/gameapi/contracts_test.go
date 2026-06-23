@@ -50,7 +50,7 @@ func TestCurrentPlayerAndCreatureDamagingSkillsUseTemporalHitboxes(t *testing.T)
 		{"player_basic_attack_2", "motion_player_basic_attack_2_right_to_left_v1", "arc_slice", "player_basic_attack_2_damage"},
 		{"player_basic_attack_3", "motion_player_basic_attack_3_shield_drive_v1", "capsule_strip", "player_basic_attack_3_damage"},
 		{"player_shield_bash", "motion_player_shield_bash_front_push_v1", "capsule_strip", "player_shield_bash_front_push"},
-		{"player_shield_rush", "motion_player_shield_rush_front_contact_v1", "capsule_strip", "player_shield_rush_front_contact"},
+		{"player_shield_rush", "motion_player_shield_rush_front_contact_v1", "box_strip", "player_shield_rush_front_contact"},
 		{"bite", "motion_wolf_bite_melee_v1", "capsule_strip", "wolf_bite_damage"},
 		{"lunge", "motion_wolf_lunge_cross_v1", "capsule_strip", "wolf_lunge_damage"},
 		{"maul", "motion_wolf_maul_lateral_counter_v1", "arc_slice", "wolf_maul_damage"},
@@ -118,16 +118,18 @@ func TestDevFixturePlayerShieldKitMatchesCanonicalMotionGeometry(t *testing.T) {
 		offsetsX     []float64
 		offsetsY     []float64
 		radii        []float64
+		sizeY        []float64
 	}{
 		{
 			skillID:      "player_basic_attack_1",
 			distanceCM:   84,
 			baseSpeedCMS: 240,
 			sweepShape:   "box_strip",
-			lengths:      []float64{42, 70, 84},
+			lengths:      []float64{28, 46, 64},
 			offsetsX:     []float64{0, 0, 0},
 			offsetsY:     []float64{0, 0, 0},
-			radii:        []float64{42, 42, 42},
+			radii:        []float64{26, 26, 26},
+			sizeY:        []float64{52, 52, 52},
 		},
 		{
 			skillID:      "player_basic_attack_2",
@@ -138,26 +140,40 @@ func TestDevFixturePlayerShieldKitMatchesCanonicalMotionGeometry(t *testing.T) {
 			offsetsX:     []float64{70, 80, 70},
 			offsetsY:     []float64{-35, 0, 35},
 			radii:        []float64{50, 52, 50},
+			sizeY:        []float64{0, 0, 0},
 		},
 		{
 			skillID:      "player_basic_attack_3",
 			distanceCM:   252,
 			baseSpeedCMS: 406.4,
 			sweepShape:   "capsule_strip",
-			lengths:      []float64{120, 200, 252},
+			lengths:      []float64{42, 140, 252},
 			offsetsX:     []float64{0, 0, 0},
 			offsetsY:     []float64{0, 0, 0},
 			radii:        []float64{42, 42, 42},
+			sizeY:        []float64{0, 0, 0},
+		},
+		{
+			skillID:      "player_shield_bash",
+			distanceCM:   95,
+			baseSpeedCMS: 541,
+			sweepShape:   "capsule_strip",
+			lengths:      []float64{75, 120, 160},
+			offsetsX:     []float64{45, 72, 92},
+			offsetsY:     []float64{0, 0, 0},
+			radii:        []float64{66, 66, 66},
+			sizeY:        []float64{0, 0, 0},
 		},
 		{
 			skillID:      "player_shield_rush",
 			distanceCM:   960,
 			baseSpeedCMS: 1148,
-			sweepShape:   "capsule_strip",
-			lengths:      []float64{130, 240, 315},
-			offsetsX:     []float64{24, 84, 120},
+			sweepShape:   "box_strip",
+			lengths:      []float64{34, 44, 54},
+			offsetsX:     []float64{8, 10, 12},
 			offsetsY:     []float64{0, 0, 0},
-			radii:        []float64{96, 96, 96},
+			radii:        []float64{112, 112, 112},
+			sizeY:        []float64{224, 224, 224},
 		},
 	}
 
@@ -194,6 +210,9 @@ func TestDevFixturePlayerShieldKitMatchesCanonicalMotionGeometry(t *testing.T) {
 				}
 				if math.Abs(sample.GetRadius()-tc.radii[i]) > 0.001 {
 					t.Fatalf("%s sample %d radius = %v, want %v", tc.skillID, i, sample.GetRadius(), tc.radii[i])
+				}
+				if len(tc.sizeY) > i && math.Abs(sample.GetSizeY()-tc.sizeY[i]) > 0.001 {
+					t.Fatalf("%s sample %d size_y = %v, want %v", tc.skillID, i, sample.GetSizeY(), tc.sizeY[i])
 				}
 			}
 		})
@@ -1549,7 +1568,7 @@ func fakeMovementActionContract(id string, abilityKey string, actionType string,
 		distanceCM = 960
 		baseSpeedCMS = 1148
 		contactPolicy = "multi_target_carry_push"
-		metadata = `{"ability_key":"player_shield_rush","front_contact_offset_cm":24,"source":"test_db_contract"}`
+		metadata = `{"ability_key":"player_shield_rush","front_contact_offset_cm":8,"front_contact_depth_cm":54,"source":"test_db_contract"}`
 	case "shield_bash_front_push_v1":
 		durationMS = 300
 		activeMS = 170
