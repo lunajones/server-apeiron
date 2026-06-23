@@ -476,11 +476,11 @@ func TestLoadRuntimeContractsFromDBUsesRequiredSkillBindings(t *testing.T) {
 	if effects := contracts.SkillContracts["player_shield_rush"].ControlEffects; len(effects) != 1 || effects[0].GetStatusEffectId() != "impact_shield_rush_carry_push" {
 		t.Fatalf("DB skill impact control effects did not load for Shield Rush: %#v", effects)
 	}
-	if action := contracts.SkillContracts["player_shield_rush"].MovementAction; action.DistanceCM != 470 || action.DurationMS != 830 || action.ActiveMS != 430 || action.RecoveryMS != 240 {
-		t.Fatalf("Shield Rush movement envelope = distance %.1f duration %d active %d recovery %d, want restored 470/830/430/240", action.DistanceCM, action.DurationMS, action.ActiveMS, action.RecoveryMS)
+	if action := contracts.SkillContracts["player_shield_rush"].MovementAction; action.DistanceCM != 960 || action.DurationMS != 1100 || action.ActiveMS != 720 || action.RecoveryMS != 260 {
+		t.Fatalf("Shield Rush movement envelope = distance %.1f duration %d active %d recovery %d, want canonical 960/1100/720/260", action.DistanceCM, action.DurationMS, action.ActiveMS, action.RecoveryMS)
 	}
-	if effects := contracts.SkillContracts["player_shield_rush"].ControlEffects; effects[0].GetDistanceCm() != 470 {
-		t.Fatalf("Shield Rush control distance = %.1f, want restored 470", effects[0].GetDistanceCm())
+	if effects := contracts.SkillContracts["player_shield_rush"].ControlEffects; effects[0].GetDistanceCm() != 960 {
+		t.Fatalf("Shield Rush control distance = %.1f, want canonical 960", effects[0].GetDistanceCm())
 	}
 	if impact := contracts.SkillContracts["player_shield_rush"].Impact; impact == nil || impact.GetImpactType() != "blunt" {
 		t.Fatalf("DB skill impact profile did not load for Shield Rush: %#v", impact)
@@ -509,7 +509,7 @@ func TestLoadRuntimeContractsFromDBUsesRequiredSkillBindings(t *testing.T) {
 	if contracts.WolfPolicy.RepeatSkillPenaltyWindowMS != 1200 || contracts.WolfPolicy.RepeatSkillPenaltyMultiplier != 0.65 {
 		t.Fatalf("wolf repeat policy = window %d multiplier %.2f", contracts.WolfPolicy.RepeatSkillPenaltyWindowMS, contracts.WolfPolicy.RepeatSkillPenaltyMultiplier)
 	}
-	if contracts.WolfPolicy.DesiredRangeCM != 420 || contracts.WolfPolicy.OrbitSpeedCMS != 360 || contracts.WolfPolicy.ChaseSpeedCMS != 620 {
+	if contracts.WolfPolicy.DesiredRangeCM != 420 || contracts.WolfPolicy.OrbitSpeedCMS != 300 || contracts.WolfPolicy.ChaseSpeedCMS != 620 {
 		t.Fatalf("wolf range/speed policy = desired %.0f orbit %.0f chase %.0f", contracts.WolfPolicy.DesiredRangeCM, contracts.WolfPolicy.OrbitSpeedCMS, contracts.WolfPolicy.ChaseSpeedCMS)
 	}
 	if contracts.WolfPolicy.DodgeCommittedThreatMultiplier != 1.12 || contracts.WolfPolicy.VulnerableBiteMultiplier != 1.16 || contracts.WolfPolicy.TacticalDestinationDistanceCM != 180 {
@@ -821,10 +821,10 @@ func TestWolfMaulPublishesSkillMovementContractOnlyDuringRootMotion(t *testing.T
 	if wolf.creatureAI.GetSkillMovementType() != "grounded_skill" {
 		t.Fatalf("maul movement type = %q", wolf.creatureAI.GetSkillMovementType())
 	}
-	if wolf.creatureAI.GetSkillMovementDistanceCm() != 140 {
+	if wolf.creatureAI.GetSkillMovementDistanceCm() != 420 {
 		t.Fatalf("maul movement distance = %v", wolf.creatureAI.GetSkillMovementDistanceCm())
 	}
-	if wolf.creatureAI.GetSkillActionLockMs() != 800 {
+	if wolf.creatureAI.GetSkillActionLockMs() != 960 {
 		t.Fatalf("maul action lock = %d", wolf.creatureAI.GetSkillActionLockMs())
 	}
 }
@@ -1117,6 +1117,16 @@ func (f fakeRuntimeContractSource) GetSkillMovementActionBinding(_ context.Conte
 		return &dbv1.SkillMovementActionBindingResponse{Found: false}, nil
 	}
 	contractID := fakeSkillMovementActionContractID(req.GetId())
+	actionType := "grounded_skill"
+	reconciliation := "grounded_skill_action_reconciliation"
+	switch req.GetId() {
+	case "lunge":
+		actionType = "leap"
+		reconciliation = "leap_reconciliation"
+	case "wolf_dodge":
+		actionType = "dodge"
+		reconciliation = "dodge_reconciliation"
+	}
 	return &dbv1.SkillMovementActionBindingResponse{
 		Found: true,
 		Binding: &dbv1.SkillMovementActionBinding{
@@ -1126,9 +1136,9 @@ func (f fakeRuntimeContractSource) GetSkillMovementActionBinding(_ context.Conte
 			HandoffPolicy:            "explicit_recovery_handoff",
 			NormalInputPolicy:        "blocked_during_owned_root",
 			TargetPolicy:             "aim_direction",
-			ContactPolicy:            "authoritative_contact",
+			ContactPolicy:            fakeMovementActionContract(contractID, req.GetId(), actionType, reconciliation).GetContactPolicy(),
 			IsEnabled:                true,
-			MovementActionContract:   fakeMovementActionContract(contractID, req.GetId(), "grounded_skill", "grounded_skill_action_reconciliation"),
+			MovementActionContract:   fakeMovementActionContract(contractID, req.GetId(), actionType, reconciliation),
 		},
 	}, nil
 }
@@ -1190,7 +1200,7 @@ func (f fakeRuntimeContractSource) GetMovementActionContract(_ context.Context, 
 		actionType = "leap"
 	} else if strings.HasPrefix(req.GetId(), "basic_attack_") || strings.HasPrefix(req.GetId(), "shield_") || strings.HasPrefix(req.GetId(), "wolf_bite_") || strings.HasPrefix(req.GetId(), "wolf_maul_") {
 		actionType = "grounded_skill"
-	} else if strings.HasPrefix(req.GetId(), "wolf_lunge_") {
+	} else if req.GetId() == "low_fast_lunge_v1" || strings.HasPrefix(req.GetId(), "wolf_lunge_") {
 		actionType = "leap"
 	}
 	return &dbv1.MovementActionContractResponse{
@@ -1277,7 +1287,7 @@ func (fakeRuntimeContractSource) GetCreatureBehaviorRuntimeContract(_ context.Co
 		Contract: &dbv1.CreatureBehaviorRuntimeContract{
 			Id:                        req.GetId(),
 			CreatureTemplateId:        "steppe_wolf",
-			RangePolicyJson:           `{"desiredRangeCm":420,"chaseRangeCm":760,"retreatRangeCm":220,"orbitSpeedCmS":360,"chaseSpeedCmS":620,"lungeSpeedCmS":760,"maulSpeedCmS":420,"retreatSpeedCmS":520}`,
+			RangePolicyJson:           `{"desiredRangeCm":420,"chaseRangeCm":760,"retreatRangeCm":220,"orbitSpeedCmS":300,"chaseSpeedCmS":620,"lungeSpeedCmS":760,"maulSpeedCmS":690,"retreatSpeedCmS":520}`,
 			PressurePolicyJson:        `{"repeatSkillPenaltyMultiplier":0.65,"dodgeUnderPressure":true,"maulCounterUnderPressure":true,"maulCounterChance":0.22,"dodgeRetreatMultiplier":0.70,"globalDodgeMultiplier":0.85,"commitThreatWeight":0.28,"closingThreatWeight":0.18,"defensiveBiteWeight":0.14,"fleeingLungeWeight":0.20,"lowResourceRiskFloor":0.16,"dodgeCommittedThreatMultiplier":1.12,"vulnerableBiteMultiplier":1.16,"vulnerableMaulMultiplier":1.10,"tacticalDestinationDistanceCm":180}`,
 			StaminaPolicyJson:         `{"max":100,"dodgeCostMultiplier":0.50,"regenPerSecond":12}`,
 			TargetOpportunityPolicyId: "opportunity_wolf_harasser_v1",
@@ -1336,7 +1346,7 @@ func (fakeRuntimeContractSource) GetCreatureOrbitPolicy(_ context.Context, req *
 			Id:                             req.GetId(),
 			BehaviorContractId:             "contract_wolf_pack_harasser_v1",
 			OrbitLocomotionMode:            "combat_walk",
-			OrbitSpeedScale:                0.55,
+			OrbitSpeedScale:                0.75,
 			MinOrbitDurationMs:             700,
 			SideSwitchCooldownMs:           900,
 			AllowSideSwitchWhenTargetFaces: true,
@@ -1379,7 +1389,7 @@ func (fakeRuntimeContractSource) GetCreatureSkillSetupPolicies(_ context.Context
 		Policies: []*dbv1.CreatureSkillSetupPolicy{
 			{Id: "wolf_lunge_flank_windup_v1", BehaviorContractId: req.GetId(), SkillId: "lunge", SetupType: "moving_windup", MinSetupMs: 3000, MaxSetupMs: 4200, CommitDistanceCm: 520, PreferredMinRangeCm: 180, PreferredMaxRangeCm: 700, MovementTactic: "circle_then_curve_to_target", LockSideDuringSetup: true, IsEnabled: true},
 			{Id: "wolf_lunge_chase_windup_v1", BehaviorContractId: req.GetId(), SkillId: "lunge", SetupType: "chase_windup", MinSetupMs: 1200, MaxSetupMs: 2600, CommitDistanceCm: 640, PreferredMinRangeCm: 520, PreferredMaxRangeCm: 1200, MovementTactic: "run_chase_then_jump", LockSideDuringSetup: false, IsEnabled: true},
-			{Id: "wolf_maul_pressure_counter_v1", BehaviorContractId: req.GetId(), SkillId: "maul", SetupType: "pressure_counter", MinSetupMs: 120, MaxSetupMs: 320, CommitDistanceCm: 160, PreferredMinRangeCm: 0, PreferredMaxRangeCm: 220, MovementTactic: "lateral_counter_dash", LockSideDuringSetup: true, IsEnabled: true},
+			{Id: "wolf_maul_pressure_counter_v1", BehaviorContractId: req.GetId(), SkillId: "maul", SetupType: "pressure_counter", MinSetupMs: 160, MaxSetupMs: 420, CommitDistanceCm: 220, PreferredMinRangeCm: 0, PreferredMaxRangeCm: 260, MovementTactic: "lateral_counter_dash", LockSideDuringSetup: true, IsEnabled: true},
 		},
 	}, nil
 }
@@ -1411,20 +1421,27 @@ func fakeMovementActionContract(id string, abilityKey string, actionType string,
 	baseSpeedCMS := float64(600)
 	contactPolicy := "authoritative_contact"
 	switch id {
+	case "dodge_v1_full_iframe":
+		durationMS = 320
+		activeMS = 260
+		recoveryMS = 60
+		distanceCM = 260
+		baseSpeedCMS = 1297
+		contactPolicy = "iframe"
 	case "shield_rush_front_contact_v1":
-		durationMS = 830
-		activeMS = 430
-		recoveryMS = 240
-		distanceCM = 470
-		baseSpeedCMS = 620
+		durationMS = 1100
+		activeMS = 720
+		recoveryMS = 260
+		distanceCM = 960
+		baseSpeedCMS = 1148
 		contactPolicy = "multi_target_carry_push"
 		metadata = `{"ability_key":"player_shield_rush","front_contact_offset_cm":45,"source":"test_db_contract"}`
 	case "shield_bash_front_push_v1":
-		durationMS = 540
-		activeMS = 260
-		recoveryMS = 180
-		distanceCM = 130
-		baseSpeedCMS = 360
+		durationMS = 300
+		activeMS = 170
+		recoveryMS = 120
+		distanceCM = 95
+		baseSpeedCMS = 541
 		contactPolicy = "multi_target_push"
 	case "basic_attack_1_forward_cut_v1":
 		durationMS = 340
@@ -1445,6 +1462,34 @@ func fakeMovementActionContract(id string, abilityKey string, actionType string,
 		distanceCM = 200
 		baseSpeedCMS = 330
 		contactPolicy = "carry_contact"
+	case "wolf_bite_melee_commit_v1":
+		durationMS = 520
+		activeMS = 220
+		recoveryMS = 180
+		distanceCM = 0
+		baseSpeedCMS = 0
+		contactPolicy = "melee_contact"
+	case "low_fast_lunge_v1":
+		durationMS = 860
+		activeMS = 380
+		recoveryMS = 240
+		distanceCM = 918
+		baseSpeedCMS = 1310
+		contactPolicy = "airborne_passthrough"
+	case "wolf_dodge_lateral_leap_v1":
+		durationMS = 520
+		activeMS = 420
+		recoveryMS = 100
+		distanceCM = 210
+		baseSpeedCMS = 520
+		contactPolicy = "iframe"
+	case "wolf_maul_lateral_counter_v1":
+		durationMS = 920
+		activeMS = 520
+		recoveryMS = 220
+		distanceCM = 420
+		baseSpeedCMS = 690
+		contactPolicy = "lateral_counter_contact"
 	}
 	return &dbv1.MovementActionContract{
 		Id:                       id,

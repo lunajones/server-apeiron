@@ -77,22 +77,55 @@ func TestResolveActionMotionDerivesSpeedFromContractDuration(t *testing.T) {
 		Contract: RuntimeActionContract{
 			ID:         "shield_rush_front_contact_v1",
 			ActionType: "grounded_skill",
-			DistanceCM: 470,
-			DurationMS: 830,
+			DistanceCM: 960,
+			DurationMS: 1100,
 		},
 	})
 
 	if got.Stopped {
 		t.Fatal("action should move")
 	}
-	if got.DistanceCM != 470 {
-		t.Fatalf("distance = %v, want 470", got.DistanceCM)
+	if got.DistanceCM != 960 {
+		t.Fatalf("distance = %v, want 960", got.DistanceCM)
 	}
-	if math.Abs(got.SpeedCMPerSecond-(470.0/0.83)) > 0.0001 {
-		t.Fatalf("speed = %v, want derived restored Shield Rush speed", got.SpeedCMPerSecond)
+	if math.Abs(got.SpeedCMPerSecond-(960.0/1.1)) > 0.0001 {
+		t.Fatalf("speed = %v, want derived canonical Shield Rush speed", got.SpeedCMPerSecond)
 	}
-	if got.Projected.X != 470 || got.Projected.Y != 0 {
+	if got.Projected.X != 960 || got.Projected.Y != 0 {
 		t.Fatalf("projected = %+v", got.Projected)
+	}
+}
+
+func TestResolveActionMotionProgressUsesContractDurationNotActiveWindow(t *testing.T) {
+	contract := RuntimeActionContract{
+		ID:         "shield_rush_front_contact_v1",
+		ActionType: "grounded_skill",
+		DistanceCM: 960,
+		DurationMS: 1100,
+		ActiveMS:   720,
+	}
+
+	activeEnd := ResolveActionMotionProgress(ActionMotionProgressInput{
+		Position:  domainmath.V3(0, 0, 0),
+		Direction: domainmath.V3(1, 0, 0),
+		Contract:  contract,
+		Elapsed:   720 * time.Millisecond,
+	})
+	done := ResolveActionMotionProgress(ActionMotionProgressInput{
+		Position:  domainmath.V3(0, 0, 0),
+		Direction: domainmath.V3(1, 0, 0),
+		Contract:  contract,
+		Elapsed:   1100 * time.Millisecond,
+	})
+
+	if activeEnd.Complete {
+		t.Fatal("action motion completed at ActiveMS; physical root must continue until DurationMS")
+	}
+	if math.Abs(activeEnd.DistanceCM-(960.0*(720.0/1100.0))) > 0.0001 {
+		t.Fatalf("active-end distance = %v, want DurationMS-scaled distance", activeEnd.DistanceCM)
+	}
+	if !done.Complete || math.Abs(done.DistanceCM-960) > 0.0001 {
+		t.Fatalf("done = complete:%v distance:%v, want complete/960", done.Complete, done.DistanceCM)
 	}
 }
 

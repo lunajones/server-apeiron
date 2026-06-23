@@ -1313,16 +1313,16 @@ func DevFixtureRuntimeContracts() RuntimeContracts {
 			ChaseRangeCM:                   760,
 			LungeRangeCM:                   220,
 			RetreatRangeCM:                 130,
-			OrbitSpeedCMS:                  360,
+			OrbitSpeedCMS:                  300,
 			ChaseSpeedCMS:                  620,
 			LungeSpeedCMS:                  760,
-			MaulSpeedCMS:                   420,
+			MaulSpeedCMS:                   690,
 			RetreatSpeedCMS:                520,
 			LungeWindupMS:                  3600,
-			LungeActiveEndMS:               4030,
-			LungeRecoveryMS:                500,
-			LungeDistanceCM:                620,
-			LungeDurationMS:                980,
+			LungeActiveEndMS:               3980,
+			LungeRecoveryMS:                520,
+			LungeDistanceCM:                918,
+			LungeDurationMS:                860,
 			LungeArcHeightCM:               120,
 			DodgeSkillID:                   "wolf_dodge",
 			EvasionChainCount:              4,
@@ -1359,7 +1359,7 @@ func DevFixtureRuntimeContracts() RuntimeContracts {
 			AllowBacksideCommit:            true,
 			OrbitPolicyID:                  "orbit_wolf_harasser_combat_walk_v1",
 			OrbitLocomotionMode:            "combat_walk",
-			OrbitSpeedScale:                0.55,
+			OrbitSpeedScale:                0.75,
 			MinOrbitDurationMS:             700,
 			SideSwitchCooldownMS:           900,
 			AllowSideSwitchWhenTargetFaces: true,
@@ -1381,7 +1381,7 @@ func DevFixtureRuntimeContracts() RuntimeContracts {
 			SkillSetupPolicies: []CreatureSkillSetupRuntimePolicy{
 				{ID: "wolf_lunge_flank_windup_v1", SkillID: "lunge", SetupType: "moving_windup", MinSetupMS: 3000, MaxSetupMS: 4200, CommitDistanceCM: 520, PreferredMinRangeCM: 180, PreferredMaxRangeCM: 700, MovementTactic: "circle_then_curve_to_target", LockSideDuringSetup: true, Enabled: true},
 				{ID: "wolf_lunge_chase_windup_v1", SkillID: "lunge", SetupType: "chase_windup", MinSetupMS: 1200, MaxSetupMS: 2600, CommitDistanceCM: 640, PreferredMinRangeCM: 520, PreferredMaxRangeCM: 1200, MovementTactic: "run_chase_then_jump", LockSideDuringSetup: false, Enabled: true},
-				{ID: "wolf_maul_pressure_counter_v1", SkillID: "maul", SetupType: "pressure_counter", MinSetupMS: 120, MaxSetupMS: 320, CommitDistanceCM: 160, PreferredMinRangeCM: 0, PreferredMaxRangeCM: 220, MovementTactic: "lateral_counter_dash", LockSideDuringSetup: true, Enabled: true},
+				{ID: "wolf_maul_pressure_counter_v1", SkillID: "maul", SetupType: "pressure_counter", MinSetupMS: 160, MaxSetupMS: 420, CommitDistanceCM: 220, PreferredMinRangeCM: 0, PreferredMaxRangeCM: 260, MovementTactic: "lateral_counter_dash", LockSideDuringSetup: true, Enabled: true},
 			},
 		},
 		CombatModes: fixtureCombatModeSlots(),
@@ -1389,7 +1389,7 @@ func DevFixtureRuntimeContracts() RuntimeContracts {
 	for _, contract := range []MovementActionRuntimeContract{
 		{ID: "grounded_move_v1", AbilityKey: "move", ActionType: "move", DurationMS: 180, ActiveMS: 120, RecoveryMS: 60, ReconciliationContractID: "grounded_move_reconciliation", ReconciliationCategory: "grounded_move_reconciliation", PhaseWindowPolicy: "server_authoritative", PredictionErrorPolicy: "bounded_smooth_correction"},
 		{ID: "turn_v1_rate_limited_contextual", AbilityKey: "turn", ActionType: "turn", DurationMS: 180, ActiveMS: 120, RecoveryMS: 60, YawRateDegPerSec: 720, ReconciliationContractID: "turn_reconciliation", ReconciliationCategory: "turn_reconciliation", PhaseWindowPolicy: "server_authoritative", PredictionErrorPolicy: "bounded_smooth_correction"},
-		{ID: "dodge_v1_full_iframe", AbilityKey: "dodge", ActionType: "dodge", DurationMS: 320, ActiveMS: 260, RecoveryMS: 60, DistanceCM: 260, BaseSpeedCMS: 812.5, SpeedCurveSamples: fixtureMovementCurve("dodge_v1_full_iframe"), VerticalCurveSamples: fixtureVerticalCurve("dodge_v1_full_iframe"), ReconciliationContractID: "dodge_reconciliation", ReconciliationCategory: "dodge_reconciliation", PhaseWindowPolicy: "server_authoritative", PredictionErrorPolicy: "bounded_smooth_correction"},
+		{ID: "dodge_v1_full_iframe", AbilityKey: "dodge", ActionType: "dodge", DurationMS: 320, ActiveMS: 260, RecoveryMS: 60, DistanceCM: 260, BaseSpeedCMS: 1297, SpeedCurveSamples: fixtureMovementCurve("dodge_v1_full_iframe"), VerticalCurveSamples: fixtureVerticalCurve("dodge_v1_full_iframe"), ReconciliationContractID: "dodge_reconciliation", ReconciliationCategory: "dodge_reconciliation", PhaseWindowPolicy: "server_authoritative", PredictionErrorPolicy: "bounded_smooth_correction"},
 		{ID: "jump_v1_authoritative_grounded_handoff", AbilityKey: "jump", ActionType: "leap", DurationMS: 620, AirborneDurationMS: 560, ActiveMS: 560, RecoveryMS: 60, DistanceCM: 280, BaseSpeedCMS: 452, SpeedCurveSamples: fixtureMovementCurve("jump_v1_authoritative_grounded_handoff"), VerticalCurveSamples: fixtureVerticalCurve("jump_v1_authoritative_grounded_handoff"), JumpZVelocity: 620, GravityScale: 1, ExpectedApexMS: 310, LandingDetectionPolicy: "server_grounded_handoff", GroundZPolicy: "server_position_is_actor_root", AllowsAirControl: true, AirControlModifier: 0.35, ReconciliationContractID: "leap_reconciliation", ReconciliationCategory: "leap_reconciliation", PhaseWindowPolicy: "server_authoritative", PredictionErrorPolicy: "bounded_smooth_correction"},
 	} {
 		contracts.ActionContracts[contract.AbilityKey] = contract
@@ -1398,12 +1398,12 @@ func DevFixtureRuntimeContracts() RuntimeContracts {
 		fixtureSkillContract("player_basic_attack_1", 55, 260, 180, 80),
 		fixtureSkillContract("player_basic_attack_2", 35, 260, 180, 80),
 		fixtureSkillContract("player_basic_attack_3", 200, 420, 300, 120),
-		fixtureSkillContract("player_shield_bash", 130, 360, 260, 100),
-		fixtureSkillContract("player_shield_rush", 470, 830, 430, 240),
+		fixtureSkillContract("player_shield_bash", 95, 300, 170, 120),
+		fixtureSkillContract("player_shield_rush", 960, 1100, 720, 260),
 		fixtureCreatureSkillContract("bite", "wolf_bite_melee_commit_v1", "grounded_skill", "grounded_skill_action_reconciliation", "melee_contact", 0, 520, 220, 180, 120, 180, 900),
-		fixtureCreatureSkillContract("lunge", "low_fast_lunge_v1", "leap", "leap_reconciliation", "airborne_passthrough", 918, 980, 430, 260, 3600, 500, 4200),
+		fixtureCreatureSkillContract("lunge", "low_fast_lunge_v1", "leap", "leap_reconciliation", "airborne_passthrough", 918, 860, 380, 240, 3600, 520, 4200),
 		fixtureCreatureSkillContract("wolf_dodge", "wolf_dodge_lateral_leap_v1", "dodge", "dodge_reconciliation", "iframe", 210, 520, 420, 100, 0, 100, 0),
-		fixtureCreatureSkillContract("maul", "wolf_maul_lateral_counter_v1", "grounded_skill", "grounded_skill_action_reconciliation", "lateral_counter_contact", 140, 800, 260, 360, 180, 360, 5200),
+		fixtureCreatureSkillContract("maul", "wolf_maul_lateral_counter_v1", "grounded_skill", "grounded_skill_action_reconciliation", "lateral_counter_contact", 420, 920, 520, 220, 220, 220, 5200),
 	} {
 		contracts.SkillContracts[skill.SkillID] = skill
 		contracts.ActionContracts[skill.SkillID] = skill.MovementAction
@@ -1538,10 +1538,10 @@ func fixturePlayerSkillHitboxes(skillID string) []*dbv1.SkillHitboxProfile {
 		profile.HitboxStartMs, profile.HitboxEndMs = 180, 440
 		profile.Length, profile.Angle, profile.Radius = 440, 95, 60
 	case "player_shield_bash":
-		profile.HitboxStartMs, profile.HitboxEndMs = 120, 340
+		profile.HitboxStartMs, profile.HitboxEndMs = 110, 280
 		profile.Length, profile.Radius = 210, 95
 	case "player_shield_rush":
-		profile.HitboxStartMs, profile.HitboxEndMs = 160, 590
+		profile.HitboxStartMs, profile.HitboxEndMs = 160, 880
 		profile.Length, profile.Radius = 290, 96
 	default:
 		return nil
@@ -1660,11 +1660,11 @@ func fixtureMovementCurve(contractID string) []movement.MovementActionCurvePoint
 	case "player_shield_rush":
 		return []movement.MovementActionCurvePoint{curvePoint(0, 0.1), curvePoint(0.2, 0.85), curvePoint(0.75, 1), curvePoint(1, 0.25)}
 	case "lunge":
-		return []movement.MovementActionCurvePoint{curvePoint(0, 0.4), curvePoint(0.18, 1), curvePoint(0.72, 0.85), curvePoint(1, 0.35)}
+		return []movement.MovementActionCurvePoint{curvePoint(0, 0.35), curvePoint(0.16, 1), curvePoint(0.68, 0.92), curvePoint(1, 0.38)}
 	case "wolf_dodge":
 		return []movement.MovementActionCurvePoint{curvePoint(0, 0.4), curvePoint(0.35, 1), curvePoint(1, 0.2)}
 	case "maul":
-		return []movement.MovementActionCurvePoint{curvePoint(0, 0.2), curvePoint(0.45, 1), curvePoint(1, 0.25)}
+		return []movement.MovementActionCurvePoint{curvePoint(0, 0.05), curvePoint(0.28, 0.85), curvePoint(0.62, 1), curvePoint(1, 0.18)}
 	default:
 		return nil
 	}
@@ -1688,7 +1688,7 @@ func fixtureVerticalCurve(contractID string) []movement.MovementActionCurvePoint
 func fixtureSkillContract(skillID string, distance float64, durationMS, activeMS, recoveryMS int32) SkillRuntimeContract {
 	contactPolicy := fixturePlayerSkillContactPolicy(skillID)
 	action := MovementActionRuntimeContract{
-		ID:                       skillID + "_contract",
+		ID:                       fixturePlayerSkillMovementActionContractID(skillID),
 		AbilityKey:               skillID,
 		ActionType:               "grounded_skill",
 		DurationMS:               durationMS,
@@ -1731,6 +1731,23 @@ func fixtureSkillContract(skillID string, distance float64, durationMS, activeMS
 		TargetPolicy:             "aim_direction",
 		ContactPolicy:            action.ContactPolicy,
 		Enabled:                  true,
+	}
+}
+
+func fixturePlayerSkillMovementActionContractID(skillID string) string {
+	switch skillID {
+	case "player_basic_attack_1":
+		return "basic_attack_1_forward_cut_v1"
+	case "player_basic_attack_2":
+		return "basic_attack_2_cross_cut_v1"
+	case "player_basic_attack_3":
+		return "basic_attack_3_shield_drive_v1"
+	case "player_shield_bash":
+		return "shield_bash_front_push_v1"
+	case "player_shield_rush":
+		return "shield_rush_front_contact_v1"
+	default:
+		return skillID + "_contract"
 	}
 }
 
@@ -1783,11 +1800,11 @@ func fixtureSkillControlEffect(skillID string) *dbv1.SkillControlEffect {
 			Id:              "player_shield_bash_impact_control",
 			Enabled:         true,
 			StatusEffectId:  "impact_shield_bash_push",
-			DurationMs:      220,
+			DurationMs:      170,
 			ControlType:     "push",
 			ReleasePolicyId: "multi_target_push_forward_release",
-			DistanceCm:      130,
-			SpeedCmS:        fixtureControlSpeedCMS(130, 220),
+			DistanceCm:      95,
+			SpeedCmS:        fixtureControlSpeedCMS(95, 170),
 			DirectionPolicy: "source_forward",
 		}
 	case "player_shield_rush":
@@ -1795,11 +1812,11 @@ func fixtureSkillControlEffect(skillID string) *dbv1.SkillControlEffect {
 			Id:              "player_shield_rush_impact_control",
 			Enabled:         true,
 			StatusEffectId:  "impact_shield_rush_carry_push",
-			DurationMs:      430,
+			DurationMs:      720,
 			ControlType:     "carry_push",
 			ReleasePolicyId: "multi_target_carry_push_forward_release",
-			DistanceCm:      470,
-			SpeedCmS:        fixtureControlSpeedCMS(470, 430),
+			DistanceCm:      960,
+			SpeedCmS:        fixtureControlSpeedCMS(960, 720),
 			DirectionPolicy: "source_forward",
 		}
 	default:
@@ -1877,12 +1894,12 @@ func fixtureCreatureSkillHitboxes(skillID string) []*dbv1.SkillHitboxProfile {
 		profile.SizeX, profile.SizeY, profile.SizeZ = 95, 0, 115
 		profile.Radius, profile.Length = 48, 145
 	case "lunge":
-		profile.HitboxStartMs, profile.HitboxEndMs = 3600, 4030
+		profile.HitboxStartMs, profile.HitboxEndMs = 3600, 3980
 		profile.OffsetX, profile.OffsetY, profile.OffsetZ = 130, 0, 105
 		profile.SizeX, profile.SizeY, profile.SizeZ = 100, 0, 120
 		profile.Radius, profile.Length = 50, 320
 	case "maul":
-		profile.HitboxStartMs, profile.HitboxEndMs = 180, 440
+		profile.HitboxStartMs, profile.HitboxEndMs = 220, 740
 		profile.OffsetX, profile.OffsetY, profile.OffsetZ = 80, 0, 100
 		profile.SizeZ = 130
 		profile.Radius, profile.Length, profile.Angle = 62, 170, 140
@@ -1982,7 +1999,7 @@ func fixtureCreatureSkillContract(skillID string, contractID string, actionType 
 	}
 	if skillID == "lunge" {
 		action.JumpZVelocity = 700
-		action.ExpectedApexMS = 350
+		action.ExpectedApexMS = 320
 		action.LandingDetectionPolicy = "server_grounded_handoff"
 		action.GroundZPolicy = "server_position_is_actor_root"
 	}

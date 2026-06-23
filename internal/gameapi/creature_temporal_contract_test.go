@@ -52,7 +52,7 @@ func TestFixtureCreatureTemporalLungeDoesNotHitFutureSampleEarly(t *testing.T) {
 	if _, ok := skillRuntimeHitboxContainsAt(contract, start, end, dir, futureTarget, 3600); ok {
 		t.Fatal("wolf lunge hit a future motion sample at the start of the hitbox window")
 	}
-	if _, ok := skillRuntimeHitboxContainsAt(contract, start, end, dir, futureTarget, 4030); !ok {
+	if _, ok := skillRuntimeHitboxContainsAt(contract, start, end, dir, futureTarget, 3980); !ok {
 		t.Fatal("wolf lunge missed when the temporal capsule reached the target")
 	}
 }
