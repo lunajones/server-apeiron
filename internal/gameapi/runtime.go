@@ -60,35 +60,36 @@ type sessionState struct {
 }
 
 type entityState struct {
-	id             uint64
-	entityType     string
-	regionID       string
-	templateID     string
-	archetype      string
-	visualID       string
-	position       vector
-	velocity       vector
-	yaw            float64
-	health         float64
-	maxHealth      float64
-	stamina        float64
-	maxStamina     float64
-	posture        float64
-	maxPosture     float64
-	movementState  string
-	combatState    string
-	skillState     string
-	aggroState     string
-	aggression     float64
-	lastSequence   uint64
-	lastClientTick uint64
-	locomotion     *gamev1.LocomotionState
-	skillRuntime   *gamev1.SkillRuntimeState
-	actionInstance *actionruntime.Instance
-	actionMotion   *actionMotionState
-	combatMode     *gamev1.CombatModeState
-	creatureAI     *gamev1.CreatureAIState
-	creatureMemory creatureai.Memory
+	id                    uint64
+	entityType            string
+	regionID              string
+	templateID            string
+	archetype             string
+	visualID              string
+	position              vector
+	velocity              vector
+	yaw                   float64
+	health                float64
+	maxHealth             float64
+	stamina               float64
+	maxStamina            float64
+	posture               float64
+	maxPosture            float64
+	movementState         string
+	combatState           string
+	skillState            string
+	aggroState            string
+	aggression            float64
+	lastSequence          uint64
+	lastClientTick        uint64
+	locomotion            *gamev1.LocomotionState
+	skillRuntime          *gamev1.SkillRuntimeState
+	actionInstance        *actionruntime.Instance
+	actionMotion          *actionMotionState
+	combatMode            *gamev1.CombatModeState
+	creatureAI            *gamev1.CreatureAIState
+	creatureMemory        creatureai.Memory
+	creatureCooldownUntil map[string]time.Time
 
 	// actionLockedUntil marks an owned movement action (leap/dodge) the player cannot
 	// interrupt with a skill/basic. Restores the chat 6 #3 rule: no skill while
@@ -404,6 +405,7 @@ func (r *Runtime) ensureWolfLocked(player *entityState) *entityState {
 		creatureMemory: creatureai.Memory{
 			OrbitSide: "left",
 		},
+		creatureCooldownUntil: map[string]time.Time{},
 	}
 	wolf.locomotion = r.locomotion("grounded", "orbit", "run", "active", wolf.position, wolf.position, 0)
 	wolf.creatureAI = &gamev1.CreatureAIState{
@@ -467,6 +469,7 @@ func (r *Runtime) updateWolfPolicyLocked(wolf *entityState, player *entityState)
 		ActiveSkillID:    activeSkill,
 		LineOfSight:      true,
 		Pressure:         wolf.aggression,
+		UnavailableSkill: r.creatureUnavailableSkillsLocked(wolf, nowTime),
 	})
 	wolf.creatureMemory = brain.Memory
 	action := decision.Action
@@ -529,15 +532,50 @@ func (r *Runtime) updateWolfPolicyLocked(wolf *entityState, player *entityState)
 		SkillMovementStopAtContactRatio:       1,
 	}
 	now := nowTime.UnixMilli()
-	if creatureai.PublishesSkill(action) {
+	if creatureai.PublishesSkill(action) && selectedSkill != "" {
+		startingSkill := wolf.skillRuntime == nil || wolf.skillRuntime.GetCurrentSkillId() != selectedSkill || wolf.skillRuntime.GetStartedAtMs() <= 0
 		startedAt := now
 		if wolf.skillRuntime != nil && wolf.skillRuntime.GetCurrentSkillId() == selectedSkill && wolf.skillRuntime.GetStartedAtMs() > 0 {
 			startedAt = wolf.skillRuntime.GetStartedAtMs()
 		}
 		wolf.skillRuntime = &gamev1.SkillRuntimeState{CurrentSkillId: selectedSkill, State: action, StartedAtMs: startedAt, LastResolvedAtMs: now}
+		if startingSkill {
+			r.startCreatureSkillCooldownLocked(wolf, selectedSkill, selectedRuntime, nowTime)
+		}
 	} else {
 		wolf.skillRuntime = &gamev1.SkillRuntimeState{State: "idle", LastResolvedAtMs: now}
 	}
+}
+
+func (r *Runtime) creatureUnavailableSkillsLocked(creature *entityState, now time.Time) map[string]string {
+	if creature == nil {
+		return nil
+	}
+	if creature.creatureCooldownUntil == nil {
+		creature.creatureCooldownUntil = map[string]time.Time{}
+	}
+	unavailable := map[string]string{}
+	for skillID, until := range creature.creatureCooldownUntil {
+		if now.Before(until) {
+			unavailable[skillID] = "cooldown"
+			continue
+		}
+		delete(creature.creatureCooldownUntil, skillID)
+	}
+	if len(unavailable) == 0 {
+		return nil
+	}
+	return unavailable
+}
+
+func (r *Runtime) startCreatureSkillCooldownLocked(creature *entityState, skillID string, contract SkillRuntimeContract, now time.Time) {
+	if creature == nil || skillID == "" || contract.CooldownMS <= 0 {
+		return
+	}
+	if creature.creatureCooldownUntil == nil {
+		creature.creatureCooldownUntil = map[string]time.Time{}
+	}
+	creature.creatureCooldownUntil[skillID] = now.Add(durationFromMS(contract.CooldownMS))
 }
 
 func wolfBrainPolicy(policy WolfRuntimePolicy) creatureai.Policy {

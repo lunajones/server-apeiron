@@ -42,23 +42,35 @@ func (b *Brain) Decide(input Input) Decision {
 	}
 
 	tacticalState, decisionPhase := classifyTactic(b.Policy, rangeCM, input.Pressure)
-	selectedSkill := "bite"
+	selectedSkill := ""
 	action := "orbit"
 	reason := "orbit_policy"
 	score := 0.5
-	if binding, ok := selectBinding(b.Policy, tacticalState, decisionPhase, rangeCM, input.LineOfSight); ok {
+	if binding, ok := selectBinding(b.Policy, tacticalState, decisionPhase, rangeCM, input.LineOfSight, input.UnavailableSkill); ok {
 		selectedSkill = binding.SkillID
 		action = actionForSkill(binding.SkillID, b.Policy)
 		reason = "skill_behavior_binding:" + binding.ID
 		score = float64(binding.Priority) * firstPositive(binding.UsageWeight, 1) / 100
 	} else if tacticalState == "approach" {
-		selectedSkill = "lunge"
 		action = "chase"
-		reason = "range_policy_chase"
+		if skillAvailable("lunge", input.UnavailableSkill) {
+			selectedSkill = "lunge"
+			reason = "range_policy_chase"
+		} else {
+			reason = "range_policy_chase_lunge_unavailable"
+		}
 	} else if tacticalState == "pressure" {
-		selectedSkill = b.Policy.DodgeSkillID
-		action = "retreat"
-		reason = "range_policy_retreat"
+		if skillAvailable(b.Policy.DodgeSkillID, input.UnavailableSkill) {
+			selectedSkill = b.Policy.DodgeSkillID
+			action = "retreat"
+			reason = "range_policy_retreat"
+		} else {
+			reason = "pressure_policy_no_ready_skill"
+		}
+	} else if rangeCM <= firstPositive(b.Policy.BiteRangeCM, b.Policy.RetreatRangeCM) && skillAvailable("bite", input.UnavailableSkill) {
+		selectedSkill = "bite"
+		action = "bite"
+		reason = "range_policy_bite"
 	}
 
 	orbitSide := b.nextOrbitSide(input)

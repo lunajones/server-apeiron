@@ -55,6 +55,7 @@ type Input struct {
 	ActiveSkillID    string
 	LineOfSight      bool
 	Pressure         float64
+	UnavailableSkill map[string]string
 }
 
 type Decision struct {

@@ -76,6 +76,23 @@ func TestBrainKeepsActiveSkillUntilRuntimeEnds(t *testing.T) {
 	}
 }
 
+func TestBrainSkipsUnavailableSkillBinding(t *testing.T) {
+	brain := NewBrain(testPolicy())
+	decision := brain.Decide(Input{
+		Tick:             10,
+		CreaturePosition: domainmath.V3(0, 0, 0),
+		TargetPosition:   domainmath.V3(520, 0, 0),
+		LineOfSight:      true,
+		UnavailableSkill: map[string]string{"lunge": "cooldown"},
+	})
+	if decision.SelectedSkill == "lunge" {
+		t.Fatalf("selected unavailable skill: %#v", decision)
+	}
+	if decision.Action != "orbit" {
+		t.Fatalf("action = %q, want orbit while lunge cools down", decision.Action)
+	}
+}
+
 func testPolicy() Policy {
 	return Policy{
 		DesiredRangeCM:          420,

@@ -2,11 +2,14 @@ package ai
 
 import "strings"
 
-func selectBinding(policy Policy, tacticalState string, decisionPhase string, rangeCM float64, lineOfSight bool) (SkillBinding, bool) {
+func selectBinding(policy Policy, tacticalState string, decisionPhase string, rangeCM float64, lineOfSight bool, unavailable map[string]string) (SkillBinding, bool) {
 	var best SkillBinding
 	bestScore := -1.0
 	for _, binding := range policy.Bindings {
 		if !binding.Enabled || binding.SkillID == "" {
+			continue
+		}
+		if !skillAvailable(binding.SkillID, unavailable) {
 			continue
 		}
 		if binding.RequiresLineOfSight && !lineOfSight {
@@ -31,6 +34,17 @@ func selectBinding(policy Policy, tacticalState string, decisionPhase string, ra
 		}
 	}
 	return best, bestScore >= 0
+}
+
+func skillAvailable(skillID string, unavailable map[string]string) bool {
+	if skillID == "" {
+		return false
+	}
+	if unavailable == nil {
+		return true
+	}
+	_, blocked := unavailable[skillID]
+	return !blocked
 }
 
 func matchesState(configured string, actual string) bool {

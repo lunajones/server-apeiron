@@ -64,7 +64,7 @@ evidence to audit, not final authority. Normal gameplay must be DB/profile/contr
 1. `P0`: Restore creature brain architecture in `server-apeiron/internal/ai`.
    - Status: `PARTIAL`.
    - Done: rebuilt local brain/tactic/setup/memory module and wired wolf decision selection through it.
-   - Remaining: region brain orchestration, cooldown/resource budget, repeat penalties, richer perception, and creature action runtime parity.
+   - Remaining: region brain orchestration, stamina/resource budget, repeat penalties, richer perception, and creature action runtime parity.
 2. `P0`: Re-audit player movement / skill movement authority.
    - Verify no duplicate position authority, no stale recovery handoff, no normal input fighting skill movement.
    - Protected baselines: leap, dodge, turn.
@@ -377,6 +377,7 @@ Current restored behavior:
 
 - `gameapi` converts DB-loaded `WolfRuntimePolicy` and `CreatureSkillBehaviorRuntimeBinding` into `ai.Policy`.
 - The brain chooses bite/lunge/maul/dodge/orbit from policy/bindings and preserves orbit side memory.
+- Creature skill cooldowns are tracked by the runtime and passed to the brain as unavailable skills; the brain skips cooldown-blocked bindings instead of repeating them.
 - `gameapi` applies movement and publishes snapshot state; it no longer owns the lunge/maul/dodge decision schedule.
 - Recovered runtime contracts now include behavior bindings so recovery/dev fixtures exercise the same decision route as DB-backed runtime.
 

@@ -190,6 +190,27 @@ func TestWolfMaulPublishesSelectedSkillMovementContract(t *testing.T) {
 	}
 }
 
+func TestWolfBrainDoesNotRepeatSkillWhileCooldownIsActive(t *testing.T) {
+	runtime := NewRuntimeWithContracts(RecoveredRuntimeContracts())
+	player := runtime.ensurePlayerLocked("local_player")
+	wolf := runtime.ensureWolfLocked(player)
+
+	wolf.position = vector{x: player.position.x + 520, y: player.position.y, z: player.position.z}
+	runtime.updateWolfPolicyLocked(wolf, player)
+	if wolf.creatureAI.GetSelectedSkillId() != "lunge" {
+		t.Fatalf("first selected skill = %q, want lunge", wolf.creatureAI.GetSelectedSkillId())
+	}
+	if len(wolf.creatureCooldownUntil) == 0 {
+		t.Fatal("lunge did not start a creature cooldown")
+	}
+
+	wolf.skillRuntime = &gamev1.SkillRuntimeState{State: "idle"}
+	runtime.updateWolfPolicyLocked(wolf, player)
+	if wolf.creatureAI.GetSelectedSkillId() == "lunge" {
+		t.Fatalf("cooldown skill repeated immediately: %#v", wolf.creatureAI)
+	}
+}
+
 func TestMovementValidationRuntimeDoesNotSpawnCreature(t *testing.T) {
 	runtime := NewRuntimeWithOptions(RecoveredRuntimeContracts(), RuntimeOptions{MovementValidation: true})
 	player := runtime.ensurePlayerLocked("local_player")
