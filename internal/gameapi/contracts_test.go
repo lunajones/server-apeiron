@@ -46,7 +46,7 @@ func TestCurrentPlayerAndCreatureDamagingSkillsUseTemporalHitboxes(t *testing.T)
 		sweepShape    string
 		damageGroupID string
 	}{
-		{"player_basic_attack_1", "motion_player_basic_attack_1_forward_v1", "capsule_strip", "player_basic_attack_1_damage"},
+		{"player_basic_attack_1", "motion_player_basic_attack_1_forward_v1", "box_strip", "player_basic_attack_1_damage"},
 		{"player_basic_attack_2", "motion_player_basic_attack_2_right_to_left_v1", "arc_slice", "player_basic_attack_2_damage"},
 		{"player_basic_attack_3", "motion_player_basic_attack_3_shield_drive_v1", "capsule_strip", "player_basic_attack_3_damage"},
 		{"player_shield_bash", "motion_player_shield_bash_front_push_v1", "capsule_strip", "player_shield_bash_front_push"},
@@ -101,6 +101,100 @@ func TestCurrentPlayerAndCreatureDamagingSkillsUseTemporalHitboxes(t *testing.T)
 			}
 			if len(motion.GetSamples()) < 3 {
 				t.Fatalf("%s temporal samples = %d, want at least 3", tc.skillID, len(motion.GetSamples()))
+			}
+		})
+	}
+}
+
+func TestDevFixturePlayerShieldKitMatchesCanonicalMotionGeometry(t *testing.T) {
+	contracts := DevFixtureRuntimeContracts()
+
+	cases := []struct {
+		skillID      string
+		distanceCM   float64
+		baseSpeedCMS float64
+		sweepShape   string
+		lengths      []float64
+		offsetsX     []float64
+		offsetsY     []float64
+		radii        []float64
+	}{
+		{
+			skillID:      "player_basic_attack_1",
+			distanceCM:   84,
+			baseSpeedCMS: 240,
+			sweepShape:   "box_strip",
+			lengths:      []float64{42, 70, 84},
+			offsetsX:     []float64{0, 0, 0},
+			offsetsY:     []float64{0, 0, 0},
+			radii:        []float64{42, 42, 42},
+		},
+		{
+			skillID:      "player_basic_attack_2",
+			distanceCM:   42,
+			baseSpeedCMS: 114,
+			sweepShape:   "arc_slice",
+			lengths:      []float64{125, 135, 125},
+			offsetsX:     []float64{70, 80, 70},
+			offsetsY:     []float64{-35, 0, 35},
+			radii:        []float64{50, 52, 50},
+		},
+		{
+			skillID:      "player_basic_attack_3",
+			distanceCM:   126,
+			baseSpeedCMS: 203.2,
+			sweepShape:   "capsule_strip",
+			lengths:      []float64{60, 100, 126},
+			offsetsX:     []float64{0, 0, 0},
+			offsetsY:     []float64{0, 0, 0},
+			radii:        []float64{42, 42, 42},
+		},
+		{
+			skillID:      "player_shield_rush",
+			distanceCM:   960,
+			baseSpeedCMS: 1148,
+			sweepShape:   "capsule_strip",
+			lengths:      []float64{130, 240, 315},
+			offsetsX:     []float64{24, 84, 120},
+			offsetsY:     []float64{0, 0, 0},
+			radii:        []float64{96, 96, 96},
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.skillID, func(t *testing.T) {
+			skill := contracts.skillContract(tc.skillID)
+			if math.Abs(skill.MovementAction.DistanceCM-tc.distanceCM) > 0.001 {
+				t.Fatalf("%s distance = %v, want %v", tc.skillID, skill.MovementAction.DistanceCM, tc.distanceCM)
+			}
+			if math.Abs(skill.MovementAction.BaseSpeedCMS-tc.baseSpeedCMS) > 0.001 {
+				t.Fatalf("%s base speed = %v, want %v", tc.skillID, skill.MovementAction.BaseSpeedCMS, tc.baseSpeedCMS)
+			}
+			if len(skill.Hitboxes) != 1 || skill.Hitboxes[0].GetMotionProfile() == nil {
+				t.Fatalf("%s missing canonical motion profile", tc.skillID)
+			}
+			motion := skill.Hitboxes[0].GetMotionProfile()
+			if motion.GetSweepShape() != tc.sweepShape {
+				t.Fatalf("%s sweep shape = %q, want %q", tc.skillID, motion.GetSweepShape(), tc.sweepShape)
+			}
+			samples := motion.GetSamples()
+			if len(samples) != len(tc.lengths) {
+				t.Fatalf("%s sample count = %d, want %d", tc.skillID, len(samples), len(tc.lengths))
+			}
+			for i, sample := range samples {
+				if math.Abs(sample.GetLength()-tc.lengths[i]) > 0.001 {
+					t.Fatalf("%s sample %d length = %v, want %v", tc.skillID, i, sample.GetLength(), tc.lengths[i])
+				}
+				if math.Abs(sample.GetOffsetX()-tc.offsetsX[i]) > 0.001 {
+					t.Fatalf("%s sample %d offset_x = %v, want %v", tc.skillID, i, sample.GetOffsetX(), tc.offsetsX[i])
+				}
+				if math.Abs(sample.GetOffsetY()-tc.offsetsY[i]) > 0.001 {
+					t.Fatalf("%s sample %d offset_y = %v, want %v", tc.skillID, i, sample.GetOffsetY(), tc.offsetsY[i])
+				}
+				if math.Abs(sample.GetRadius()-tc.radii[i]) > 0.001 {
+					t.Fatalf("%s sample %d radius = %v, want %v", tc.skillID, i, sample.GetRadius(), tc.radii[i])
+				}
 			}
 		})
 	}
@@ -297,7 +391,7 @@ func TestStrictRuntimeCoverageRejectsTemporalMotionSampleWithoutGeometry(t *test
 	if err == nil {
 		t.Fatal("ValidateRequiredCoverage accepted temporal samples without width/radius")
 	}
-	if !strings.Contains(err.Error(), "skill motion sample player_basic_attack_1/") || !strings.Contains(err.Error(), "radius") {
+	if !strings.Contains(err.Error(), "skill motion sample player_basic_attack_1/") || !strings.Contains(err.Error(), "width") {
 		t.Fatalf("missing temporal geometry blocker not reported: %v", err)
 	}
 }
@@ -1271,9 +1365,9 @@ func (fakeRuntimeContractSource) GetRuntimeMovementReconciliationProfile(_ conte
 			MovementSubmitIntervalMs:          33,
 			SnapshotPollIntervalMs:            33,
 			StrafeSpeedMultiplier:             0.92,
-			BackpedalSpeedMultiplier:          0.65,
+			BackpedalSpeedMultiplier:          0.50,
 			StrafeSprintSpeedMultiplier:       0.75,
-			BackpedalSprintSpeedMultiplier:    0.75,
+			BackpedalSprintSpeedMultiplier:    0.50,
 		},
 	}, nil
 }
@@ -1435,7 +1529,7 @@ func fakeMovementActionContract(id string, abilityKey string, actionType string,
 		distanceCM = 960
 		baseSpeedCMS = 1148
 		contactPolicy = "multi_target_carry_push"
-		metadata = `{"ability_key":"player_shield_rush","front_contact_offset_cm":45,"source":"test_db_contract"}`
+		metadata = `{"ability_key":"player_shield_rush","front_contact_offset_cm":24,"source":"test_db_contract"}`
 	case "shield_bash_front_push_v1":
 		durationMS = 300
 		activeMS = 170
@@ -1444,23 +1538,23 @@ func fakeMovementActionContract(id string, abilityKey string, actionType string,
 		baseSpeedCMS = 541
 		contactPolicy = "multi_target_push"
 	case "basic_attack_1_forward_cut_v1":
-		durationMS = 340
+		durationMS = 350
 		activeMS = 140
 		recoveryMS = 120
-		distanceCM = 55
-		baseSpeedCMS = 260
+		distanceCM = 84
+		baseSpeedCMS = 240
 	case "basic_attack_2_cross_cut_v1":
-		durationMS = 360
+		durationMS = 370
 		activeMS = 150
 		recoveryMS = 120
-		distanceCM = 35
-		baseSpeedCMS = 260
+		distanceCM = 42
+		baseSpeedCMS = 114
 	case "basic_attack_3_shield_drive_v1":
 		durationMS = 620
 		activeMS = 260
 		recoveryMS = 180
-		distanceCM = 200
-		baseSpeedCMS = 330
+		distanceCM = 126
+		baseSpeedCMS = 203.2
 		contactPolicy = "carry_contact"
 	case "wolf_bite_melee_commit_v1":
 		durationMS = 520

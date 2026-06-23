@@ -13,14 +13,15 @@ func TestGroundedMoveSpeedUsesDirectionalProfile(t *testing.T) {
 		MaxSpeed:                       470,
 		SprintSpeedMultiplier:          1.45,
 		StrafeSpeedMultiplier:          0.92,
-		BackpedalSpeedMultiplier:       0.65,
+		BackpedalSpeedMultiplier:       0.50,
 		StrafeSprintSpeedMultiplier:    0.75,
-		BackpedalSprintSpeedMultiplier: 0.75,
+		BackpedalSprintSpeedMultiplier: 0.50,
 	}
 
 	forward := GroundedMoveSpeed(profile, true, 1, domainmath.V3(1, 0, 0), 0)
 	strafe := GroundedMoveSpeed(profile, true, 1, domainmath.V3(0, 1, 0), 0)
 	back := GroundedMoveSpeed(profile, true, 1, domainmath.V3(-1, 0, 0), 0)
+	walkBack := GroundedMoveSpeed(profile, false, 1, domainmath.V3(-1, 0, 0), 0)
 
 	if forward <= 0 || strafe <= 0 || back <= 0 {
 		t.Fatalf("speeds must be positive: forward=%v strafe=%v back=%v", forward, strafe, back)
@@ -37,8 +38,11 @@ func TestGroundedMoveSpeedUsesDirectionalProfile(t *testing.T) {
 	if math.Abs(strafe-(forward*0.75)) > 0.0001 {
 		t.Fatalf("strafe sprint speed = %v, want exactly 75%% of forward sprint %v", strafe, forward)
 	}
-	if math.Abs(back-(forward*0.75)) > 0.0001 {
-		t.Fatalf("backpedal sprint speed = %v, want exactly 75%% of forward sprint %v", back, forward)
+	if math.Abs(back-(forward*0.50)) > 0.0001 {
+		t.Fatalf("backpedal sprint speed = %v, want exactly 50%% of forward sprint %v", back, forward)
+	}
+	if math.Abs(walkBack-(470*0.50)) > 0.0001 {
+		t.Fatalf("backpedal walk speed = %v, want exactly 50%% of walk speed 470", walkBack)
 	}
 }
 

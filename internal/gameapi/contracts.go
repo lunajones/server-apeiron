@@ -1395,9 +1395,9 @@ func DevFixtureRuntimeContracts() RuntimeContracts {
 		contracts.ActionContracts[contract.AbilityKey] = contract
 	}
 	for _, skill := range []SkillRuntimeContract{
-		fixtureSkillContract("player_basic_attack_1", 55, 260, 180, 80),
-		fixtureSkillContract("player_basic_attack_2", 35, 260, 180, 80),
-		fixtureSkillContract("player_basic_attack_3", 200, 420, 300, 120),
+		fixtureSkillContract("player_basic_attack_1", 84, 350, 140, 120),
+		fixtureSkillContract("player_basic_attack_2", 42, 370, 150, 120),
+		fixtureSkillContract("player_basic_attack_3", 126, 620, 260, 180),
 		fixtureSkillContract("player_shield_bash", 95, 300, 170, 120),
 		fixtureSkillContract("player_shield_rush", 960, 1100, 720, 260),
 		fixtureCreatureSkillContract("bite", "wolf_bite_melee_commit_v1", "grounded_skill", "grounded_skill_action_reconciliation", "melee_contact", 0, 520, 220, 180, 120, 180, 900),
@@ -1530,19 +1530,19 @@ func fixturePlayerSkillHitboxes(skillID string) []*dbv1.SkillHitboxProfile {
 	switch skillID {
 	case "player_basic_attack_1":
 		profile.HitboxStartMs, profile.HitboxEndMs = 90, 230
-		profile.Length, profile.Angle, profile.Radius = 230, 90, 50
+		profile.Length, profile.Angle, profile.Radius = 84, 90, 42
 	case "player_basic_attack_2":
 		profile.HitboxStartMs, profile.HitboxEndMs = 100, 250
-		profile.Length, profile.Angle, profile.Radius = 250, 90, 58
+		profile.Length, profile.Angle, profile.Radius = 135, 90, 52
 	case "player_basic_attack_3":
 		profile.HitboxStartMs, profile.HitboxEndMs = 180, 440
-		profile.Length, profile.Angle, profile.Radius = 440, 95, 60
+		profile.Length, profile.Angle, profile.Radius = 126, 95, 42
 	case "player_shield_bash":
 		profile.HitboxStartMs, profile.HitboxEndMs = 110, 280
 		profile.Length, profile.Radius = 210, 95
 	case "player_shield_rush":
 		profile.HitboxStartMs, profile.HitboxEndMs = 160, 880
-		profile.Length, profile.Radius = 290, 96
+		profile.Length, profile.Radius = 315, 96
 	default:
 		return nil
 	}
@@ -1588,22 +1588,22 @@ func fixturePlayerSkillHitboxMotionProfile(skillID string) *dbv1.SkillHitboxMoti
 func fixturePlayerSkillHitboxMotionSamples(skillID string) (string, string, []*dbv1.SkillHitboxMotionSample) {
 	switch skillID {
 	case "player_basic_attack_1":
-		return "motion_player_basic_attack_1_forward_v1", "capsule_strip", []*dbv1.SkillHitboxMotionSample{
-			fixtureHitboxMotionSample(0, 0.00, 35, 0, 90, 95, 0, 150, 48, 70, 0, 0),
-			fixtureHitboxMotionSample(1, 0.50, 85, 0, 90, 100, 0, 150, 50, 150, 0, 0),
-			fixtureHitboxMotionSample(2, 1.00, 130, 0, 90, 100, 0, 150, 50, 210, 0, 0),
+		return "motion_player_basic_attack_1_forward_v1", "box_strip", []*dbv1.SkillHitboxMotionSample{
+			fixtureHitboxMotionSample(0, 0.00, 0, 0, 90, 42, 84, 150, 42, 42, 0, 0),
+			fixtureHitboxMotionSample(1, 0.50, 0, 0, 90, 70, 84, 150, 42, 70, 0, 0),
+			fixtureHitboxMotionSample(2, 1.00, 0, 0, 90, 84, 84, 150, 42, 84, 0, 0),
 		}
 	case "player_basic_attack_2":
 		return "motion_player_basic_attack_2_right_to_left_v1", "arc_slice", []*dbv1.SkillHitboxMotionSample{
-			fixtureHitboxMotionSample(0, 0.00, 70, 35, 95, 0, 0, 150, 55, 155, -45, -15),
-			fixtureHitboxMotionSample(1, 0.50, 85, 0, 95, 0, 0, 150, 58, 165, -15, 15),
-			fixtureHitboxMotionSample(2, 1.00, 70, -35, 95, 0, 0, 150, 55, 155, 15, 45),
+			fixtureHitboxMotionSample(0, 0.00, 70, -35, 95, 0, 0, 150, 50, 125, 15, 45),
+			fixtureHitboxMotionSample(1, 0.50, 80, 0, 95, 0, 0, 150, 52, 135, -15, 15),
+			fixtureHitboxMotionSample(2, 1.00, 70, 35, 95, 0, 0, 150, 50, 125, -45, -15),
 		}
 	case "player_basic_attack_3":
 		return "motion_player_basic_attack_3_shield_drive_v1", "capsule_strip", []*dbv1.SkillHitboxMotionSample{
-			fixtureHitboxMotionSample(0, 0.00, 45, 0, 95, 120, 0, 155, 60, 90, 0, 0),
-			fixtureHitboxMotionSample(1, 0.55, 90, 0, 95, 120, 0, 155, 60, 175, 0, 0),
-			fixtureHitboxMotionSample(2, 1.00, 115, 0, 95, 120, 0, 155, 60, 210, 0, 0),
+			fixtureHitboxMotionSample(0, 0.00, 0, 0, 95, 84, 0, 155, 42, 60, 0, 0),
+			fixtureHitboxMotionSample(1, 0.55, 0, 0, 95, 84, 0, 155, 42, 100, 0, 0),
+			fixtureHitboxMotionSample(2, 1.00, 0, 0, 95, 84, 0, 155, 42, 126, 0, 0),
 		}
 	case "player_shield_bash":
 		return "motion_player_shield_bash_front_push_v1", "capsule_strip", []*dbv1.SkillHitboxMotionSample{
@@ -1613,9 +1613,9 @@ func fixturePlayerSkillHitboxMotionSamples(skillID string) (string, string, []*d
 		}
 	case "player_shield_rush":
 		return "motion_player_shield_rush_front_contact_v1", "capsule_strip", []*dbv1.SkillHitboxMotionSample{
-			fixtureHitboxMotionSample(0, 0.00, 45, 0, 100, 190, 0, 160, 96, 105, 0, 0),
-			fixtureHitboxMotionSample(1, 0.50, 105, 0, 100, 190, 0, 160, 96, 220, 0, 0),
-			fixtureHitboxMotionSample(2, 1.00, 145, 0, 100, 190, 0, 160, 96, 290, 0, 0),
+			fixtureHitboxMotionSample(0, 0.00, 24, 0, 100, 190, 0, 160, 96, 130, 0, 0),
+			fixtureHitboxMotionSample(1, 0.50, 84, 0, 100, 190, 0, 160, 96, 240, 0, 0),
+			fixtureHitboxMotionSample(2, 1.00, 120, 0, 100, 190, 0, 160, 96, 315, 0, 0),
 		}
 	default:
 		return "", "", nil
@@ -1695,6 +1695,7 @@ func fixtureSkillContract(skillID string, distance float64, durationMS, activeMS
 		ActiveMS:                 activeMS,
 		RecoveryMS:               recoveryMS,
 		DistanceCM:               distance,
+		BaseSpeedCMS:             fixturePlayerSkillBaseSpeedCMS(skillID),
 		SpeedCurveSamples:        fixtureMovementCurve(skillID),
 		ReconciliationContractID: "grounded_skill_action_reconciliation",
 		// Published reconciliation_mode MUST be a string the Unreal client recognizes
@@ -1731,6 +1732,23 @@ func fixtureSkillContract(skillID string, distance float64, durationMS, activeMS
 		TargetPolicy:             "aim_direction",
 		ContactPolicy:            action.ContactPolicy,
 		Enabled:                  true,
+	}
+}
+
+func fixturePlayerSkillBaseSpeedCMS(skillID string) float64 {
+	switch skillID {
+	case "player_basic_attack_1":
+		return 240
+	case "player_basic_attack_2":
+		return 114
+	case "player_basic_attack_3":
+		return 203.2
+	case "player_shield_bash":
+		return 541
+	case "player_shield_rush":
+		return 1148
+	default:
+		return 0
 	}
 }
 
@@ -1791,8 +1809,8 @@ func fixtureSkillControlEffect(skillID string) *dbv1.SkillControlEffect {
 			DurationMs:      180,
 			ControlType:     "push",
 			ReleasePolicyId: "carry_contact_forward_release",
-			DistanceCm:      200,
-			SpeedCmS:        fixtureControlSpeedCMS(200, 180),
+			DistanceCm:      126,
+			SpeedCmS:        fixtureControlSpeedCMS(126, 180),
 			DirectionPolicy: "source_forward",
 		}
 	case "player_shield_bash":
@@ -2307,9 +2325,9 @@ func fixtureMovementProfile() *gamev1.MovementReconciliationProfile {
 		MovementSubmitIntervalMs:          33,
 		SnapshotPollIntervalMs:            33,
 		StrafeSpeedMultiplier:             0.92,
-		BackpedalSpeedMultiplier:          0.65,
+		BackpedalSpeedMultiplier:          0.50,
 		StrafeSprintSpeedMultiplier:       0.75,
-		BackpedalSprintSpeedMultiplier:    0.75,
+		BackpedalSprintSpeedMultiplier:    0.50,
 	}
 }
 

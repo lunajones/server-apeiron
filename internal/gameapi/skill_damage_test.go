@@ -61,7 +61,7 @@ func TestRuntimeSkillImpactAppliesDBContractDamage(t *testing.T) {
 	attachRuntimePlayer(t, runtime, sessionID)
 	player := runtime.ensurePlayerLocked("local_player")
 	wolf := runtime.ensureWolfLocked(player)
-	wolf.position = vector{x: player.position.x + 120, y: player.position.y, z: player.position.z}
+	wolf.position = vector{x: player.position.x + 60, y: player.position.y, z: player.position.z}
 	before := wolf.health
 
 	ack, err := runtime.SubmitCommand(context.Background(), testRuntimeCastSkillCommand(sessionID, 1, "player_basic_attack_1", gamev1Vector(1, 0, 0)))
@@ -97,7 +97,7 @@ func TestRuntimePlayerSkillImpactSchedulerDedupesActionInstance(t *testing.T) {
 	attachRuntimePlayer(t, runtime, sessionID)
 	player := runtime.ensurePlayerLocked("local_player")
 	wolf := runtime.ensureWolfLocked(player)
-	wolf.position = vector{x: player.position.x + 120, y: player.position.y, z: player.position.z}
+	wolf.position = vector{x: player.position.x + 60, y: player.position.y, z: player.position.z}
 
 	ack, err := runtime.SubmitCommand(context.Background(), testRuntimeCastSkillCommand(sessionID, 1, "player_basic_attack_1", gamev1Vector(1, 0, 0)))
 	if err != nil {
@@ -133,7 +133,7 @@ func TestRuntimePendingImpactRunnerCatchesSkippedHitboxWindow(t *testing.T) {
 	attachRuntimePlayer(t, runtime, sessionID)
 	player := runtime.ensurePlayerLocked("local_player")
 	wolf := runtime.ensureWolfLocked(player)
-	wolf.position = vector{x: player.position.x + 120, y: player.position.y, z: player.position.z}
+	wolf.position = vector{x: player.position.x + 60, y: player.position.y, z: player.position.z}
 	before := wolf.health
 
 	ack, err := runtime.SubmitCommand(context.Background(), testRuntimeCastSkillCommand(sessionID, 1, "player_basic_attack_1", gamev1Vector(1, 0, 0)))
@@ -166,10 +166,11 @@ func TestSnapshotEmitsDamageEventWithImpactResponseProfile(t *testing.T) {
 	attachRuntimePlayer(t, runtime, sessionID)
 	player := runtime.ensurePlayerLocked("local_player")
 	wolf := runtime.ensureWolfLocked(player)
-	wolf.position = vector{x: player.position.x + 120, y: player.position.y, z: player.position.z}
+	wolf.position = vector{x: player.position.x + 60, y: player.position.y, z: player.position.z}
 
 	contract := runtime.contracts.skillContract("player_basic_attack_1")
-	startedAt := time.Now().Add(-time.Duration(skillImpactEvaluationElapsedMS(contract)+20) * time.Millisecond)
+	evaluationMS := runtimeSkillImpactSnapshotElapsedMS(contract)
+	startedAt := time.Now().Add(-time.Duration(evaluationMS) * time.Millisecond)
 	runtime.enqueueSkillImpactScheduleLocked(skillImpactScheduleFromActionInstance(
 		player,
 		contract,
@@ -178,7 +179,7 @@ func TestSnapshotEmitsDamageEventWithImpactResponseProfile(t *testing.T) {
 		player.position,
 		vector{x: wolf.position.x, y: wolf.position.y, z: wolf.position.z},
 		vector{x: 1, y: 0},
-		skillImpactEvaluationElapsedMS(contract)+20,
+		evaluationMS,
 	))
 
 	snapshot, err := runtime.GetSnapshot(context.Background(), &gamev1.SnapshotRequest{
@@ -213,7 +214,8 @@ func TestSnapshotDamageEventCarriesAppliedControlMetadata(t *testing.T) {
 	wolf.position = vector{x: player.position.x + 120, y: player.position.y, z: player.position.z}
 
 	contract := runtime.contracts.skillContract("player_shield_rush")
-	startedAt := time.Now().Add(-time.Duration(skillImpactEvaluationElapsedMS(contract)+20) * time.Millisecond)
+	evaluationMS := runtimeSkillImpactSnapshotElapsedMS(contract)
+	startedAt := time.Now().Add(-time.Duration(evaluationMS) * time.Millisecond)
 	runtime.enqueueSkillImpactScheduleLocked(skillImpactScheduleFromActionInstance(
 		player,
 		contract,
@@ -222,7 +224,7 @@ func TestSnapshotDamageEventCarriesAppliedControlMetadata(t *testing.T) {
 		player.position,
 		vector{x: wolf.position.x, y: wolf.position.y, z: wolf.position.z},
 		vector{x: 1, y: 0},
-		skillImpactEvaluationElapsedMS(contract)+20,
+		evaluationMS,
 	))
 
 	snapshot, err := runtime.GetSnapshot(context.Background(), &gamev1.SnapshotRequest{
@@ -314,14 +316,30 @@ func TestRuntimeSkillImpactMissesOutsideHitbox(t *testing.T) {
 }
 
 func runtimeSkillImpactWindowTime(source *entityState, contract SkillRuntimeContract) time.Time {
-	elapsed := skillImpactEvaluationElapsedMS(contract)
-	if elapsed < 0 {
-		elapsed = 0
-	}
+	elapsed := runtimeSkillImpactTestEvaluationElapsedMS(contract)
 	if source != nil && source.actionInstance != nil {
 		return source.actionInstance.StartedAt.Add(time.Duration(elapsed+1) * time.Millisecond)
 	}
 	return time.Now().Add(time.Duration(elapsed+1) * time.Millisecond)
+}
+
+func runtimeSkillImpactTestEvaluationElapsedMS(contract SkillRuntimeContract) float64 {
+	if endMS, ok := skillLatestImpactWindowEndMS(contract); ok {
+		return endMS
+	}
+	elapsed := skillImpactEvaluationElapsedMS(contract)
+	if elapsed < 0 {
+		return 0
+	}
+	return elapsed
+}
+
+func runtimeSkillImpactSnapshotElapsedMS(contract SkillRuntimeContract) float64 {
+	elapsed := runtimeSkillImpactTestEvaluationElapsedMS(contract)
+	if elapsed > 1 {
+		return elapsed - 1
+	}
+	return elapsed
 }
 
 func attachRuntimePlayer(t *testing.T, runtime *Runtime, sessionID string) {
