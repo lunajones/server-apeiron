@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"server-apeiron/internal/combat/actionruntime"
+	"server-apeiron/internal/combat/contactpolicy"
 	"server-apeiron/internal/movement"
 )
 
@@ -49,9 +50,10 @@ func creatureActionMovementEnvelopeAt(instance actionruntime.Instance, contract 
 	if actionEnd := instance.StartedAt.Add(instance.Timing.Windup + instance.Timing.Active + instance.Timing.Recovery); actionEnd.After(handoff) {
 		handoff = actionEnd
 	}
+	contact := contactpolicy.Classify(contract.ContactPolicy, contract.MovementAction.ContactPolicy)
 	envelope := creatureActionMovementEnvelope{
 		SkillID:           contract.SkillID,
-		ContactPolicy:     normalizeCreatureContactPolicy(contract.ContactPolicy, contract.MovementAction.ContactPolicy),
+		ContactPolicy:     contact.Canonical,
 		MovementStartsAt:  rootStart,
 		MovementEndsAt:    rootEnd,
 		AirborneStartsAt:  rootStart,
@@ -59,8 +61,8 @@ func creatureActionMovementEnvelopeAt(instance actionruntime.Instance, contract 
 		LandingStartsAt:   airborneEnd,
 		LandingEndsAt:     rootEnd,
 		HandoffAt:         handoff,
-		AllowsPassthrough: creatureContactPolicyAllowsPassthrough(contract.ContactPolicy, contract.MovementAction.ContactPolicy),
-		StopsAtContact:    creatureContactPolicyStopsAtContact(contract.ContactPolicy, contract.MovementAction.ContactPolicy),
+		AllowsPassthrough: contact.AllowsPassthrough,
+		StopsAtContact:    contact.StopsAtContact,
 	}
 	if movementDuration <= 0 {
 		envelope.MovementEndsAt = rootStart
@@ -104,50 +106,12 @@ func creatureSkillAirborneDuration(contract SkillRuntimeContract) time.Duration 
 }
 
 func creatureSkillMovementStopAtContactRate(contract SkillRuntimeContract) float64 {
-	if creatureContactPolicyAllowsPassthrough(contract.ContactPolicy, contract.MovementAction.ContactPolicy) {
+	policy := contactpolicy.Classify(contract.ContactPolicy, contract.MovementAction.ContactPolicy)
+	if policy.AllowsPassthrough {
 		return 1
 	}
-	if creatureContactPolicyStopsAtContact(contract.ContactPolicy, contract.MovementAction.ContactPolicy) {
+	if policy.StopsAtContact {
 		return 0
 	}
 	return 1
-}
-
-func normalizeCreatureContactPolicy(values ...string) string {
-	for _, value := range values {
-		normalized := strings.ToLower(strings.TrimSpace(value))
-		if normalized != "" {
-			return normalized
-		}
-	}
-	return ""
-}
-
-func creatureContactPolicyAllowsPassthrough(values ...string) bool {
-	for _, value := range values {
-		normalized := strings.ToLower(strings.TrimSpace(value))
-		if normalized == "" {
-			continue
-		}
-		if strings.Contains(normalized, "passthrough") || strings.Contains(normalized, "phase_through") || strings.Contains(normalized, "phase-through") {
-			return true
-		}
-	}
-	return false
-}
-
-func creatureContactPolicyStopsAtContact(values ...string) bool {
-	for _, value := range values {
-		normalized := strings.ToLower(strings.TrimSpace(value))
-		if normalized == "" {
-			continue
-		}
-		if strings.Contains(normalized, "passthrough") || strings.Contains(normalized, "iframe") {
-			return false
-		}
-		if strings.Contains(normalized, "contact") || strings.Contains(normalized, "block") || strings.Contains(normalized, "carry") {
-			return true
-		}
-	}
-	return false
 }
