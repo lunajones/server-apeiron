@@ -12,7 +12,7 @@ import (
 func TestCreatureTemporalSkillImpactDamagesPlayerOncePerInstance(t *testing.T) {
 	t.Parallel()
 
-	runtime := NewRuntimeWithContracts(RecoveryFixtureRuntimeContracts())
+	runtime := NewRuntimeWithContracts(DevFixtureRuntimeContracts())
 	sessionID := "creature-temporal-skill-impact"
 	attachRuntimePlayer(t, runtime, sessionID)
 
@@ -66,7 +66,7 @@ func TestCreatureTemporalSkillImpactDamagesPlayerOncePerInstance(t *testing.T) {
 func TestCreatureTemporalSkillImpactWaitsForHitboxWindow(t *testing.T) {
 	t.Parallel()
 
-	runtime := NewRuntimeWithContracts(RecoveryFixtureRuntimeContracts())
+	runtime := NewRuntimeWithContracts(DevFixtureRuntimeContracts())
 	sessionID := "creature-temporal-skill-impact-window"
 	if _, err := runtime.OpenSession(context.Background(), &gamev1.OpenSessionRequest{
 		Context: &gamev1.RequestContext{SessionId: sessionID},

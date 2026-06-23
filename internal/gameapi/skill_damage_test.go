@@ -25,11 +25,11 @@ func TestLoadSkillRuntimeContractMapsDBDamage(t *testing.T) {
 	}
 }
 
-// TestRecoveredPlayerSkillsCarrySeedDamage locks that player skill contracts carry the
+// TestFixturePlayerSkillsCarrySeedDamage locks that player skill contracts carry the
 // canonical base/posture damage from db-apeiron seed 013 (damage-pipeline brick 2a).
 // When the DB skill proto exposes damage (brick 2b), this should be sourced from the DB.
-func TestRecoveredPlayerSkillsCarrySeedDamage(t *testing.T) {
-	contracts := RecoveryFixtureRuntimeContracts()
+func TestFixturePlayerSkillsCarrySeedDamage(t *testing.T) {
+	contracts := DevFixtureRuntimeContracts()
 
 	cases := map[string]struct {
 		damage  float64
@@ -56,7 +56,7 @@ func TestRecoveredPlayerSkillsCarrySeedDamage(t *testing.T) {
 func TestRuntimeSkillImpactAppliesDBContractDamage(t *testing.T) {
 	t.Parallel()
 
-	runtime := NewRuntimeWithContracts(RecoveryFixtureRuntimeContracts())
+	runtime := NewRuntimeWithContracts(DevFixtureRuntimeContracts())
 	sessionID := "runtime-skill-impact-damage"
 	attachRuntimePlayer(t, runtime, sessionID)
 	player := runtime.ensurePlayerLocked("local_player")
@@ -92,7 +92,7 @@ func TestRuntimeSkillImpactAppliesDBContractDamage(t *testing.T) {
 func TestRuntimePlayerSkillImpactSchedulerDedupesActionInstance(t *testing.T) {
 	t.Parallel()
 
-	runtime := NewRuntimeWithContracts(RecoveryFixtureRuntimeContracts())
+	runtime := NewRuntimeWithContracts(DevFixtureRuntimeContracts())
 	sessionID := "runtime-player-impact-scheduler-dedupe"
 	attachRuntimePlayer(t, runtime, sessionID)
 	player := runtime.ensurePlayerLocked("local_player")
@@ -128,7 +128,7 @@ func TestRuntimePlayerSkillImpactSchedulerDedupesActionInstance(t *testing.T) {
 func TestRuntimePendingImpactRunnerCatchesSkippedHitboxWindow(t *testing.T) {
 	t.Parallel()
 
-	runtime := NewRuntimeWithContracts(RecoveryFixtureRuntimeContracts())
+	runtime := NewRuntimeWithContracts(DevFixtureRuntimeContracts())
 	sessionID := "runtime-player-impact-scheduler-skipped-window"
 	attachRuntimePlayer(t, runtime, sessionID)
 	player := runtime.ensurePlayerLocked("local_player")
@@ -161,7 +161,7 @@ func TestRuntimePendingImpactRunnerCatchesSkippedHitboxWindow(t *testing.T) {
 func TestSnapshotEmitsDamageEventWithImpactResponseProfile(t *testing.T) {
 	t.Parallel()
 
-	runtime := NewRuntimeWithContracts(RecoveryFixtureRuntimeContracts())
+	runtime := NewRuntimeWithContracts(DevFixtureRuntimeContracts())
 	sessionID := "runtime-impact-event-profile"
 	attachRuntimePlayer(t, runtime, sessionID)
 	player := runtime.ensurePlayerLocked("local_player")
@@ -205,7 +205,7 @@ func TestSnapshotEmitsDamageEventWithImpactResponseProfile(t *testing.T) {
 func TestSnapshotDamageEventCarriesAppliedControlMetadata(t *testing.T) {
 	t.Parallel()
 
-	runtime := NewRuntimeWithContracts(RecoveryFixtureRuntimeContracts())
+	runtime := NewRuntimeWithContracts(DevFixtureRuntimeContracts())
 	sessionID := "runtime-impact-event-control"
 	attachRuntimePlayer(t, runtime, sessionID)
 	player := runtime.ensurePlayerLocked("local_player")
@@ -261,7 +261,7 @@ func TestSnapshotDamageEventCarriesAppliedControlMetadata(t *testing.T) {
 func TestRuntimeSkillImpactHonorsDirectionalBlock(t *testing.T) {
 	t.Parallel()
 
-	runtime := NewRuntimeWithContracts(RecoveryFixtureRuntimeContracts())
+	runtime := NewRuntimeWithContracts(DevFixtureRuntimeContracts())
 	sessionID := "runtime-skill-impact-block"
 	attachRuntimePlayer(t, runtime, sessionID)
 	player := runtime.ensurePlayerLocked("local_player")
@@ -295,7 +295,7 @@ func TestRuntimeSkillImpactHonorsDirectionalBlock(t *testing.T) {
 func TestRuntimeSkillImpactMissesOutsideHitbox(t *testing.T) {
 	t.Parallel()
 
-	runtime := NewRuntimeWithContracts(RecoveryFixtureRuntimeContracts())
+	runtime := NewRuntimeWithContracts(DevFixtureRuntimeContracts())
 	sessionID := "runtime-skill-impact-miss"
 	attachRuntimePlayer(t, runtime, sessionID)
 	player := runtime.ensurePlayerLocked("local_player")

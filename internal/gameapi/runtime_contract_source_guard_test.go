@@ -12,7 +12,7 @@ func TestRuntimeContractSourceNamesAreIntentionalAndDistinct(t *testing.T) {
 	sources := []string{
 		runtimeContractSourceDB,
 		runtimeContractSourceDBIncomplete,
-		runtimeContractSourceRecoveryFixture,
+		runtimeContractSourceDevFixture,
 		runtimeContractSourceUnconfigured,
 	}
 	seen := map[string]bool{}
@@ -27,7 +27,7 @@ func TestRuntimeContractSourceNamesAreIntentionalAndDistinct(t *testing.T) {
 	}
 }
 
-func TestDefaultRuntimeIsUnconfiguredAndNeverLeaksRecoveryFixture(t *testing.T) {
+func TestDefaultRuntimeIsUnconfiguredAndNeverLeaksDevFixture(t *testing.T) {
 	runtime := NewRuntime()
 
 	stats, err := runtime.RuntimeStats(context.Background(), &gamev1.Empty{})
@@ -51,10 +51,10 @@ func TestDefaultRuntimeIsUnconfiguredAndNeverLeaksRecoveryFixture(t *testing.T) 
 		}
 	}
 	if got := stats.GetPhaseStatus()["contracts.required.skill.player_shield_rush"]; got != "missing" {
-		t.Fatalf("default runtime leaked recovered player_shield_rush readiness: %q", got)
+		t.Fatalf("default runtime leaked fixture player_shield_rush readiness: %q", got)
 	}
 	if got := stats.GetPhaseStatus()["contracts.required.base_movement_action.dodge"]; !strings.HasPrefix(got, "missing") {
-		t.Fatalf("default runtime leaked recovered dodge readiness: %q", got)
+		t.Fatalf("default runtime leaked fixture dodge readiness: %q", got)
 	}
 
 	ready, err := runtime.Readiness(context.Background(), &gamev1.Empty{})
@@ -75,10 +75,10 @@ func TestDefaultRuntimeIsUnconfiguredAndNeverLeaksRecoveryFixture(t *testing.T) 
 		t.Fatalf("OpenSession failed: %v", err)
 	}
 	if len(session.GetMovementActionContracts()) != 0 {
-		t.Fatalf("default runtime leaked recovered movement manifest: %#v", session.GetMovementActionContracts())
+		t.Fatalf("default runtime leaked fixture movement manifest: %#v", session.GetMovementActionContracts())
 	}
 	if len(session.GetMovementActionContractPayloads()) != 0 {
-		t.Fatalf("default runtime leaked recovered movement payloads: %#v", session.GetMovementActionContractPayloads())
+		t.Fatalf("default runtime leaked fixture movement payloads: %#v", session.GetMovementActionContractPayloads())
 	}
 }
 
@@ -117,8 +117,8 @@ func TestDefaultRuntimeRejectsMoveInsteadOfPublishingResolverDefaults(t *testing
 	}
 }
 
-func TestRecoveryFixtureRuntimeAcceptsMoveOnlyThroughExplicitMoveContract(t *testing.T) {
-	runtime := NewRuntimeWithContracts(RecoveryFixtureRuntimeContracts())
+func TestDevFixtureRuntimeAcceptsMoveOnlyThroughExplicitMoveContract(t *testing.T) {
+	runtime := NewRuntimeWithContracts(DevFixtureRuntimeContracts())
 	session, err := runtime.OpenSession(context.Background(), &gamev1.OpenSessionRequest{
 		Context: &gamev1.RequestContext{SessionId: "fixture_move_guard", AccountId: "fixture_move_guard"},
 	})
@@ -148,10 +148,10 @@ func TestRecoveryFixtureRuntimeAcceptsMoveOnlyThroughExplicitMoveContract(t *tes
 	}
 }
 
-func TestRecoveryFixtureRuntimeIsExplicitDevTestOptIn(t *testing.T) {
-	contracts := RecoveryFixtureRuntimeContracts()
-	if contracts.Source != runtimeContractSourceRecoveryFixture {
-		t.Fatalf("recovery fixture source = %q, want %q", contracts.Source, runtimeContractSourceRecoveryFixture)
+func TestDevFixtureRuntimeIsExplicitDevTestOptIn(t *testing.T) {
+	contracts := DevFixtureRuntimeContracts()
+	if contracts.Source != runtimeContractSourceDevFixture {
+		t.Fatalf("recovery fixture source = %q, want %q", contracts.Source, runtimeContractSourceDevFixture)
 	}
 
 	runtime := NewRuntimeWithContracts(contracts)
@@ -159,14 +159,14 @@ func TestRecoveryFixtureRuntimeIsExplicitDevTestOptIn(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RuntimeStats failed: %v", err)
 	}
-	if got := stats.GetPhaseStatus()["contract_source"]; got != runtimeContractSourceRecoveryFixture {
-		t.Fatalf("fixture runtime source = %q, want %q", got, runtimeContractSourceRecoveryFixture)
+	if got := stats.GetPhaseStatus()["contract_source"]; got != runtimeContractSourceDevFixture {
+		t.Fatalf("fixture runtime source = %q, want %q", got, runtimeContractSourceDevFixture)
 	}
 	if got := stats.GetPhaseStatus()["contracts.required.skill.player_shield_rush"]; !strings.HasPrefix(got, "ready:") {
-		t.Fatalf("fixture runtime should expose recovered player_shield_rush only by explicit opt-in: %q", got)
+		t.Fatalf("fixture runtime should expose fixture player_shield_rush only by explicit opt-in: %q", got)
 	}
 	if got := stats.GetPhaseStatus()["contracts.required.base_movement_action.dodge"]; !strings.HasPrefix(got, "ready:") {
-		t.Fatalf("fixture runtime should expose recovered dodge only by explicit opt-in: %q", got)
+		t.Fatalf("fixture runtime should expose fixture dodge only by explicit opt-in: %q", got)
 	}
 
 	ready, err := runtime.Readiness(context.Background(), &gamev1.Empty{})
@@ -203,7 +203,7 @@ func TestDBRuntimeSourcePromotesOnlyAfterStrictCompleteLoad(t *testing.T) {
 		t.Fatal("incomplete DB load did not report load issues")
 	}
 	if got := incomplete.SkillContracts["player_shield_rush"]; got.Enabled || got.MovementAction.ID != "" {
-		t.Fatalf("incomplete DB load leaked recovered player_shield_rush fallback: %#v", got)
+		t.Fatalf("incomplete DB load leaked fixture player_shield_rush fallback: %#v", got)
 	}
 	if err := incomplete.ValidateRequiredCoverage(true); err == nil {
 		t.Fatal("incomplete DB load passed strict coverage")
@@ -220,7 +220,7 @@ func TestRuntimeStatsExposeFinalAuthoritySurfaceWhileDefaultContractsRemainBlock
 		t.Fatalf("movement action surface status = %q", got)
 	}
 	if got := stats.GetPhaseStatus()["contracts.surface.skill_movement_effect/GetSkillMovementEffect"]; !strings.Contains(got, "compat_runtime_required") || strings.Contains(got, "runtime_authority") {
-		t.Fatalf("legacy skill movement surface status = %q", got)
+		t.Fatalf("skill movement compatibility surface status = %q", got)
 	}
 	if got := stats.GetPhaseStatus()["contracts.skill_runtime_contracts"]; got != "blocked" {
 		t.Fatalf("default runtime contract coverage must stay blocked despite surface classification: %q", got)

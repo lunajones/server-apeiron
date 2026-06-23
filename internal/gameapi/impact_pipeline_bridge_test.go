@@ -11,7 +11,7 @@ import (
 func TestRuntimeSkillImpactUsesCombatPipelineParry(t *testing.T) {
 	t.Parallel()
 
-	runtime := NewRuntimeWithContracts(RecoveryFixtureRuntimeContracts())
+	runtime := NewRuntimeWithContracts(DevFixtureRuntimeContracts())
 	sessionID := "runtime-skill-impact-parry"
 	attachRuntimePlayer(t, runtime, sessionID)
 	player := runtime.ensurePlayerLocked("local_player")
@@ -46,7 +46,7 @@ func TestRuntimeSkillImpactUsesCombatPipelineParry(t *testing.T) {
 func TestRuntimeSkillImpactUsesCombatPipelineIframe(t *testing.T) {
 	t.Parallel()
 
-	runtime := NewRuntimeWithContracts(RecoveryFixtureRuntimeContracts())
+	runtime := NewRuntimeWithContracts(DevFixtureRuntimeContracts())
 	sessionID := "runtime-skill-impact-iframe"
 	attachRuntimePlayer(t, runtime, sessionID)
 	player := runtime.ensurePlayerLocked("local_player")
@@ -70,7 +70,7 @@ func TestRuntimeSkillImpactUsesCombatPipelineIframe(t *testing.T) {
 func TestRuntimeSkillImpactCarriesTargetImpactResponseProfile(t *testing.T) {
 	t.Parallel()
 
-	runtime := NewRuntimeWithContracts(RecoveryFixtureRuntimeContracts())
+	runtime := NewRuntimeWithContracts(DevFixtureRuntimeContracts())
 	sessionID := "runtime-skill-impact-response-profile"
 	attachRuntimePlayer(t, runtime, sessionID)
 	player := runtime.ensurePlayerLocked("local_player")
@@ -95,7 +95,7 @@ func TestRuntimeSkillImpactCarriesTargetImpactResponseProfile(t *testing.T) {
 func TestRuntimeSkillImpactAppliesContractControlEffects(t *testing.T) {
 	t.Parallel()
 
-	runtime := NewRuntimeWithContracts(RecoveryFixtureRuntimeContracts())
+	runtime := NewRuntimeWithContracts(DevFixtureRuntimeContracts())
 	sessionID := "runtime-skill-impact-control-effect"
 	attachRuntimePlayer(t, runtime, sessionID)
 	player := runtime.ensurePlayerLocked("local_player")
@@ -151,7 +151,7 @@ func TestRuntimeSkillImpactAppliesContractControlEffects(t *testing.T) {
 func TestImpactControlInterruptsCreatureActionAndCancelsPendingDamage(t *testing.T) {
 	t.Parallel()
 
-	runtime := NewRuntimeWithContracts(RecoveryFixtureRuntimeContracts())
+	runtime := NewRuntimeWithContracts(DevFixtureRuntimeContracts())
 	sessionID := "runtime-impact-control-interrupts-creature"
 	attachRuntimePlayer(t, runtime, sessionID)
 	player := runtime.ensurePlayerLocked("local_player")

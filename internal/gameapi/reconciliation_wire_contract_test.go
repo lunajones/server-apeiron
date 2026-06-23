@@ -24,7 +24,7 @@ var unrealRecognizedSkillReconciliationModes = map[string]bool{
 // "grounded_skill_action_reconciliation" parsed as None and was the Shield Rush/Bash
 // rubberband cause.
 func TestPlayerSkillPublishesUnrealRecognizedReconciliationMode(t *testing.T) {
-	contract := recoveredSkillContract("player_shield_rush", 320, 240, 140, 60).MovementAction
+	contract := fixtureSkillContract("player_shield_rush", 320, 240, 140, 60).MovementAction
 	mode := movement.ReconciliationMode(contract)
 	if !unrealRecognizedSkillReconciliationModes[mode] {
 		t.Fatalf("player skill reconciliation_mode = %q is NOT recognized by the Unreal client "+

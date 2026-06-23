@@ -2,10 +2,10 @@ package gameapi
 
 import "testing"
 
-func TestRecoveredCreatureSkillsCarryTemporalHitboxesAndDamage(t *testing.T) {
+func TestFixtureCreatureSkillsCarryTemporalHitboxesAndDamage(t *testing.T) {
 	t.Parallel()
 
-	contracts := RecoveryFixtureRuntimeContracts()
+	contracts := DevFixtureRuntimeContracts()
 	cases := map[string]struct {
 		damage        float64
 		posture       float64
@@ -40,10 +40,10 @@ func TestRecoveredCreatureSkillsCarryTemporalHitboxesAndDamage(t *testing.T) {
 	}
 }
 
-func TestRecoveredCreatureTemporalLungeDoesNotHitFutureSampleEarly(t *testing.T) {
+func TestFixtureCreatureTemporalLungeDoesNotHitFutureSampleEarly(t *testing.T) {
 	t.Parallel()
 
-	contract := RecoveryFixtureRuntimeContracts().skillContract("lunge")
+	contract := DevFixtureRuntimeContracts().skillContract("lunge")
 	start := vector{}
 	end := vector{x: 700}
 	dir := vector{x: 1}

@@ -89,8 +89,8 @@ type SkillRuntimeContract struct {
 	ContactPolicy            string
 	// Damage / PostureDamage / Range are DB-authoritative: loadSkillRuntimeContract sets
 	// them from the DB Skill (GetSkill -> base_damage/posture_damage/max_range). The
-	// recovered runtime falls back to the canonical seed values (recoveredPlayerSkillDamage)
-	// when the DB is unavailable.
+	// dev fixture mirrors the canonical seed values (fixturePlayerSkillDamage)
+	// for isolated unit tests; normal runtime must load them from DB.
 	Damage         float64
 	PostureDamage  float64
 	StaminaCost    float64
@@ -267,7 +267,7 @@ type movementActionContractMetadata struct {
 
 const runtimeContractSourceDB = "db_contracts"
 const runtimeContractSourceDBIncomplete = "db_contracts_incomplete"
-const runtimeContractSourceRecoveryFixture = "recovered_runtime_fallback"
+const runtimeContractSourceDevFixture = "dev_test_fixture_contracts"
 const runtimeContractSourceUnconfigured = "unconfigured_runtime_contracts"
 
 const runtimeMovementReconciliationProfileID = "player_default_movement_profile"
@@ -658,7 +658,7 @@ func (c RuntimeContracts) CoverageReport(strictLoadedSource bool) RuntimeContrac
 	report.addCategory("combat_core_profiles", c.combatCoreProfileBlockers(strictLoadedSource))
 	report.addCategory("combat_defense_contracts", c.combatDefenseContractBlockers(strictLoadedSource))
 	report.addCategory("combat_mode_slots", c.combatModeSlotBlockers())
-	report.addCategory("legacy_runtime_surfaces", legacyRuntimeSurfaceBlockers())
+	report.addCategory("compat_runtime_surfaces", compatRuntimeSurfaceBlockers())
 	if strictLoadedSource {
 		report.addCategory("contract_load_issues", append([]string(nil), c.LoadIssues...))
 	}
@@ -1278,29 +1278,29 @@ func runtimeMovementReconciliationProfileFromDB(profile *dbv1.RuntimeMovementRec
 	}
 }
 
-// RecoveryFixtureRuntimeContracts is a dev/test reconstruction fixture. Normal app
+// DevFixtureRuntimeContracts is a dev/test fixture. Normal app
 // boot must load DB-backed contracts through LoadRuntimeContractsFromDB and strict
 // coverage validation; do not call this from production startup.
-func RecoveryFixtureRuntimeContracts() RuntimeContracts {
+func DevFixtureRuntimeContracts() RuntimeContracts {
 	contracts := RuntimeContracts{
-		Source:          runtimeContractSourceRecoveryFixture,
-		MovementProfile: recoveredMovementProfile(),
+		Source:          runtimeContractSourceDevFixture,
+		MovementProfile: fixtureMovementProfile(),
 		ActionContracts: map[string]MovementActionRuntimeContract{},
 		SkillContracts:  map[string]SkillRuntimeContract{},
 		CombatCore: CombatCoreRuntimeContracts{
 			PlayerProfileID:   playerCombatCoreProfileID,
 			CreatureProfileID: creatureCombatCoreProfileID,
 			Profiles: map[string]*dbv1.CombatCoreProfile{
-				playerCombatCoreProfileID:   recoveredPlayerCombatCoreProfile(),
-				creatureCombatCoreProfileID: recoveredCreatureCombatCoreProfile(),
+				playerCombatCoreProfileID:   fixturePlayerCombatCoreProfile(),
+				creatureCombatCoreProfileID: fixtureCreatureCombatCoreProfile(),
 			},
 		},
 		Defense: DefenseRuntimeContracts{
 			PlayerGuardContractID:   playerGuardDefenseContractID,
 			CreatureGuardContractID: creatureGuardDefenseContractID,
 			Contracts: map[string]*dbv1.CombatDefenseContract{
-				playerGuardDefenseContractID:   recoveredPlayerGuardDefenseContract(),
-				creatureGuardDefenseContractID: recoveredCreatureGuardDefenseContract(),
+				playerGuardDefenseContractID:   fixturePlayerGuardDefenseContract(),
+				creatureGuardDefenseContractID: fixtureCreatureGuardDefenseContract(),
 			},
 		},
 		WolfPolicy: WolfRuntimePolicy{
@@ -1372,11 +1372,11 @@ func RecoveryFixtureRuntimeContracts() RuntimeContracts {
 			StaminaRegenPerSecond:          12,
 			MaxStamina:                     100,
 			SkillBehaviorBindings: []CreatureSkillBehaviorRuntimeBinding{
-				{ID: "recovered_bind_bite_circle", SkillID: "bite", TacticalState: "circle", DecisionPhase: "reposition", MinRangeCM: 0, MaxRangeCM: 300, Priority: 70, UsageWeight: 0.85, CooldownGroup: "wolf_bite", RequiresLineOfSight: true, Enabled: true},
-				{ID: "recovered_bind_lunge_circle", SkillID: "lunge", TacticalState: "circle", DecisionPhase: "reposition", SetupPolicyID: "wolf_lunge_flank_windup_v1", MinRangeCM: 180, MaxRangeCM: 760, Priority: 85, UsageWeight: 0.75, CooldownGroup: "wolf_lunge", RequiresLineOfSight: true, Enabled: true},
-				{ID: "recovered_bind_lunge_approach", SkillID: "lunge", TacticalState: "approach", DecisionPhase: "acquire", SetupPolicyID: "wolf_lunge_chase_windup_v1", MinRangeCM: 420, MaxRangeCM: 980, Priority: 95, UsageWeight: 1, CooldownGroup: "wolf_lunge", RequiresLineOfSight: true, Enabled: true},
-				{ID: "recovered_bind_maul_pressure", SkillID: "maul", TacticalState: "pressure", DecisionPhase: "counter", SetupPolicyID: "wolf_maul_pressure_counter_v1", MinRangeCM: 0, MaxRangeCM: 260, Priority: 100, UsageWeight: 0.9, CooldownGroup: "wolf_maul", RequiresLineOfSight: true, Enabled: true},
-				{ID: "recovered_bind_dodge_pressure", SkillID: "wolf_dodge", TacticalState: "pressure", DecisionPhase: "evade", MinRangeCM: 0, MaxRangeCM: 420, Priority: 110, UsageWeight: 1.15, CooldownGroup: "wolf_dodge", RequiresLineOfSight: false, Enabled: true},
+				{ID: "fixture_bind_bite_circle", SkillID: "bite", TacticalState: "circle", DecisionPhase: "reposition", MinRangeCM: 0, MaxRangeCM: 300, Priority: 70, UsageWeight: 0.85, CooldownGroup: "wolf_bite", RequiresLineOfSight: true, Enabled: true},
+				{ID: "fixture_bind_lunge_circle", SkillID: "lunge", TacticalState: "circle", DecisionPhase: "reposition", SetupPolicyID: "wolf_lunge_flank_windup_v1", MinRangeCM: 180, MaxRangeCM: 760, Priority: 85, UsageWeight: 0.75, CooldownGroup: "wolf_lunge", RequiresLineOfSight: true, Enabled: true},
+				{ID: "fixture_bind_lunge_approach", SkillID: "lunge", TacticalState: "approach", DecisionPhase: "acquire", SetupPolicyID: "wolf_lunge_chase_windup_v1", MinRangeCM: 420, MaxRangeCM: 980, Priority: 95, UsageWeight: 1, CooldownGroup: "wolf_lunge", RequiresLineOfSight: true, Enabled: true},
+				{ID: "fixture_bind_maul_pressure", SkillID: "maul", TacticalState: "pressure", DecisionPhase: "counter", SetupPolicyID: "wolf_maul_pressure_counter_v1", MinRangeCM: 0, MaxRangeCM: 260, Priority: 100, UsageWeight: 0.9, CooldownGroup: "wolf_maul", RequiresLineOfSight: true, Enabled: true},
+				{ID: "fixture_bind_dodge_pressure", SkillID: "wolf_dodge", TacticalState: "pressure", DecisionPhase: "evade", MinRangeCM: 0, MaxRangeCM: 420, Priority: 110, UsageWeight: 1.15, CooldownGroup: "wolf_dodge", RequiresLineOfSight: false, Enabled: true},
 			},
 			SkillSetupPolicies: []CreatureSkillSetupRuntimePolicy{
 				{ID: "wolf_lunge_flank_windup_v1", SkillID: "lunge", SetupType: "moving_windup", MinSetupMS: 3000, MaxSetupMS: 4200, CommitDistanceCM: 520, PreferredMinRangeCM: 180, PreferredMaxRangeCM: 700, MovementTactic: "circle_then_curve_to_target", LockSideDuringSetup: true, Enabled: true},
@@ -1384,26 +1384,26 @@ func RecoveryFixtureRuntimeContracts() RuntimeContracts {
 				{ID: "wolf_maul_pressure_counter_v1", SkillID: "maul", SetupType: "pressure_counter", MinSetupMS: 120, MaxSetupMS: 320, CommitDistanceCM: 160, PreferredMinRangeCM: 0, PreferredMaxRangeCM: 220, MovementTactic: "lateral_counter_dash", LockSideDuringSetup: true, Enabled: true},
 			},
 		},
-		CombatModes: recoveredCombatModeSlots(),
+		CombatModes: fixtureCombatModeSlots(),
 	}
 	for _, contract := range []MovementActionRuntimeContract{
 		{ID: "grounded_move_v1", AbilityKey: "move", ActionType: "move", DurationMS: 180, ActiveMS: 120, RecoveryMS: 60, ReconciliationContractID: "grounded_move_reconciliation", ReconciliationCategory: "grounded_move_reconciliation", PhaseWindowPolicy: "server_authoritative", PredictionErrorPolicy: "bounded_smooth_correction"},
 		{ID: "turn_v1_rate_limited_contextual", AbilityKey: "turn", ActionType: "turn", DurationMS: 180, ActiveMS: 120, RecoveryMS: 60, YawRateDegPerSec: 720, ReconciliationContractID: "turn_reconciliation", ReconciliationCategory: "turn_reconciliation", PhaseWindowPolicy: "server_authoritative", PredictionErrorPolicy: "bounded_smooth_correction"},
-		{ID: "dodge_v1_full_iframe", AbilityKey: "dodge", ActionType: "dodge", DurationMS: 320, ActiveMS: 260, RecoveryMS: 60, DistanceCM: 260, BaseSpeedCMS: 812.5, SpeedCurveSamples: recoveredMovementCurve("dodge_v1_full_iframe"), VerticalCurveSamples: recoveredVerticalCurve("dodge_v1_full_iframe"), ReconciliationContractID: "dodge_reconciliation", ReconciliationCategory: "dodge_reconciliation", PhaseWindowPolicy: "server_authoritative", PredictionErrorPolicy: "bounded_smooth_correction"},
-		{ID: "jump_v1_authoritative_grounded_handoff", AbilityKey: "jump", ActionType: "leap", DurationMS: 620, AirborneDurationMS: 560, ActiveMS: 560, RecoveryMS: 60, DistanceCM: 280, BaseSpeedCMS: 452, SpeedCurveSamples: recoveredMovementCurve("jump_v1_authoritative_grounded_handoff"), VerticalCurveSamples: recoveredVerticalCurve("jump_v1_authoritative_grounded_handoff"), JumpZVelocity: 620, GravityScale: 1, ExpectedApexMS: 310, LandingDetectionPolicy: "server_grounded_handoff", GroundZPolicy: "server_position_is_actor_root", AllowsAirControl: true, AirControlModifier: 0.35, ReconciliationContractID: "leap_reconciliation", ReconciliationCategory: "leap_reconciliation", PhaseWindowPolicy: "server_authoritative", PredictionErrorPolicy: "bounded_smooth_correction"},
+		{ID: "dodge_v1_full_iframe", AbilityKey: "dodge", ActionType: "dodge", DurationMS: 320, ActiveMS: 260, RecoveryMS: 60, DistanceCM: 260, BaseSpeedCMS: 812.5, SpeedCurveSamples: fixtureMovementCurve("dodge_v1_full_iframe"), VerticalCurveSamples: fixtureVerticalCurve("dodge_v1_full_iframe"), ReconciliationContractID: "dodge_reconciliation", ReconciliationCategory: "dodge_reconciliation", PhaseWindowPolicy: "server_authoritative", PredictionErrorPolicy: "bounded_smooth_correction"},
+		{ID: "jump_v1_authoritative_grounded_handoff", AbilityKey: "jump", ActionType: "leap", DurationMS: 620, AirborneDurationMS: 560, ActiveMS: 560, RecoveryMS: 60, DistanceCM: 280, BaseSpeedCMS: 452, SpeedCurveSamples: fixtureMovementCurve("jump_v1_authoritative_grounded_handoff"), VerticalCurveSamples: fixtureVerticalCurve("jump_v1_authoritative_grounded_handoff"), JumpZVelocity: 620, GravityScale: 1, ExpectedApexMS: 310, LandingDetectionPolicy: "server_grounded_handoff", GroundZPolicy: "server_position_is_actor_root", AllowsAirControl: true, AirControlModifier: 0.35, ReconciliationContractID: "leap_reconciliation", ReconciliationCategory: "leap_reconciliation", PhaseWindowPolicy: "server_authoritative", PredictionErrorPolicy: "bounded_smooth_correction"},
 	} {
 		contracts.ActionContracts[contract.AbilityKey] = contract
 	}
 	for _, skill := range []SkillRuntimeContract{
-		recoveredSkillContract("player_basic_attack_1", 55, 260, 180, 80),
-		recoveredSkillContract("player_basic_attack_2", 35, 260, 180, 80),
-		recoveredSkillContract("player_basic_attack_3", 200, 420, 300, 120),
-		recoveredSkillContract("player_shield_bash", 130, 360, 260, 100),
-		recoveredSkillContract("player_shield_rush", 470, 830, 430, 240),
-		recoveredCreatureSkillContract("bite", "wolf_bite_melee_commit_v1", "grounded_skill", "grounded_skill_action_reconciliation", "melee_contact", 0, 520, 220, 180, 120, 180, 900),
-		recoveredCreatureSkillContract("lunge", "low_fast_lunge_v1", "leap", "leap_reconciliation", "airborne_passthrough", 918, 980, 430, 260, 3600, 500, 4200),
-		recoveredCreatureSkillContract("wolf_dodge", "wolf_dodge_lateral_leap_v1", "dodge", "dodge_reconciliation", "iframe", 210, 520, 420, 100, 0, 100, 0),
-		recoveredCreatureSkillContract("maul", "wolf_maul_lateral_counter_v1", "grounded_skill", "grounded_skill_action_reconciliation", "lateral_counter_contact", 140, 800, 260, 360, 180, 360, 5200),
+		fixtureSkillContract("player_basic_attack_1", 55, 260, 180, 80),
+		fixtureSkillContract("player_basic_attack_2", 35, 260, 180, 80),
+		fixtureSkillContract("player_basic_attack_3", 200, 420, 300, 120),
+		fixtureSkillContract("player_shield_bash", 130, 360, 260, 100),
+		fixtureSkillContract("player_shield_rush", 470, 830, 430, 240),
+		fixtureCreatureSkillContract("bite", "wolf_bite_melee_commit_v1", "grounded_skill", "grounded_skill_action_reconciliation", "melee_contact", 0, 520, 220, 180, 120, 180, 900),
+		fixtureCreatureSkillContract("lunge", "low_fast_lunge_v1", "leap", "leap_reconciliation", "airborne_passthrough", 918, 980, 430, 260, 3600, 500, 4200),
+		fixtureCreatureSkillContract("wolf_dodge", "wolf_dodge_lateral_leap_v1", "dodge", "dodge_reconciliation", "iframe", 210, 520, 420, 100, 0, 100, 0),
+		fixtureCreatureSkillContract("maul", "wolf_maul_lateral_counter_v1", "grounded_skill", "grounded_skill_action_reconciliation", "lateral_counter_contact", 140, 800, 260, 360, 180, 360, 5200),
 	} {
 		contracts.SkillContracts[skill.SkillID] = skill
 		contracts.ActionContracts[skill.SkillID] = skill.MovementAction
@@ -1411,7 +1411,7 @@ func RecoveryFixtureRuntimeContracts() RuntimeContracts {
 	return contracts
 }
 
-func recoveredPlayerCombatCoreProfile() *dbv1.CombatCoreProfile {
+func fixturePlayerCombatCoreProfile() *dbv1.CombatCoreProfile {
 	return &dbv1.CombatCoreProfile{
 		DamageDealtMultiplier:   1,
 		DamageTakenMultiplier:   1,
@@ -1427,7 +1427,7 @@ func recoveredPlayerCombatCoreProfile() *dbv1.CombatCoreProfile {
 	}
 }
 
-func recoveredCreatureCombatCoreProfile() *dbv1.CombatCoreProfile {
+func fixtureCreatureCombatCoreProfile() *dbv1.CombatCoreProfile {
 	return &dbv1.CombatCoreProfile{
 		DamageDealtMultiplier:   0.95,
 		DamageTakenMultiplier:   1.05,
@@ -1443,11 +1443,11 @@ func recoveredCreatureCombatCoreProfile() *dbv1.CombatCoreProfile {
 	}
 }
 
-func recoveredPlayerGuardDefenseContract() *dbv1.CombatDefenseContract {
+func fixturePlayerGuardDefenseContract() *dbv1.CombatDefenseContract {
 	return &dbv1.CombatDefenseContract{
 		Id:                         playerGuardDefenseContractID,
 		Name:                       "Player Shield Guard",
-		Description:                "Recovered DB-equivalent frontal shield guard.",
+		Description:                "Dev fixture frontal shield guard.",
 		DefenseType:                "shield_block",
 		FrontalArcDeg:              120,
 		DefenderMarginLeftRatio:    0.30,
@@ -1457,15 +1457,15 @@ func recoveredPlayerGuardDefenseContract() *dbv1.CombatDefenseContract {
 		PostureDamageOnBlock:       true,
 		GuardDamageMultiplier:      1,
 		BlockStaminaDrainPerSecond: 2,
-		MetadataJson:               `{"source":"recovery_fixture","frontFacing":"control_rotation_yaw"}`,
+		MetadataJson:               `{"source":"dev_fixture","frontFacing":"control_rotation_yaw"}`,
 	}
 }
 
-func recoveredCreatureGuardDefenseContract() *dbv1.CombatDefenseContract {
+func fixtureCreatureGuardDefenseContract() *dbv1.CombatDefenseContract {
 	return &dbv1.CombatDefenseContract{
 		Id:                         creatureGuardDefenseContractID,
 		Name:                       "Wolf Attack Vs Guard",
-		Description:                "Recovered DB-equivalent creature incoming melee guard interaction.",
+		Description:                "Dev fixture creature incoming melee guard interaction.",
 		DefenseType:                "incoming_melee",
 		FrontalArcDeg:              120,
 		DefenderMarginLeftRatio:    0.30,
@@ -1474,16 +1474,16 @@ func recoveredCreatureGuardDefenseContract() *dbv1.CombatDefenseContract {
 		HealthDamageOnUnblockedHit: true,
 		PostureDamageOnBlock:       true,
 		GuardDamageMultiplier:      1,
-		MetadataJson:               `{"source":"recovery_fixture"}`,
+		MetadataJson:               `{"source":"dev_fixture"}`,
 	}
 }
 
-// recoveredPlayerSkillDamage returns the authoritative base/posture damage for a player
+// fixturePlayerSkillDamage returns the authoritative base/posture damage for a player
 // skill, taken verbatim from db-apeiron bootstrap/013_player_sword_shield_skill_seed.sql.
-// This materializes the canonical seed values in the recovered runtime until the DB skill
+// This materializes the canonical seed values in the fixture runtime for tests until the DB skill
 // proto exposes base_damage/posture_damage (damage-pipeline brick 2b), at which point
 // loadSkillRuntimeContract should source them from the DB instead.
-func recoveredPlayerSkillDamage(skillID string) (damage float64, posture float64) {
+func fixturePlayerSkillDamage(skillID string) (damage float64, posture float64) {
 	switch skillID {
 	case "player_basic_attack_1":
 		return 8, 10
@@ -1500,7 +1500,7 @@ func recoveredPlayerSkillDamage(skillID string) (damage float64, posture float64
 	}
 }
 
-func recoveredPlayerSkillMaxTargets(skillID string) int32 {
+func fixturePlayerSkillMaxTargets(skillID string) int32 {
 	switch skillID {
 	case "player_basic_attack_2":
 		return 2
@@ -1515,11 +1515,11 @@ func recoveredPlayerSkillMaxTargets(skillID string) int32 {
 	}
 }
 
-func recoveredPlayerSkillHitboxes(skillID string) []*dbv1.SkillHitboxProfile {
+func fixturePlayerSkillHitboxes(skillID string) []*dbv1.SkillHitboxProfile {
 	targetType := "enemy"
-	maxTargets := recoveredPlayerSkillMaxTargets(skillID)
+	maxTargets := fixturePlayerSkillMaxTargets(skillID)
 	profile := &dbv1.SkillHitboxProfile{
-		Id:                  skillID + "_recovered_temporal_hitbox",
+		Id:                  skillID + "_fixture_temporal_hitbox",
 		SkillId:             skillID,
 		HitboxShape:         "temporal_sweep",
 		TargetType:          &targetType,
@@ -1546,12 +1546,12 @@ func recoveredPlayerSkillHitboxes(skillID string) []*dbv1.SkillHitboxProfile {
 	default:
 		return nil
 	}
-	profile.MotionProfile = recoveredPlayerSkillHitboxMotionProfile(skillID)
-	profile.DamageGroupId = recoveredPlayerSkillHitboxDamageGroupID(skillID)
+	profile.MotionProfile = fixturePlayerSkillHitboxMotionProfile(skillID)
+	profile.DamageGroupId = fixturePlayerSkillHitboxDamageGroupID(skillID)
 	return []*dbv1.SkillHitboxProfile{profile}
 }
 
-func recoveredPlayerSkillHitboxDamageGroupID(skillID string) string {
+func fixturePlayerSkillHitboxDamageGroupID(skillID string) string {
 	switch skillID {
 	case "player_basic_attack_1":
 		return "player_basic_attack_1_damage"
@@ -1568,8 +1568,8 @@ func recoveredPlayerSkillHitboxDamageGroupID(skillID string) string {
 	}
 }
 
-func recoveredPlayerSkillHitboxMotionProfile(skillID string) *dbv1.SkillHitboxMotionProfile {
-	id, sweepShape, samples := recoveredPlayerSkillHitboxMotionSamples(skillID)
+func fixturePlayerSkillHitboxMotionProfile(skillID string) *dbv1.SkillHitboxMotionProfile {
+	id, sweepShape, samples := fixturePlayerSkillHitboxMotionSamples(skillID)
 	if id == "" || len(samples) == 0 {
 		return nil
 	}
@@ -1580,49 +1580,49 @@ func recoveredPlayerSkillHitboxMotionProfile(skillID string) *dbv1.SkillHitboxMo
 		TimeBasis:     "hitbox_window_normalized",
 		Interpolation: "linear",
 		SweepShape:    sweepShape,
-		DamageGroupId: recoveredPlayerSkillHitboxDamageGroupID(skillID),
+		DamageGroupId: fixturePlayerSkillHitboxDamageGroupID(skillID),
 		Samples:       samples,
 	}
 }
 
-func recoveredPlayerSkillHitboxMotionSamples(skillID string) (string, string, []*dbv1.SkillHitboxMotionSample) {
+func fixturePlayerSkillHitboxMotionSamples(skillID string) (string, string, []*dbv1.SkillHitboxMotionSample) {
 	switch skillID {
 	case "player_basic_attack_1":
 		return "motion_player_basic_attack_1_forward_v1", "capsule_strip", []*dbv1.SkillHitboxMotionSample{
-			recoveredHitboxMotionSample(0, 0.00, 35, 0, 90, 95, 0, 150, 48, 70, 0, 0),
-			recoveredHitboxMotionSample(1, 0.50, 85, 0, 90, 100, 0, 150, 50, 150, 0, 0),
-			recoveredHitboxMotionSample(2, 1.00, 130, 0, 90, 100, 0, 150, 50, 210, 0, 0),
+			fixtureHitboxMotionSample(0, 0.00, 35, 0, 90, 95, 0, 150, 48, 70, 0, 0),
+			fixtureHitboxMotionSample(1, 0.50, 85, 0, 90, 100, 0, 150, 50, 150, 0, 0),
+			fixtureHitboxMotionSample(2, 1.00, 130, 0, 90, 100, 0, 150, 50, 210, 0, 0),
 		}
 	case "player_basic_attack_2":
 		return "motion_player_basic_attack_2_right_to_left_v1", "arc_slice", []*dbv1.SkillHitboxMotionSample{
-			recoveredHitboxMotionSample(0, 0.00, 70, 35, 95, 0, 0, 150, 55, 155, -45, -15),
-			recoveredHitboxMotionSample(1, 0.50, 85, 0, 95, 0, 0, 150, 58, 165, -15, 15),
-			recoveredHitboxMotionSample(2, 1.00, 70, -35, 95, 0, 0, 150, 55, 155, 15, 45),
+			fixtureHitboxMotionSample(0, 0.00, 70, 35, 95, 0, 0, 150, 55, 155, -45, -15),
+			fixtureHitboxMotionSample(1, 0.50, 85, 0, 95, 0, 0, 150, 58, 165, -15, 15),
+			fixtureHitboxMotionSample(2, 1.00, 70, -35, 95, 0, 0, 150, 55, 155, 15, 45),
 		}
 	case "player_basic_attack_3":
 		return "motion_player_basic_attack_3_shield_drive_v1", "capsule_strip", []*dbv1.SkillHitboxMotionSample{
-			recoveredHitboxMotionSample(0, 0.00, 45, 0, 95, 120, 0, 155, 60, 90, 0, 0),
-			recoveredHitboxMotionSample(1, 0.55, 90, 0, 95, 120, 0, 155, 60, 175, 0, 0),
-			recoveredHitboxMotionSample(2, 1.00, 115, 0, 95, 120, 0, 155, 60, 210, 0, 0),
+			fixtureHitboxMotionSample(0, 0.00, 45, 0, 95, 120, 0, 155, 60, 90, 0, 0),
+			fixtureHitboxMotionSample(1, 0.55, 90, 0, 95, 120, 0, 155, 60, 175, 0, 0),
+			fixtureHitboxMotionSample(2, 1.00, 115, 0, 95, 120, 0, 155, 60, 210, 0, 0),
 		}
 	case "player_shield_bash":
 		return "motion_player_shield_bash_front_push_v1", "capsule_strip", []*dbv1.SkillHitboxMotionSample{
-			recoveredHitboxMotionSample(0, 0.00, 45, 0, 95, 190, 0, 160, 95, 95, 0, 0),
-			recoveredHitboxMotionSample(1, 0.50, 85, 0, 95, 190, 0, 160, 95, 160, 0, 0),
-			recoveredHitboxMotionSample(2, 1.00, 120, 0, 95, 190, 0, 160, 95, 210, 0, 0),
+			fixtureHitboxMotionSample(0, 0.00, 45, 0, 95, 190, 0, 160, 95, 95, 0, 0),
+			fixtureHitboxMotionSample(1, 0.50, 85, 0, 95, 190, 0, 160, 95, 160, 0, 0),
+			fixtureHitboxMotionSample(2, 1.00, 120, 0, 95, 190, 0, 160, 95, 210, 0, 0),
 		}
 	case "player_shield_rush":
 		return "motion_player_shield_rush_front_contact_v1", "capsule_strip", []*dbv1.SkillHitboxMotionSample{
-			recoveredHitboxMotionSample(0, 0.00, 45, 0, 100, 190, 0, 160, 96, 105, 0, 0),
-			recoveredHitboxMotionSample(1, 0.50, 105, 0, 100, 190, 0, 160, 96, 220, 0, 0),
-			recoveredHitboxMotionSample(2, 1.00, 145, 0, 100, 190, 0, 160, 96, 290, 0, 0),
+			fixtureHitboxMotionSample(0, 0.00, 45, 0, 100, 190, 0, 160, 96, 105, 0, 0),
+			fixtureHitboxMotionSample(1, 0.50, 105, 0, 100, 190, 0, 160, 96, 220, 0, 0),
+			fixtureHitboxMotionSample(2, 1.00, 145, 0, 100, 190, 0, 160, 96, 290, 0, 0),
 		}
 	default:
 		return "", "", nil
 	}
 }
 
-func recoveredHitboxMotionSample(index int32, t float64, offsetX, offsetY, offsetZ, sizeX, sizeY, sizeZ, radius, length, startAngleDeg, endAngleDeg float64) *dbv1.SkillHitboxMotionSample {
+func fixtureHitboxMotionSample(index int32, t float64, offsetX, offsetY, offsetZ, sizeX, sizeY, sizeZ, radius, length, startAngleDeg, endAngleDeg float64) *dbv1.SkillHitboxMotionSample {
 	return &dbv1.SkillHitboxMotionSample{
 		SampleIndex:   index,
 		T:             t,
@@ -1643,7 +1643,7 @@ func curvePoint(t, value float64) movement.MovementActionCurvePoint {
 	return movement.MovementActionCurvePoint{T: t, Value: value}
 }
 
-func recoveredMovementCurve(contractID string) []movement.MovementActionCurvePoint {
+func fixtureMovementCurve(contractID string) []movement.MovementActionCurvePoint {
 	switch contractID {
 	case "dodge_v1_full_iframe":
 		return []movement.MovementActionCurvePoint{curvePoint(0, 0.35), curvePoint(0.35, 1), curvePoint(1, 0.2)}
@@ -1670,7 +1670,7 @@ func recoveredMovementCurve(contractID string) []movement.MovementActionCurvePoi
 	}
 }
 
-func recoveredVerticalCurve(contractID string) []movement.MovementActionCurvePoint {
+func fixtureVerticalCurve(contractID string) []movement.MovementActionCurvePoint {
 	switch contractID {
 	case "dodge_v1_full_iframe":
 		return []movement.MovementActionCurvePoint{curvePoint(0, 0), curvePoint(0.4, 18), curvePoint(1, 0)}
@@ -1685,8 +1685,8 @@ func recoveredVerticalCurve(contractID string) []movement.MovementActionCurvePoi
 	}
 }
 
-func recoveredSkillContract(skillID string, distance float64, durationMS, activeMS, recoveryMS int32) SkillRuntimeContract {
-	contactPolicy := recoveredPlayerSkillContactPolicy(skillID)
+func fixtureSkillContract(skillID string, distance float64, durationMS, activeMS, recoveryMS int32) SkillRuntimeContract {
+	contactPolicy := fixturePlayerSkillContactPolicy(skillID)
 	action := MovementActionRuntimeContract{
 		ID:                       skillID + "_contract",
 		AbilityKey:               skillID,
@@ -1695,7 +1695,7 @@ func recoveredSkillContract(skillID string, distance float64, durationMS, active
 		ActiveMS:                 activeMS,
 		RecoveryMS:               recoveryMS,
 		DistanceCM:               distance,
-		SpeedCurveSamples:        recoveredMovementCurve(skillID),
+		SpeedCurveSamples:        fixtureMovementCurve(skillID),
 		ReconciliationContractID: "grounded_skill_action_reconciliation",
 		// Published reconciliation_mode MUST be a string the Unreal client recognizes
 		// (ApeironReconciliationModeFromServerString). The category is the wire mode
@@ -1707,19 +1707,19 @@ func recoveredSkillContract(skillID string, distance float64, durationMS, active
 		RootMotionOwner:        "skill",
 		ContactPolicy:          contactPolicy,
 	}
-	damage, posture := recoveredPlayerSkillDamage(skillID)
-	impact := recoveredSkillImpactProfile(skillID, posture)
+	damage, posture := fixturePlayerSkillDamage(skillID)
+	impact := fixtureSkillImpactProfile(skillID, posture)
 	return SkillRuntimeContract{
 		SkillID:                  skillID,
 		MovementActionContractID: action.ID,
 		MovementAction:           action,
 		Damage:                   damage,
 		PostureDamage:            posture,
-		MaxTargets:               recoveredPlayerSkillMaxTargets(skillID),
+		MaxTargets:               fixturePlayerSkillMaxTargets(skillID),
 		Blockable:                true,
 		Impact:                   impact,
 		ControlEffects:           enabledSkillControlEffects(impact.GetControlEffects()),
-		Hitboxes:                 recoveredPlayerSkillHitboxes(skillID),
+		Hitboxes:                 fixturePlayerSkillHitboxes(skillID),
 		ActiveMS:                 activeMS,
 		RecoveryMS:               recoveryMS,
 		MovementLockPolicy:       "skill_root_motion_owner",
@@ -1734,7 +1734,7 @@ func recoveredSkillContract(skillID string, distance float64, durationMS, active
 	}
 }
 
-func recoveredPlayerSkillContactPolicy(skillID string) string {
+func fixturePlayerSkillContactPolicy(skillID string) string {
 	switch skillID {
 	case "player_basic_attack_3":
 		return "carry_contact_forward_release"
@@ -1747,7 +1747,7 @@ func recoveredPlayerSkillContactPolicy(skillID string) string {
 	}
 }
 
-func recoveredSkillImpactProfile(skillID string, posture float64) *dbv1.SkillImpactProfile {
+func fixtureSkillImpactProfile(skillID string, posture float64) *dbv1.SkillImpactProfile {
 	impactType := "physical"
 	if strings.Contains(skillID, "shield") || skillID == "player_basic_attack_3" {
 		impactType = "blunt"
@@ -1758,13 +1758,13 @@ func recoveredSkillImpactProfile(skillID string, posture float64) *dbv1.SkillImp
 		PoiseDamage:           posture,
 		GuardDamageMultiplier: 1,
 	}
-	if control := recoveredSkillControlEffect(skillID); control != nil {
+	if control := fixtureSkillControlEffect(skillID); control != nil {
 		profile.ControlEffects = []*dbv1.SkillControlEffect{control}
 	}
 	return profile
 }
 
-func recoveredSkillControlEffect(skillID string) *dbv1.SkillControlEffect {
+func fixtureSkillControlEffect(skillID string) *dbv1.SkillControlEffect {
 	switch skillID {
 	case "player_basic_attack_3":
 		return &dbv1.SkillControlEffect{
@@ -1775,7 +1775,7 @@ func recoveredSkillControlEffect(skillID string) *dbv1.SkillControlEffect {
 			ControlType:     "push",
 			ReleasePolicyId: "carry_contact_forward_release",
 			DistanceCm:      200,
-			SpeedCmS:        recoveredControlSpeedCMS(200, 180),
+			SpeedCmS:        fixtureControlSpeedCMS(200, 180),
 			DirectionPolicy: "source_forward",
 		}
 	case "player_shield_bash":
@@ -1787,7 +1787,7 @@ func recoveredSkillControlEffect(skillID string) *dbv1.SkillControlEffect {
 			ControlType:     "push",
 			ReleasePolicyId: "multi_target_push_forward_release",
 			DistanceCm:      130,
-			SpeedCmS:        recoveredControlSpeedCMS(130, 220),
+			SpeedCmS:        fixtureControlSpeedCMS(130, 220),
 			DirectionPolicy: "source_forward",
 		}
 	case "player_shield_rush":
@@ -1799,7 +1799,7 @@ func recoveredSkillControlEffect(skillID string) *dbv1.SkillControlEffect {
 			ControlType:     "carry_push",
 			ReleasePolicyId: "multi_target_carry_push_forward_release",
 			DistanceCm:      470,
-			SpeedCmS:        recoveredControlSpeedCMS(470, 430),
+			SpeedCmS:        fixtureControlSpeedCMS(470, 430),
 			DirectionPolicy: "source_forward",
 		}
 	default:
@@ -1807,14 +1807,14 @@ func recoveredSkillControlEffect(skillID string) *dbv1.SkillControlEffect {
 	}
 }
 
-func recoveredControlSpeedCMS(distanceCM float64, durationMS int32) float64 {
+func fixtureControlSpeedCMS(distanceCM float64, durationMS int32) float64 {
 	if distanceCM <= 0 || durationMS <= 0 {
 		return 0
 	}
 	return distanceCM / (float64(durationMS) / 1000.0)
 }
 
-func recoveredCreatureSkillStaminaCost(skillID string) float64 {
+func fixtureCreatureSkillStaminaCost(skillID string) float64 {
 	switch skillID {
 	case "wolf_dodge":
 		return 6
@@ -1829,7 +1829,7 @@ func recoveredCreatureSkillStaminaCost(skillID string) float64 {
 	}
 }
 
-func recoveredCreatureSkillDamage(skillID string) (damage float64, posture float64) {
+func fixtureCreatureSkillDamage(skillID string) (damage float64, posture float64) {
 	switch skillID {
 	case "bite":
 		return 9, 17.6
@@ -1842,7 +1842,7 @@ func recoveredCreatureSkillDamage(skillID string) (damage float64, posture float
 	}
 }
 
-func recoveredCreatureSkillMaxTargets(skillID string) int32 {
+func fixtureCreatureSkillMaxTargets(skillID string) int32 {
 	switch skillID {
 	case "maul":
 		return 2
@@ -1851,16 +1851,16 @@ func recoveredCreatureSkillMaxTargets(skillID string) int32 {
 	}
 }
 
-func recoveredCreatureSkillHitboxes(skillID string) []*dbv1.SkillHitboxProfile {
-	damageGroupID := recoveredCreatureSkillHitboxDamageGroupID(skillID)
-	motionProfile := recoveredCreatureSkillHitboxMotionProfile(skillID)
+func fixtureCreatureSkillHitboxes(skillID string) []*dbv1.SkillHitboxProfile {
+	damageGroupID := fixtureCreatureSkillHitboxDamageGroupID(skillID)
+	motionProfile := fixtureCreatureSkillHitboxMotionProfile(skillID)
 	if damageGroupID == "" || motionProfile == nil {
 		return nil
 	}
 	targetType := "enemy"
-	maxTargets := recoveredCreatureSkillMaxTargets(skillID)
+	maxTargets := fixtureCreatureSkillMaxTargets(skillID)
 	profile := &dbv1.SkillHitboxProfile{
-		Id:                  recoveredCreatureSkillHitboxID(skillID),
+		Id:                  fixtureCreatureSkillHitboxID(skillID),
 		SkillId:             skillID,
 		HitboxShape:         "temporal_sweep",
 		TargetType:          &targetType,
@@ -1892,7 +1892,7 @@ func recoveredCreatureSkillHitboxes(skillID string) []*dbv1.SkillHitboxProfile {
 	return []*dbv1.SkillHitboxProfile{profile}
 }
 
-func recoveredCreatureSkillHitboxID(skillID string) string {
+func fixtureCreatureSkillHitboxID(skillID string) string {
 	switch skillID {
 	case "bite":
 		return "hitbox_bite_0"
@@ -1905,7 +1905,7 @@ func recoveredCreatureSkillHitboxID(skillID string) string {
 	}
 }
 
-func recoveredCreatureSkillHitboxDamageGroupID(skillID string) string {
+func fixtureCreatureSkillHitboxDamageGroupID(skillID string) string {
 	switch skillID {
 	case "bite":
 		return "wolf_bite_damage"
@@ -1918,8 +1918,8 @@ func recoveredCreatureSkillHitboxDamageGroupID(skillID string) string {
 	}
 }
 
-func recoveredCreatureSkillHitboxMotionProfile(skillID string) *dbv1.SkillHitboxMotionProfile {
-	id, sweepShape, samples := recoveredCreatureSkillHitboxMotionSamples(skillID)
+func fixtureCreatureSkillHitboxMotionProfile(skillID string) *dbv1.SkillHitboxMotionProfile {
+	id, sweepShape, samples := fixtureCreatureSkillHitboxMotionSamples(skillID)
 	if id == "" || len(samples) == 0 {
 		return nil
 	}
@@ -1930,37 +1930,37 @@ func recoveredCreatureSkillHitboxMotionProfile(skillID string) *dbv1.SkillHitbox
 		TimeBasis:     "hitbox_window_normalized",
 		Interpolation: "linear",
 		SweepShape:    sweepShape,
-		DamageGroupId: recoveredCreatureSkillHitboxDamageGroupID(skillID),
+		DamageGroupId: fixtureCreatureSkillHitboxDamageGroupID(skillID),
 		Samples:       samples,
 	}
 }
 
-func recoveredCreatureSkillHitboxMotionSamples(skillID string) (string, string, []*dbv1.SkillHitboxMotionSample) {
+func fixtureCreatureSkillHitboxMotionSamples(skillID string) (string, string, []*dbv1.SkillHitboxMotionSample) {
 	switch skillID {
 	case "bite":
 		return "motion_wolf_bite_melee_v1", "capsule_strip", []*dbv1.SkillHitboxMotionSample{
-			recoveredHitboxMotionSample(0, 0.00, 45, 0, 85, 90, 0, 115, 45, 70, 0, 0),
-			recoveredHitboxMotionSample(1, 0.55, 80, 0, 90, 95, 0, 115, 48, 125, 0, 0),
-			recoveredHitboxMotionSample(2, 1.00, 95, 0, 85, 90, 0, 115, 45, 145, 0, 0),
+			fixtureHitboxMotionSample(0, 0.00, 45, 0, 85, 90, 0, 115, 45, 70, 0, 0),
+			fixtureHitboxMotionSample(1, 0.55, 80, 0, 90, 95, 0, 115, 48, 125, 0, 0),
+			fixtureHitboxMotionSample(2, 1.00, 95, 0, 85, 90, 0, 115, 45, 145, 0, 0),
 		}
 	case "lunge":
 		return "motion_wolf_lunge_cross_v1", "capsule_strip", []*dbv1.SkillHitboxMotionSample{
-			recoveredHitboxMotionSample(0, 0.00, 60, 0, 90, 100, 0, 120, 50, 100, 0, 0),
-			recoveredHitboxMotionSample(1, 0.55, 140, 0, 110, 100, 0, 120, 50, 230, 0, 0),
-			recoveredHitboxMotionSample(2, 1.00, 210, 0, 90, 100, 0, 120, 50, 320, 0, 0),
+			fixtureHitboxMotionSample(0, 0.00, 60, 0, 90, 100, 0, 120, 50, 100, 0, 0),
+			fixtureHitboxMotionSample(1, 0.55, 140, 0, 110, 100, 0, 120, 50, 230, 0, 0),
+			fixtureHitboxMotionSample(2, 1.00, 210, 0, 90, 100, 0, 120, 50, 320, 0, 0),
 		}
 	case "maul":
 		return "motion_wolf_maul_lateral_counter_v1", "arc_slice", []*dbv1.SkillHitboxMotionSample{
-			recoveredHitboxMotionSample(0, 0.00, 65, 40, 95, 0, 0, 125, 58, 120, -70, -25),
-			recoveredHitboxMotionSample(1, 0.45, 90, 0, 100, 0, 0, 130, 62, 170, -25, 25),
-			recoveredHitboxMotionSample(2, 1.00, 65, -40, 95, 0, 0, 125, 58, 120, 25, 70),
+			fixtureHitboxMotionSample(0, 0.00, 65, 40, 95, 0, 0, 125, 58, 120, -70, -25),
+			fixtureHitboxMotionSample(1, 0.45, 90, 0, 100, 0, 0, 130, 62, 170, -25, 25),
+			fixtureHitboxMotionSample(2, 1.00, 65, -40, 95, 0, 0, 125, 58, 120, 25, 70),
 		}
 	default:
 		return "", "", nil
 	}
 }
 
-func recoveredCreatureSkillContract(skillID string, contractID string, actionType string, reconciliation string, contactPolicy string, distance float64, durationMS, activeMS, recoveryMS, windupMS, skillRecoveryMS, cooldownMS int32) SkillRuntimeContract {
+func fixtureCreatureSkillContract(skillID string, contractID string, actionType string, reconciliation string, contactPolicy string, distance float64, durationMS, activeMS, recoveryMS, windupMS, skillRecoveryMS, cooldownMS int32) SkillRuntimeContract {
 	action := MovementActionRuntimeContract{
 		ID:                       contractID,
 		AbilityKey:               skillID,
@@ -1970,8 +1970,8 @@ func recoveredCreatureSkillContract(skillID string, contractID string, actionTyp
 		ActiveMS:                 activeMS,
 		RecoveryMS:               recoveryMS,
 		DistanceCM:               distance,
-		SpeedCurveSamples:        recoveredMovementCurve(skillID),
-		VerticalCurveSamples:     recoveredVerticalCurve(skillID),
+		SpeedCurveSamples:        fixtureMovementCurve(skillID),
+		VerticalCurveSamples:     fixtureVerticalCurve(skillID),
 		GravityScale:             1,
 		ReconciliationContractID: reconciliation,
 		ReconciliationCategory:   reconciliation,
@@ -1986,8 +1986,8 @@ func recoveredCreatureSkillContract(skillID string, contractID string, actionTyp
 		action.LandingDetectionPolicy = "server_grounded_handoff"
 		action.GroundZPolicy = "server_position_is_actor_root"
 	}
-	damage, posture := recoveredCreatureSkillDamage(skillID)
-	impact := recoveredSkillImpactProfile(skillID, posture)
+	damage, posture := fixtureCreatureSkillDamage(skillID)
+	impact := fixtureSkillImpactProfile(skillID, posture)
 	return SkillRuntimeContract{
 		SkillID:                  skillID,
 		MovementActionContractID: action.ID,
@@ -2004,18 +2004,18 @@ func recoveredCreatureSkillContract(skillID string, contractID string, actionTyp
 		NormalInputPolicy:        "blocked_during_owned_root",
 		Damage:                   damage,
 		PostureDamage:            posture,
-		StaminaCost:              recoveredCreatureSkillStaminaCost(skillID),
+		StaminaCost:              fixtureCreatureSkillStaminaCost(skillID),
 		TargetPolicy:             "target_direction",
 		ContactPolicy:            contactPolicy,
-		MaxTargets:               recoveredCreatureSkillMaxTargets(skillID),
+		MaxTargets:               fixtureCreatureSkillMaxTargets(skillID),
 		Blockable:                true,
 		Impact:                   impact,
-		Hitboxes:                 recoveredCreatureSkillHitboxes(skillID),
+		Hitboxes:                 fixtureCreatureSkillHitboxes(skillID),
 		Enabled:                  true,
 	}
 }
 
-func recoveredCombatModeSlots() []*gamev1.CombatModeSlot {
+func fixtureCombatModeSlots() []*gamev1.CombatModeSlot {
 	return []*gamev1.CombatModeSlot{
 		{CombatModeId: swordShieldVanguardModeID, SlotIndex: 0, Enabled: false},
 		{CombatModeId: swordShieldVanguardModeID, SlotIndex: 1, Enabled: false},
@@ -2237,9 +2237,9 @@ func movementCurvePointsFromDB(samples []*dbv1.MovementCurveSample) []movement.M
 	return out
 }
 
-func recoveredMovementProfile() *gamev1.MovementReconciliationProfile {
+func fixtureMovementProfile() *gamev1.MovementReconciliationProfile {
 	return &gamev1.MovementReconciliationProfile{
-		ProfileId:                         "recovered_default_movement_profile",
+		ProfileId:                         "fixture_default_movement_profile",
 		MaxSpeed:                          470,
 		SprintSpeedMultiplier:             1.45,
 		Acceleration:                      2048,

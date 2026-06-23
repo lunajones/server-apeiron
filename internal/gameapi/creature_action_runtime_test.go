@@ -14,7 +14,7 @@ import (
 )
 
 func TestWolfSkillStartsCreatureActionInstanceAndRuntimePhase(t *testing.T) {
-	runtime := NewRuntimeWithContracts(RecoveryFixtureRuntimeContracts())
+	runtime := NewRuntimeWithContracts(DevFixtureRuntimeContracts())
 	player := runtime.ensurePlayerLocked("local_player")
 	wolf := runtime.ensureWolfLocked(player)
 
@@ -59,7 +59,7 @@ func TestWolfSkillStartsCreatureActionInstanceAndRuntimePhase(t *testing.T) {
 }
 
 func TestWolfActionRuntimeDoesNotRestartActiveSkillLifecycle(t *testing.T) {
-	runtime := NewRuntimeWithContracts(RecoveryFixtureRuntimeContracts())
+	runtime := NewRuntimeWithContracts(DevFixtureRuntimeContracts())
 	player := runtime.ensurePlayerLocked("local_player")
 	wolf := runtime.ensureWolfLocked(player)
 
@@ -98,7 +98,7 @@ func TestWolfActionRuntimeDoesNotRestartActiveSkillLifecycle(t *testing.T) {
 }
 
 func TestWolfLungeWindupUsesSetupMovementBeforeSkillRootMotion(t *testing.T) {
-	runtime := NewRuntimeWithContracts(RecoveryFixtureRuntimeContracts())
+	runtime := NewRuntimeWithContracts(DevFixtureRuntimeContracts())
 	player := runtime.ensurePlayerLocked("local_player")
 	wolf := runtime.ensureWolfLocked(player)
 
@@ -143,7 +143,7 @@ func TestWolfLungeWindupUsesSetupMovementBeforeSkillRootMotion(t *testing.T) {
 }
 
 func TestWolfLungeActivePhaseUsesSkillRootMotionOwner(t *testing.T) {
-	runtime := NewRuntimeWithContracts(RecoveryFixtureRuntimeContracts())
+	runtime := NewRuntimeWithContracts(DevFixtureRuntimeContracts())
 	player := runtime.ensurePlayerLocked("local_player")
 	wolf := runtime.ensureWolfLocked(player)
 
@@ -192,7 +192,7 @@ func TestWolfLungeActivePhaseUsesSkillRootMotionOwner(t *testing.T) {
 }
 
 func TestWolfLungeMovementEnvelopeKeepsLandingInertiaAfterAirbornePhase(t *testing.T) {
-	runtime := NewRuntimeWithContracts(RecoveryFixtureRuntimeContracts())
+	runtime := NewRuntimeWithContracts(DevFixtureRuntimeContracts())
 	player := runtime.ensurePlayerLocked("local_player")
 	wolf := runtime.ensureWolfLocked(player)
 	contract := runtime.contracts.skillContract("lunge")
@@ -221,7 +221,7 @@ func TestWolfLungeMovementEnvelopeKeepsLandingInertiaAfterAirbornePhase(t *testi
 }
 
 func TestWolfLungePassthroughDoesNotStopRootMotionAtPlayerBody(t *testing.T) {
-	runtime := NewRuntimeWithContracts(RecoveryFixtureRuntimeContracts())
+	runtime := NewRuntimeWithContracts(DevFixtureRuntimeContracts())
 	player := runtime.ensurePlayerLocked("local_player")
 	wolf := runtime.ensureWolfLocked(player)
 	contract := runtime.contracts.skillContract("lunge")
@@ -249,7 +249,7 @@ func TestWolfLungePassthroughDoesNotStopRootMotionAtPlayerBody(t *testing.T) {
 }
 
 func TestWolfMaulContactStopsBeforeOverlappingTargetUsingContractGeometry(t *testing.T) {
-	runtime := NewRuntimeWithContracts(RecoveryFixtureRuntimeContracts())
+	runtime := NewRuntimeWithContracts(DevFixtureRuntimeContracts())
 	player := runtime.ensurePlayerLocked("local_player")
 	wolf := runtime.ensureWolfLocked(player)
 	contract := runtime.contracts.skillContract("maul")
@@ -286,7 +286,7 @@ func TestWolfMaulContactStopsBeforeOverlappingTargetUsingContractGeometry(t *tes
 }
 
 func TestWolfMaulLateralCounterRootMotionUsesPolicyDirection(t *testing.T) {
-	runtime := NewRuntimeWithContracts(RecoveryFixtureRuntimeContracts())
+	runtime := NewRuntimeWithContracts(DevFixtureRuntimeContracts())
 	player := runtime.ensurePlayerLocked("local_player")
 	wolf := runtime.ensureWolfLocked(player)
 	contract := runtime.contracts.skillContract("maul")
@@ -313,7 +313,7 @@ func TestWolfMaulLateralCounterRootMotionUsesPolicyDirection(t *testing.T) {
 }
 
 func TestCreatureContactStopDistanceComesFromHitboxGeometryOnly(t *testing.T) {
-	contracts := RecoveryFixtureRuntimeContracts()
+	contracts := DevFixtureRuntimeContracts()
 	maul := contracts.skillContract("maul")
 	if got := creatureSkillContactStopDistanceCM(maul); got <= 0 {
 		t.Fatalf("maul stop distance = %.2f, want contract-derived geometry", got)
@@ -326,7 +326,7 @@ func TestCreatureContactStopDistanceComesFromHitboxGeometryOnly(t *testing.T) {
 }
 
 func TestWolfLungeMovementPresentationIsContractDerived(t *testing.T) {
-	runtime := NewRuntimeWithContracts(RecoveryFixtureRuntimeContracts())
+	runtime := NewRuntimeWithContracts(DevFixtureRuntimeContracts())
 	contract := runtime.contracts.skillContract("lunge")
 	presentation := creatureSkillMovementPresentationFromContract(contract)
 	wantStart := durationMillis(creatureSkillMovementStartOffset(creatureActionTimingFromSkillContract(contract), contract))
@@ -353,7 +353,7 @@ func TestWolfLungeMovementPresentationIsContractDerived(t *testing.T) {
 }
 
 func TestWolfPublishedAIStateUsesContractMovementPresentationDuringRootMotion(t *testing.T) {
-	runtime := NewRuntimeWithContracts(RecoveryFixtureRuntimeContracts())
+	runtime := NewRuntimeWithContracts(DevFixtureRuntimeContracts())
 	player := runtime.ensurePlayerLocked("local_player")
 	wolf := runtime.ensureWolfLocked(player)
 
@@ -392,7 +392,7 @@ func TestWolfPublishedAIStateUsesContractMovementPresentationDuringRootMotion(t 
 }
 
 func TestCreatureActionTimingExtendsUntilSkillRootMotionCompletes(t *testing.T) {
-	runtime := NewRuntimeWithContracts(RecoveryFixtureRuntimeContracts())
+	runtime := NewRuntimeWithContracts(DevFixtureRuntimeContracts())
 	player := runtime.ensurePlayerLocked("local_player")
 	wolf := runtime.ensureWolfLocked(player)
 	contract := runtime.contracts.skillContract("maul")
@@ -413,7 +413,7 @@ func TestCreatureActionTimingExtendsUntilSkillRootMotionCompletes(t *testing.T) 
 }
 
 func TestWolfCompletedActionRuntimeClearsBeforeNextBrainDecision(t *testing.T) {
-	runtime := NewRuntimeWithContracts(RecoveryFixtureRuntimeContracts())
+	runtime := NewRuntimeWithContracts(DevFixtureRuntimeContracts())
 	player := runtime.ensurePlayerLocked("local_player")
 	wolf := runtime.ensureWolfLocked(player)
 
@@ -443,7 +443,7 @@ func TestWolfCompletedActionRuntimeClearsBeforeNextBrainDecision(t *testing.T) {
 }
 
 func TestCreatureActionCompletionDoesNotCancelPendingImpactSchedule(t *testing.T) {
-	runtime := NewRuntimeWithContracts(RecoveryFixtureRuntimeContracts())
+	runtime := NewRuntimeWithContracts(DevFixtureRuntimeContracts())
 	player := runtime.ensurePlayerLocked("local_player")
 	wolf := runtime.ensureWolfLocked(player)
 	wolf.position = vector{x: player.position.x - 160, y: player.position.y, z: player.position.z}
@@ -478,7 +478,7 @@ func TestCreatureActionCompletionDoesNotCancelPendingImpactSchedule(t *testing.T
 }
 
 func TestCreatureActionClearDuringActiveCancelsPendingImpactSchedule(t *testing.T) {
-	runtime := NewRuntimeWithContracts(RecoveryFixtureRuntimeContracts())
+	runtime := NewRuntimeWithContracts(DevFixtureRuntimeContracts())
 	player := runtime.ensurePlayerLocked("local_player")
 	wolf := runtime.ensureWolfLocked(player)
 	wolf.position = vector{x: player.position.x - 160, y: player.position.y, z: player.position.z}
@@ -545,7 +545,7 @@ func TestGroundedCreatureDecisionMotionPreservesGroundPlane(t *testing.T) {
 }
 
 func TestWolfSnapshotGroundedOrbitStaysOnPlayerGroundPlane(t *testing.T) {
-	runtime := NewRuntimeWithContracts(RecoveryFixtureRuntimeContracts())
+	runtime := NewRuntimeWithContracts(DevFixtureRuntimeContracts())
 	sessionID := "wolf-ground-plane-snapshot"
 	attachRuntimePlayer(t, runtime, sessionID)
 	player := runtime.ensurePlayerLocked("local_player")

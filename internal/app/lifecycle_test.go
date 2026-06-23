@@ -9,7 +9,7 @@ import (
 	"server-apeiron/internal/config"
 )
 
-func TestLoadGameRuntimeContractsRejectsImplicitRecoveredFallback(t *testing.T) {
+func TestLoadGameRuntimeContractsRejectsImplicitDevFixture(t *testing.T) {
 	cfg := &config.Config{
 		DBApeiron: config.DBApeironConfig{RequestTimeout: time.Second},
 	}

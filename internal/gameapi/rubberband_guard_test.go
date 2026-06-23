@@ -21,7 +21,7 @@ type runtimeGuardHarness struct {
 
 func newRuntimeGuardHarness(t *testing.T, sessionID string) *runtimeGuardHarness {
 	t.Helper()
-	runtime := NewRuntimeWithOptions(RecoveryFixtureRuntimeContracts(), RuntimeOptions{MovementValidation: true})
+	runtime := NewRuntimeWithOptions(DevFixtureRuntimeContracts(), RuntimeOptions{MovementValidation: true})
 	if _, err := runtime.OpenSession(context.Background(), &gamev1.OpenSessionRequest{
 		Context: &gamev1.RequestContext{SessionId: sessionID},
 	}); err != nil {

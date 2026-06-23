@@ -14,10 +14,10 @@ import (
 	"google.golang.org/grpc"
 )
 
-func TestRecoveryFixtureRuntimeContractsExposeRequiredSkillContracts(t *testing.T) {
-	contracts := RecoveryFixtureRuntimeContracts()
+func TestDevFixtureRuntimeContractsExposeRequiredSkillContracts(t *testing.T) {
+	contracts := DevFixtureRuntimeContracts()
 	if err := contracts.ValidateRequiredCoverage(false); err != nil {
-		t.Fatalf("recovered contract coverage failed: %v", err)
+		t.Fatalf("fixture contract coverage failed: %v", err)
 	}
 	for _, skillID := range requiredRuntimeSkillIDs() {
 		skill := contracts.skillContract(skillID)
@@ -39,7 +39,7 @@ func TestRecoveryFixtureRuntimeContractsExposeRequiredSkillContracts(t *testing.
 func TestCurrentPlayerAndCreatureDamagingSkillsUseTemporalHitboxes(t *testing.T) {
 	t.Parallel()
 
-	contracts := RecoveryFixtureRuntimeContracts()
+	contracts := DevFixtureRuntimeContracts()
 	cases := []struct {
 		skillID       string
 		motionID      string
@@ -171,7 +171,7 @@ func TestRuntimeRequirementStatusValuesExposeRequiredContractReadiness(t *testin
 }
 
 func TestStrictRuntimeCoverageRejectsDamagingSkillWithoutTemporalHitbox(t *testing.T) {
-	contracts := RecoveryFixtureRuntimeContracts()
+	contracts := DevFixtureRuntimeContracts()
 	skill := contracts.SkillContracts["player_shield_rush"]
 	skill.Hitboxes = nil
 	contracts.SkillContracts["player_shield_rush"] = skill
@@ -186,7 +186,7 @@ func TestStrictRuntimeCoverageRejectsDamagingSkillWithoutTemporalHitbox(t *testi
 }
 
 func TestStrictRuntimeCoverageRejectsSkillWithoutMovementPhasePolicies(t *testing.T) {
-	contracts := RecoveryFixtureRuntimeContracts()
+	contracts := DevFixtureRuntimeContracts()
 	skill := contracts.SkillContracts["lunge"]
 	skill.StartsAtPhase = ""
 	skill.HandoffPolicy = ""
@@ -209,7 +209,7 @@ func TestStrictRuntimeCoverageRejectsSkillWithoutMovementPhasePolicies(t *testin
 }
 
 func TestStrictRuntimeCoverageRejectsPushContactSkillWithoutControlEffect(t *testing.T) {
-	contracts := RecoveryFixtureRuntimeContracts()
+	contracts := DevFixtureRuntimeContracts()
 	skill := contracts.SkillContracts["player_shield_rush"]
 	skill.ControlEffects = nil
 	if skill.Impact != nil {
@@ -229,7 +229,7 @@ func TestStrictRuntimeCoverageRejectsPushContactSkillWithoutControlEffect(t *tes
 }
 
 func TestStrictRuntimeCoverageRejectsIncompleteControlEffectMotion(t *testing.T) {
-	contracts := RecoveryFixtureRuntimeContracts()
+	contracts := DevFixtureRuntimeContracts()
 	skill := contracts.SkillContracts["player_shield_rush"]
 	if len(skill.ControlEffects) == 0 {
 		t.Fatal("fixture Shield Rush should have a control effect")
@@ -269,7 +269,7 @@ func TestStrictRuntimeCoverageRejectsIncompleteControlEffectMotion(t *testing.T)
 }
 
 func TestStrictRuntimeCoverageRejectsTemporalMotionSampleWithoutGeometry(t *testing.T) {
-	contracts := RecoveryFixtureRuntimeContracts()
+	contracts := DevFixtureRuntimeContracts()
 	skill := contracts.SkillContracts["player_basic_attack_1"]
 	if len(skill.Hitboxes) == 0 || skill.Hitboxes[0].GetMotionProfile() == nil {
 		t.Fatal("fixture basic attack should have temporal hitbox samples")
@@ -303,7 +303,7 @@ func TestStrictRuntimeCoverageRejectsTemporalMotionSampleWithoutGeometry(t *test
 }
 
 func TestStrictRuntimeCoverageRejectsIncompleteMovementActionContract(t *testing.T) {
-	contracts := RecoveryFixtureRuntimeContracts()
+	contracts := DevFixtureRuntimeContracts()
 	action := contracts.ActionContracts["player_shield_rush"]
 	action.PhaseWindowPolicy = ""
 	action.PredictionErrorPolicy = ""
@@ -331,7 +331,7 @@ func TestStrictRuntimeCoverageRejectsIncompleteMovementActionContract(t *testing
 }
 
 func TestStrictRuntimeCoverageRejectsSkillBindingActionMismatch(t *testing.T) {
-	contracts := RecoveryFixtureRuntimeContracts()
+	contracts := DevFixtureRuntimeContracts()
 	skill := contracts.SkillContracts["player_shield_rush"]
 	skill.MovementAction.ID = "some_other_contract"
 	contracts.SkillContracts["player_shield_rush"] = skill
@@ -346,7 +346,7 @@ func TestStrictRuntimeCoverageRejectsSkillBindingActionMismatch(t *testing.T) {
 }
 
 func TestStrictRuntimeCoverageRejectsSkillActionManifestMismatch(t *testing.T) {
-	contracts := RecoveryFixtureRuntimeContracts()
+	contracts := DevFixtureRuntimeContracts()
 	action := contracts.ActionContracts["player_shield_rush"]
 	action.ID = "some_other_contract"
 	contracts.ActionContracts["player_shield_rush"] = action
@@ -361,7 +361,7 @@ func TestStrictRuntimeCoverageRejectsSkillActionManifestMismatch(t *testing.T) {
 }
 
 func TestStrictRuntimeCoverageRejectsCombatModeSlotWithoutRuntimeSkill(t *testing.T) {
-	contracts := RecoveryFixtureRuntimeContracts()
+	contracts := DevFixtureRuntimeContracts()
 	delete(contracts.SkillContracts, "player_shield_rush")
 
 	err := contracts.ValidateRequiredCoverage(true)
@@ -374,7 +374,7 @@ func TestStrictRuntimeCoverageRejectsCombatModeSlotWithoutRuntimeSkill(t *testin
 }
 
 func TestStrictRuntimeCoverageAllowsNonDamagingMovementSkillWithoutHitbox(t *testing.T) {
-	contracts := RecoveryFixtureRuntimeContracts()
+	contracts := DevFixtureRuntimeContracts()
 	skill := contracts.SkillContracts["wolf_dodge"]
 	if skill.Damage != 0 || skill.PostureDamage != 0 {
 		t.Fatalf("wolf_dodge fixture unexpectedly damages: %#v", skill)
@@ -387,8 +387,8 @@ func TestStrictRuntimeCoverageAllowsNonDamagingMovementSkillWithoutHitbox(t *tes
 	}
 }
 
-func TestRecoveryFixtureRuntimeContractsExposeCreatureSkillContracts(t *testing.T) {
-	contracts := RecoveryFixtureRuntimeContracts()
+func TestDevFixtureRuntimeContractsExposeCreatureSkillContracts(t *testing.T) {
+	contracts := DevFixtureRuntimeContracts()
 	for _, skillID := range []string{"bite", "lunge", "wolf_dodge", "maul"} {
 		skill := contracts.skillContract(skillID)
 		if !skill.Enabled {
@@ -402,27 +402,27 @@ func TestRecoveryFixtureRuntimeContractsExposeCreatureSkillContracts(t *testing.
 		}
 	}
 	if !hasCreatureSkillBehaviorBinding(contracts.WolfPolicy.SkillBehaviorBindings, "lunge", "circle", "reposition") {
-		t.Fatalf("recovered wolf lunge binding missing: %#v", contracts.WolfPolicy.SkillBehaviorBindings)
+		t.Fatalf("fixture wolf lunge binding missing: %#v", contracts.WolfPolicy.SkillBehaviorBindings)
 	}
 	if !hasCreatureSkillBehaviorBinding(contracts.WolfPolicy.SkillBehaviorBindings, "maul", "pressure", "counter") {
-		t.Fatalf("recovered wolf maul binding missing: %#v", contracts.WolfPolicy.SkillBehaviorBindings)
+		t.Fatalf("fixture wolf maul binding missing: %#v", contracts.WolfPolicy.SkillBehaviorBindings)
 	}
 }
 
-func TestRecoveryFixtureCombatModesKeepBulwarkAndVanguardSeparate(t *testing.T) {
-	contracts := RecoveryFixtureRuntimeContracts()
+func TestDevFixtureCombatModesKeepBulwarkAndVanguardSeparate(t *testing.T) {
+	contracts := DevFixtureRuntimeContracts()
 	if !hasCombatModeSlot(contracts.CombatModes, swordShieldBulwarkModeID, 0, "player_basic_attack_1") {
-		t.Fatalf("recovered Bulwark M1 slot missing: %#v", contracts.CombatModes)
+		t.Fatalf("fixture Bulwark M1 slot missing: %#v", contracts.CombatModes)
 	}
 	if !hasCombatModeSlot(contracts.CombatModes, swordShieldBulwarkModeID, 2, "player_shield_bash") {
-		t.Fatalf("recovered Bulwark R slot missing: %#v", contracts.CombatModes)
+		t.Fatalf("fixture Bulwark R slot missing: %#v", contracts.CombatModes)
 	}
 	if !hasCombatModeSlot(contracts.CombatModes, swordShieldBulwarkModeID, 3, "player_shield_rush") {
-		t.Fatalf("recovered Bulwark F slot missing: %#v", contracts.CombatModes)
+		t.Fatalf("fixture Bulwark F slot missing: %#v", contracts.CombatModes)
 	}
 	for _, slotIndex := range []uint32{0, 1, 2, 3, 4} {
 		if !hasEmptyCombatModeSlot(contracts.CombatModes, swordShieldVanguardModeID, slotIndex) {
-			t.Fatalf("recovered Vanguard slot %d should be empty/disabled: %#v", slotIndex, contracts.CombatModes)
+			t.Fatalf("fixture Vanguard slot %d should be empty/disabled: %#v", slotIndex, contracts.CombatModes)
 		}
 	}
 }
@@ -535,7 +535,7 @@ func TestLoadRuntimeContractsFromDBUsesRequiredSkillBindings(t *testing.T) {
 	}
 }
 
-func TestLoadRuntimeContractsFromDBDoesNotLeakRecoveredCombatFallback(t *testing.T) {
+func TestLoadRuntimeContractsFromDBDoesNotLeakFixtureCombatFallback(t *testing.T) {
 	source := fakeRuntimeContractSource{
 		missingCombatCoreProfiles: map[string]bool{playerCombatCoreProfileID: true},
 		missingDefenseContracts:   map[string]bool{playerGuardDefenseContractID: true},
@@ -553,10 +553,10 @@ func TestLoadRuntimeContractsFromDBDoesNotLeakRecoveredCombatFallback(t *testing
 		t.Fatalf("coverage error missing defense failure: %v", err)
 	}
 	if got := contracts.CombatCore.Profiles[playerCombatCoreProfileID]; got != nil {
-		t.Fatalf("DB loader leaked recovered player combat core fallback: %#v", got)
+		t.Fatalf("DB loader leaked fixture player combat core fallback: %#v", got)
 	}
 	if got := contracts.Defense.Contracts[playerGuardDefenseContractID]; got != nil {
-		t.Fatalf("DB loader leaked recovered player guard fallback: %#v", got)
+		t.Fatalf("DB loader leaked fixture player guard fallback: %#v", got)
 	}
 }
 
@@ -573,7 +573,7 @@ func TestLoadRuntimeContractsFromDBRejectsMissingRequiredBinding(t *testing.T) {
 	}
 }
 
-func TestLoadRuntimeContractsFromDBDoesNotLeakRecoveredAbilityFallback(t *testing.T) {
+func TestLoadRuntimeContractsFromDBDoesNotLeakFixtureAbilityFallback(t *testing.T) {
 	source := fakeRuntimeContractSource{missingActions: map[string]bool{"dodge_v1_full_iframe": true}}
 	contracts := LoadRuntimeContractsFromDB(context.Background(), source, source, source)
 
@@ -585,11 +585,11 @@ func TestLoadRuntimeContractsFromDBDoesNotLeakRecoveredAbilityFallback(t *testin
 		t.Fatalf("coverage error = %v", err)
 	}
 	if got := contracts.ActionContracts["dodge"]; got.ID != "" {
-		t.Fatalf("DB loader leaked recovered dodge fallback: %#v", got)
+		t.Fatalf("DB loader leaked fixture dodge fallback: %#v", got)
 	}
 }
 
-func TestLoadRuntimeContractsFromDBDoesNotLeakRecoveredCombatModeFallback(t *testing.T) {
+func TestLoadRuntimeContractsFromDBDoesNotLeakFixtureCombatModeFallback(t *testing.T) {
 	source := fakeRuntimeContractSource{missingCombatModes: true}
 	contracts := LoadRuntimeContractsFromDB(context.Background(), source, source, source)
 
@@ -601,7 +601,7 @@ func TestLoadRuntimeContractsFromDBDoesNotLeakRecoveredCombatModeFallback(t *tes
 		t.Fatalf("coverage error = %v", err)
 	}
 	if len(contracts.CombatModes) != 0 {
-		t.Fatalf("DB loader leaked recovered combat modes: %#v", contracts.CombatModes)
+		t.Fatalf("DB loader leaked fixture combat modes: %#v", contracts.CombatModes)
 	}
 }
 
@@ -633,10 +633,10 @@ func TestRuntimeContractCoverageReportClassifiesMissingContracts(t *testing.T) {
 	}
 }
 
-func TestRuntimeContractCoverageReportAcceptsRecoveredFixture(t *testing.T) {
-	report := RecoveryFixtureRuntimeContracts().CoverageReport(false)
+func TestRuntimeContractCoverageReportAcceptsFixtureFixture(t *testing.T) {
+	report := DevFixtureRuntimeContracts().CoverageReport(false)
 	if !report.Ready {
-		t.Fatalf("recovered fixture coverage report is not ready: %#v", report.Blockers())
+		t.Fatalf("fixture fixture coverage report is not ready: %#v", report.Blockers())
 	}
 	for _, category := range []string{
 		"runtime_movement_profile",
@@ -646,7 +646,7 @@ func TestRuntimeContractCoverageReportAcceptsRecoveredFixture(t *testing.T) {
 		"combat_core_profiles",
 		"combat_defense_contracts",
 		"combat_mode_slots",
-		"legacy_runtime_surfaces",
+		"compat_runtime_surfaces",
 	} {
 		if !coverageReportHasCategory(report, category) {
 			t.Fatalf("coverage report missing category %q: %#v", category, report.Categories)
@@ -657,7 +657,7 @@ func TestRuntimeContractCoverageReportAcceptsRecoveredFixture(t *testing.T) {
 func TestRuntimeContractSourceDoesNotExposeLegacySkillMovementEffect(t *testing.T) {
 	sourceType := reflect.TypeOf((*ContractSource)(nil)).Elem()
 	if _, ok := sourceType.MethodByName("GetSkillMovementEffect"); ok {
-		t.Fatal("normal runtime contract loader must not consume legacy GetSkillMovementEffect")
+		t.Fatal("normal runtime contract loader must not consume compatibility GetSkillMovementEffect")
 	}
 	for _, required := range []string{
 		"GetSkillMovementActionBinding",
@@ -680,21 +680,21 @@ func TestLegacyRuntimeSurfaceClassificationKeepsCompatOutOfAuthority(t *testing.
 		if surface.Name == "skill_movement_effect/GetSkillMovementEffect" {
 			foundLegacy = true
 			if surface.Status != contractSurfaceCompatRuntimeRequired {
-				t.Fatalf("legacy skill movement status = %q", surface.Status)
+				t.Fatalf("skill movement compatibility status = %q", surface.Status)
 			}
 			if surface.NormalRuntimeAuthority {
-				t.Fatalf("legacy skill movement endpoint must not be runtime authority: %#v", surface)
+				t.Fatalf("skill movement compatibility endpoint must not be runtime authority: %#v", surface)
 			}
 			if surface.CanonicalReplacement != "skill_movement_action_binding + movement_action_contract" {
-				t.Fatalf("legacy skill movement canonical replacement = %q", surface.CanonicalReplacement)
+				t.Fatalf("skill movement compatibility canonical replacement = %q", surface.CanonicalReplacement)
 			}
 		}
 	}
 	if !foundLegacy {
-		t.Fatal("legacy skill movement endpoint is missing from the runtime surface audit")
+		t.Fatal("skill movement compatibility endpoint is missing from the runtime surface audit")
 	}
-	if blockers := legacyRuntimeSurfaceBlockers(); len(blockers) != 0 {
-		t.Fatalf("legacy surface blockers = %#v", blockers)
+	if blockers := compatRuntimeSurfaceBlockers(); len(blockers) != 0 {
+		t.Fatalf("compat surface blockers = %#v", blockers)
 	}
 }
 
@@ -744,14 +744,14 @@ func stringSliceContains(values []string, target string) bool {
 	return false
 }
 
-func TestRuntimeReadinessAcceptsRecoveredFixtureForDevTests(t *testing.T) {
-	runtime := NewRuntimeWithContracts(RecoveryFixtureRuntimeContracts())
+func TestRuntimeReadinessAcceptsFixtureFixtureForDevTests(t *testing.T) {
+	runtime := NewRuntimeWithContracts(DevFixtureRuntimeContracts())
 	resp, err := runtime.Readiness(context.Background(), &gamev1.Empty{})
 	if err != nil {
 		t.Fatalf("Readiness failed: %v", err)
 	}
 	if !resp.GetReady() {
-		t.Fatalf("recovered fixture should be ready for dev/test runtime: %#v", resp.GetBlockers())
+		t.Fatalf("fixture fixture should be ready for dev/test runtime: %#v", resp.GetBlockers())
 	}
 }
 
@@ -768,7 +768,7 @@ func TestRuntimeStatsExposeContractCoverageByCategory(t *testing.T) {
 		t.Fatalf("movement coverage status = %#v", resp.GetPhaseStatus())
 	}
 
-	fixtureRuntime := NewRuntimeWithContracts(RecoveryFixtureRuntimeContracts())
+	fixtureRuntime := NewRuntimeWithContracts(DevFixtureRuntimeContracts())
 	fixtureResp, err := fixtureRuntime.RuntimeStats(context.Background(), &gamev1.Empty{})
 	if err != nil {
 		t.Fatalf("fixture RuntimeStats failed: %v", err)
@@ -776,11 +776,11 @@ func TestRuntimeStatsExposeContractCoverageByCategory(t *testing.T) {
 	if fixtureResp.GetPhaseStatus()["contracts.skill_runtime_contracts"] != "ready" {
 		t.Fatalf("fixture skill contract coverage status = %#v", fixtureResp.GetPhaseStatus())
 	}
-	if fixtureResp.GetPhaseStatus()["contracts.legacy_runtime_surfaces"] != "ready" {
-		t.Fatalf("fixture legacy surface coverage status = %#v", fixtureResp.GetPhaseStatus())
+	if fixtureResp.GetPhaseStatus()["contracts.compat_runtime_surfaces"] != "ready" {
+		t.Fatalf("fixture compat surface coverage status = %#v", fixtureResp.GetPhaseStatus())
 	}
 	if got := fixtureResp.GetPhaseStatus()["contracts.surface.skill_movement_effect/GetSkillMovementEffect"]; !strings.Contains(got, "compat_runtime_required") || !strings.Contains(got, "compat_api") {
-		t.Fatalf("legacy skill movement surface status = %q", got)
+		t.Fatalf("skill movement compatibility surface status = %q", got)
 	}
 	if got := fixtureResp.GetPhaseStatus()["contracts.surface.movement_action_contract"]; !strings.Contains(got, "final_authority") || !strings.Contains(got, "runtime_authority") {
 		t.Fatalf("movement action surface status = %q", got)
@@ -791,7 +791,7 @@ func TestRuntimeStatsExposeContractCoverageByCategory(t *testing.T) {
 }
 
 func TestWolfMaulPublishesSkillMovementContractOnlyDuringRootMotion(t *testing.T) {
-	runtime := NewRuntimeWithContracts(RecoveryFixtureRuntimeContracts())
+	runtime := NewRuntimeWithContracts(DevFixtureRuntimeContracts())
 	player := runtime.ensurePlayerLocked("local_player")
 	wolf := runtime.ensureWolfLocked(player)
 
@@ -830,7 +830,7 @@ func TestWolfMaulPublishesSkillMovementContractOnlyDuringRootMotion(t *testing.T
 }
 
 func TestWolfBrainDoesNotRepeatSkillWhileCooldownIsActive(t *testing.T) {
-	runtime := NewRuntimeWithContracts(RecoveryFixtureRuntimeContracts())
+	runtime := NewRuntimeWithContracts(DevFixtureRuntimeContracts())
 	player := runtime.ensurePlayerLocked("local_player")
 	wolf := runtime.ensureWolfLocked(player)
 
@@ -851,7 +851,7 @@ func TestWolfBrainDoesNotRepeatSkillWhileCooldownIsActive(t *testing.T) {
 }
 
 func TestWolfBrainUsesStaminaBudgetBeforeSelectingSkill(t *testing.T) {
-	runtime := NewRuntimeWithContracts(RecoveryFixtureRuntimeContracts())
+	runtime := NewRuntimeWithContracts(DevFixtureRuntimeContracts())
 	player := runtime.ensurePlayerLocked("local_player")
 	wolf := runtime.ensureWolfLocked(player)
 
@@ -869,7 +869,7 @@ func TestWolfBrainUsesStaminaBudgetBeforeSelectingSkill(t *testing.T) {
 }
 
 func TestWolfBrainSpendsSkillStaminaOnlyWhenStartingSkill(t *testing.T) {
-	runtime := NewRuntimeWithContracts(RecoveryFixtureRuntimeContracts())
+	runtime := NewRuntimeWithContracts(DevFixtureRuntimeContracts())
 	player := runtime.ensurePlayerLocked("local_player")
 	wolf := runtime.ensureWolfLocked(player)
 
@@ -893,7 +893,7 @@ func TestWolfBrainSpendsSkillStaminaOnlyWhenStartingSkill(t *testing.T) {
 }
 
 func TestMovementValidationRuntimeDoesNotSpawnCreature(t *testing.T) {
-	runtime := NewRuntimeWithOptions(RecoveryFixtureRuntimeContracts(), RuntimeOptions{MovementValidation: true})
+	runtime := NewRuntimeWithOptions(DevFixtureRuntimeContracts(), RuntimeOptions{MovementValidation: true})
 	player := runtime.ensurePlayerLocked("local_player")
 	if player == nil {
 		t.Fatal("player was not created")
@@ -1013,11 +1013,11 @@ func (f fakeRuntimeContractSource) GetSkillImpactProfile(_ context.Context, req 
 	if f.missingSkills[req.GetId()] {
 		return &dbv1.SkillImpactProfileResponse{Found: false}, nil
 	}
-	_, posture := recoveredPlayerSkillDamage(req.GetId())
+	_, posture := fixturePlayerSkillDamage(req.GetId())
 	if posture == 0 {
-		_, posture = recoveredCreatureSkillDamage(req.GetId())
+		_, posture = fixtureCreatureSkillDamage(req.GetId())
 	}
-	profile := recoveredSkillImpactProfile(req.GetId(), posture)
+	profile := fixtureSkillImpactProfile(req.GetId(), posture)
 	if profile == nil {
 		return &dbv1.SkillImpactProfileResponse{Found: false}, nil
 	}
@@ -1084,8 +1084,8 @@ func (f fakeRuntimeContractSource) GetSkillHitboxProfiles(_ context.Context, req
 				SweepShape:    "capsule_strip",
 				DamageGroupId: damageGroupID,
 				Samples: []*dbv1.SkillHitboxMotionSample{
-					recoveredHitboxMotionSample(0, 0.00, 40, 0, 90, 90, 0, 120, 45, 90, 0, 0),
-					recoveredHitboxMotionSample(1, 1.00, 120, 0, 90, 90, 0, 120, 45, 180, 0, 0),
+					fixtureHitboxMotionSample(0, 0.00, 40, 0, 90, 90, 0, 120, 45, 90, 0, 0),
+					fixtureHitboxMotionSample(1, 1.00, 120, 0, 90, 90, 0, 120, 45, 180, 0, 0),
 				},
 			},
 		}},

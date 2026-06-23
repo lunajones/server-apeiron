@@ -502,7 +502,7 @@ func splitCoverageBlockers(err error) []string {
 func (r *Runtime) RuntimeStats(ctx context.Context, _ *gamev1.Empty) (*gamev1.RuntimeStatsResponse, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	phaseStatus := map[string]string{"runtime": "in_memory_vertical_slice"}
+	phaseStatus := map[string]string{"runtime": "apeiron_server_runtime"}
 	if r.contracts.Source != "" {
 		phaseStatus["contract_source"] = r.contracts.Source
 	}
@@ -514,7 +514,7 @@ func (r *Runtime) RuntimeStats(ctx context.Context, _ *gamev1.Empty) (*gamev1.Ru
 		}
 		phaseStatus["contracts."+category.Name] = "blocked"
 	}
-	for key, value := range legacyRuntimeSurfaceStatusValues() {
+	for key, value := range compatRuntimeSurfaceStatusValues() {
 		phaseStatus[key] = value
 	}
 	for key, value := range requirementStatusValues(r.contracts) {
@@ -1526,7 +1526,7 @@ func durationFromMS(ms int32) time.Duration {
 func (r *Runtime) ackLocked(cmd *gamev1.PlayerCommand, player *entityState, accepted bool, code string, message string) *gamev1.CommandAck {
 	metadata := map[string]string{
 		"command_type":      commandTypeName(cmd.GetType()),
-		"movement_protocol": "recovered_game_v1",
+		"movement_protocol": "apeiron_game_v1",
 	}
 	if cmd.GetCastSkill() != nil {
 		skillID := cmd.GetCastSkill().GetSkillId()
