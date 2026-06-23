@@ -66,6 +66,10 @@ Source threads:
 - `recuperacao 6` / `019ed02a-86f2-79d2-bcd6-0a479bd27b81`
 - current code audit
 
+Status:
+- Partially mitigated on 2026-06-22 for the migrated player surface.
+- Basic combo alias/stages plus Shield Bash and Shield Rush reject recovered fallback profiles even if recovery fallback mode is enabled.
+
 Expected architecture:
 - Basic attack is a first-class combo alias resolved by server into `player_basic_attack_1/2/3`.
 - Each stage is a real skill/profile from DB, with movement/timing/hitbox/defense contract.
@@ -73,15 +77,16 @@ Expected architecture:
 Current recovered code evidence:
 - `internal/combat/player_skill_combat_system.go` still contains `AllowFallbackAttack` and `fallbackPlayerAttackProfile`.
 - Fallback literals include damage, range, cooldown, hitbox shape, length, angle, max targets.
+- `internal/combat/runtime_helpers.go` blocks fallback for `player_basic_attack`, `player_basic_attack_1/2/3`, `player_shield_bash`, and `player_shield_rush`.
 
 Risk:
-- Missing DB profile can still produce a "working" attack that is not the intended combo.
+- Missing DB profile can still produce a "working" attack only for non-migrated recovery skills if `AllowFallbackAttack` is deliberately enabled.
 - Tuning can diverge from DB and from Unreal visuals.
 
 Required reconstruction:
-- Make fallback attack profiles dev/recovery-only.
+- Keep fallback attack profiles dev/recovery-only.
 - For normal runtime, missing player skill profile must reject command with explicit contract error.
-- Add tests proving `player_basic_attack` alias resolves to stage contracts and never to fallback in strict mode.
+- Add broader tests proving `player_basic_attack` alias resolves to stage contracts and never to fallback in strict mode.
 
 ## P1 Gaps
 

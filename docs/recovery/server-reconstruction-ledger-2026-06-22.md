@@ -319,6 +319,28 @@ The app boot path still initialized `gameapi.RecoveredRuntimeContracts()` before
 - `movement_reconciliation_contract` in DB is still not the full rich `MovementReconciliationProfile` shape consumed by Unreal snapshots. Do not invent more Go/C++ literals for that. Restore/extend DB/proto if profile-level reconciliation tuning must become fully DB-authoritative.
 - `internal/combat/player_skill_combat_system.go` still has fallback player attack profile paths and remains the next strict-fallback recovery target.
 
+# 2026-06-22 - Migrated player skill fallback guard slice
+
+## Finding
+
+The combat package already blocked recovered fallback profiles for Shield Bash, Shield Rush, and basic attack 3, but basic attack 1/2 and the generic `player_basic_attack` alias were not in that migrated-skill guard. If `AllowFallbackAttack` was enabled for recovery, those migrated combo stages could still fabricate a generic melee profile.
+
+## Implemented
+
+- Extended the migrated profile fallback guard to include:
+  - `player_basic_attack`
+  - `player_basic_attack_1`
+  - `player_basic_attack_2`
+  - `player_basic_attack_3`
+  - `player_shield_bash`
+  - `player_shield_rush`
+- Added unit coverage proving migrated player skills never use recovered profile fallback, while non-migrated temporary recovery skills can still use the explicit recovery path.
+
+## Validated
+
+- `server-apeiron`: `go test ./...`
+- `server-apeiron`: `go build -o bin/game-server.exe ./cmd/game-server`
+
 # 2026-06-22 - Wolf maul contract recovery slice
 
 ## Finding

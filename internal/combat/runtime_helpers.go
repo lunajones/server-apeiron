@@ -46,7 +46,8 @@ func skillMovementContractRequiredForProfile(profile AttackProfile) bool {
 
 func skillMovementMigratedProfileFallbackBlocked(skillID ids.SkillID) bool {
 	switch skillID {
-	case "player_shield_bash", "player_shield_rush", "player_basic_attack_3":
+	case "player_basic_attack", "player_basic_attack_1", "player_basic_attack_2", "player_basic_attack_3",
+		"player_shield_bash", "player_shield_rush":
 		return true
 	default:
 		return false
