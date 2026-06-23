@@ -4,6 +4,7 @@ type Memory struct {
 	OrbitSide              string
 	OrbitSideChangedAtTick uint64
 	LastSelectedSkill      string
+	LastSelectedSkillTick  uint64
 	LastDecisionReason     string
 	LastTacticalState      string
 	LastDecisionPhase      string
@@ -23,7 +24,12 @@ func (m *Memory) remember(decision Decision, tick uint64) {
 		m.OrbitSide = decision.OrbitSide
 		m.OrbitSideChangedAtTick = tick
 	}
-	m.LastSelectedSkill = decision.SelectedSkill
+	if decision.SelectedSkill != "" && decision.SelectedSkill != m.LastSelectedSkill {
+		m.LastSelectedSkillTick = tick
+	}
+	if decision.SelectedSkill != "" {
+		m.LastSelectedSkill = decision.SelectedSkill
+	}
 	m.LastDecisionReason = decision.Reason
 	m.LastTacticalState = decision.TacticalState
 	m.LastDecisionPhase = decision.DecisionPhase

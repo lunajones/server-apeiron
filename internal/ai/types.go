@@ -29,6 +29,8 @@ type Policy struct {
 	PreferLongSideCommit           bool
 	SideFlipChanceMultiplier       float64
 	LockSideDuringSetup            bool
+	RepeatSkillPenaltyWindowTicks  uint64
+	RepeatSkillPenaltyMultiplier   float64
 	Bindings                       []SkillBinding
 }
 
@@ -55,6 +57,9 @@ type Input struct {
 	ActiveSkillID    string
 	LineOfSight      bool
 	Pressure         float64
+	ResourceCurrent  float64
+	ResourceMax      float64
+	SkillCosts       map[string]float64
 	UnavailableSkill map[string]string
 }
 
@@ -69,6 +74,8 @@ type Decision struct {
 	OrbitSide      string
 	Reason         string
 	Score          float64
+	ResourceCost   float64
+	ResourceState  string
 	SpeedCMPerSec  float64
 	Direction      domainmath.Vec3
 	Destination    domainmath.Position

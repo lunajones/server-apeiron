@@ -32,6 +32,8 @@ func (b *Brain) Decide(input Input) Decision {
 			OrbitSide:      b.Memory.OrbitSide,
 			Reason:         "active_skill_continuation",
 			Score:          1,
+			ResourceCost:   skillCost(input.ActiveSkillID, input.SkillCosts),
+			ResourceState:  resourceState(input),
 			SpeedCMPerSec:  speed,
 			Direction:      dir,
 			Destination:    input.CreaturePosition.Add(dir.Normalize().Scale(180)),
@@ -46,28 +48,28 @@ func (b *Brain) Decide(input Input) Decision {
 	action := "orbit"
 	reason := "orbit_policy"
 	score := 0.5
-	if binding, ok := selectBinding(b.Policy, tacticalState, decisionPhase, rangeCM, input.LineOfSight, input.UnavailableSkill); ok {
+	if binding, bindingScore, bindingReason, ok := selectBinding(b.Policy, b.Memory, input, tacticalState, decisionPhase, rangeCM); ok {
 		selectedSkill = binding.SkillID
 		action = actionForSkill(binding.SkillID, b.Policy)
-		reason = "skill_behavior_binding:" + binding.ID
-		score = float64(binding.Priority) * firstPositive(binding.UsageWeight, 1) / 100
+		reason = bindingReason
+		score = bindingScore / 100
 	} else if tacticalState == "approach" {
 		action = "chase"
-		if skillAvailable("lunge", input.UnavailableSkill) {
+		if skillAvailable("lunge", input.UnavailableSkill) && skillAffordable("lunge", input.ResourceCurrent, input.SkillCosts) {
 			selectedSkill = "lunge"
 			reason = "range_policy_chase"
 		} else {
 			reason = "range_policy_chase_lunge_unavailable"
 		}
 	} else if tacticalState == "pressure" {
-		if skillAvailable(b.Policy.DodgeSkillID, input.UnavailableSkill) {
+		if skillAvailable(b.Policy.DodgeSkillID, input.UnavailableSkill) && skillAffordable(b.Policy.DodgeSkillID, input.ResourceCurrent, input.SkillCosts) {
 			selectedSkill = b.Policy.DodgeSkillID
 			action = "retreat"
 			reason = "range_policy_retreat"
 		} else {
 			reason = "pressure_policy_no_ready_skill"
 		}
-	} else if rangeCM <= firstPositive(b.Policy.BiteRangeCM, b.Policy.RetreatRangeCM) && skillAvailable("bite", input.UnavailableSkill) {
+	} else if rangeCM <= firstPositive(b.Policy.BiteRangeCM, b.Policy.RetreatRangeCM) && skillAvailable("bite", input.UnavailableSkill) && skillAffordable("bite", input.ResourceCurrent, input.SkillCosts) {
 		selectedSkill = "bite"
 		action = "bite"
 		reason = "range_policy_bite"
@@ -86,6 +88,8 @@ func (b *Brain) Decide(input Input) Decision {
 		OrbitSide:      orbitSide,
 		Reason:         reason,
 		Score:          score,
+		ResourceCost:   skillCost(selectedSkill, input.SkillCosts),
+		ResourceState:  resourceState(input),
 		SpeedCMPerSec:  speed,
 		Direction:      dir,
 		Destination:    input.CreaturePosition.Add(dir.Normalize().Scale(180)),
@@ -93,6 +97,16 @@ func (b *Brain) Decide(input Input) Decision {
 	}
 	b.Memory.remember(decision, input.Tick)
 	return decision
+}
+
+func resourceState(input Input) string {
+	if input.ResourceMax <= 0 {
+		return "untracked"
+	}
+	if input.ResourceCurrent <= 0 {
+		return "empty"
+	}
+	return "available"
 }
 
 func (b *Brain) nextOrbitSide(input Input) string {

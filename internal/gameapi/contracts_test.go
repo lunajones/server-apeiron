@@ -2,6 +2,7 @@ package gameapi
 
 import (
 	"context"
+	"math"
 	"strings"
 	"testing"
 
@@ -99,6 +100,12 @@ func TestLoadRuntimeContractsFromDBUsesRequiredSkillBindings(t *testing.T) {
 	}
 	if contracts.WolfPolicy.OrbitLocomotionMode != "combat_walk" {
 		t.Fatalf("wolf orbit locomotion mode = %q", contracts.WolfPolicy.OrbitLocomotionMode)
+	}
+	if contracts.WolfPolicy.MaxStamina != 100 || contracts.WolfPolicy.DodgeStaminaCostMultiplier != 0.5 || contracts.WolfPolicy.StaminaRegenPerSecond != 12 {
+		t.Fatalf("wolf stamina policy = max %.1f dodge multiplier %.2f regen %.1f", contracts.WolfPolicy.MaxStamina, contracts.WolfPolicy.DodgeStaminaCostMultiplier, contracts.WolfPolicy.StaminaRegenPerSecond)
+	}
+	if contracts.WolfPolicy.RepeatSkillPenaltyWindowMS != 1200 || contracts.WolfPolicy.RepeatSkillPenaltyMultiplier != 0.65 {
+		t.Fatalf("wolf repeat policy = window %d multiplier %.2f", contracts.WolfPolicy.RepeatSkillPenaltyWindowMS, contracts.WolfPolicy.RepeatSkillPenaltyMultiplier)
 	}
 	if contracts.WolfPolicy.LungeMinRangeCM != 180 || contracts.WolfPolicy.LungeMaxRangeCM != 700 {
 		t.Fatalf("wolf lunge range = %.0f..%.0f", contracts.WolfPolicy.LungeMinRangeCM, contracts.WolfPolicy.LungeMaxRangeCM)
@@ -211,6 +218,48 @@ func TestWolfBrainDoesNotRepeatSkillWhileCooldownIsActive(t *testing.T) {
 	}
 }
 
+func TestWolfBrainUsesStaminaBudgetBeforeSelectingSkill(t *testing.T) {
+	runtime := NewRuntimeWithContracts(RecoveryFixtureRuntimeContracts())
+	player := runtime.ensurePlayerLocked("local_player")
+	wolf := runtime.ensureWolfLocked(player)
+
+	wolf.position = vector{x: player.position.x + 120, y: player.position.y, z: player.position.z}
+	wolf.stamina = 4
+	runtime.tick = 220
+	runtime.updateWolfPolicyLocked(wolf, player)
+
+	if wolf.creatureAI.GetSelectedSkillId() != "wolf_dodge" {
+		t.Fatalf("selected skill = %q, want affordable wolf_dodge instead of maul", wolf.creatureAI.GetSelectedSkillId())
+	}
+	if math.Abs(wolf.stamina-1.4) > 0.001 {
+		t.Fatalf("wolf stamina after dodge = %.1f, want 1.4", wolf.stamina)
+	}
+}
+
+func TestWolfBrainSpendsSkillStaminaOnlyWhenStartingSkill(t *testing.T) {
+	runtime := NewRuntimeWithContracts(RecoveryFixtureRuntimeContracts())
+	player := runtime.ensurePlayerLocked("local_player")
+	wolf := runtime.ensureWolfLocked(player)
+
+	wolf.position = vector{x: player.position.x + 520, y: player.position.y, z: player.position.z}
+	wolf.stamina = 40
+	runtime.tick = 250
+	runtime.updateWolfPolicyLocked(wolf, player)
+
+	if wolf.creatureAI.GetSelectedSkillId() != "lunge" {
+		t.Fatalf("selected skill = %q, want lunge", wolf.creatureAI.GetSelectedSkillId())
+	}
+	if math.Abs(wolf.stamina-16.4) > 0.001 {
+		t.Fatalf("wolf stamina after starting lunge = %.1f, want 16.4", wolf.stamina)
+	}
+
+	runtime.tick = 251
+	runtime.updateWolfPolicyLocked(wolf, player)
+	if math.Abs(wolf.stamina-16.8) > 0.001 {
+		t.Fatalf("active lunge should only regenerate, got stamina %.1f", wolf.stamina)
+	}
+}
+
 func TestMovementValidationRuntimeDoesNotSpawnCreature(t *testing.T) {
 	runtime := NewRuntimeWithOptions(RecoveryFixtureRuntimeContracts(), RuntimeOptions{MovementValidation: true})
 	player := runtime.ensurePlayerLocked("local_player")
@@ -241,6 +290,7 @@ func (f fakeRuntimeContractSource) GetSkill(_ context.Context, req *dbv1.IdReque
 		Found: true,
 		Skill: &dbv1.Skill{
 			Id:            req.GetId(),
+			StaminaCost:   fakeSkillStaminaCost(req.GetId()),
 			BaseDamage:    12,
 			PostureDamage: 20,
 			MaxRange:      300,
@@ -248,6 +298,21 @@ func (f fakeRuntimeContractSource) GetSkill(_ context.Context, req *dbv1.IdReque
 			IsBlockable:   true,
 		},
 	}, nil
+}
+
+func fakeSkillStaminaCost(skillID string) float64 {
+	switch skillID {
+	case "wolf_dodge":
+		return 6
+	case "bite":
+		return 10
+	case "maul":
+		return 22
+	case "lunge":
+		return 24
+	default:
+		return 0
+	}
 }
 
 func (f fakeRuntimeContractSource) GetSkillHitboxProfiles(_ context.Context, req *dbv1.IdRequest, _ ...grpc.CallOption) (*dbv1.SkillHitboxProfilesResponse, error) {
@@ -430,6 +495,8 @@ func (fakeRuntimeContractSource) GetCreatureBehaviorRuntimeContract(_ context.Co
 		Contract: &dbv1.CreatureBehaviorRuntimeContract{
 			Id:                        req.GetId(),
 			CreatureTemplateId:        "steppe_wolf",
+			PressurePolicyJson:        `{"repeatSkillPenaltyMultiplier":0.65}`,
+			StaminaPolicyJson:         `{"max":100,"dodgeCostMultiplier":0.50,"regenPerSecond":12}`,
 			TargetOpportunityPolicyId: "opportunity_wolf_harasser_v1",
 			OrbitPolicyId:             "orbit_wolf_harasser_combat_walk_v1",
 		},

@@ -93,6 +93,57 @@ func TestBrainSkipsUnavailableSkillBinding(t *testing.T) {
 	}
 }
 
+func TestBrainSkipsSkillWhenResourceBudgetCannotPayCost(t *testing.T) {
+	brain := NewBrain(testPolicy())
+	decision := brain.Decide(Input{
+		Tick:             10,
+		CreaturePosition: domainmath.V3(0, 0, 0),
+		TargetPosition:   domainmath.V3(520, 0, 0),
+		LineOfSight:      true,
+		ResourceCurrent:  8,
+		ResourceMax:      100,
+		SkillCosts:       map[string]float64{"lunge": 24},
+	})
+	if decision.SelectedSkill == "lunge" {
+		t.Fatalf("selected unaffordable lunge: %#v", decision)
+	}
+	if decision.ResourceState != "available" {
+		t.Fatalf("resource state = %q, want available", decision.ResourceState)
+	}
+}
+
+func TestBrainRepeatPenaltyLetsAlternativeBindingWin(t *testing.T) {
+	policy := testPolicy()
+	policy.RepeatSkillPenaltyWindowTicks = 100
+	policy.RepeatSkillPenaltyMultiplier = 0.1
+	policy.Bindings = append(policy.Bindings,
+		SkillBinding{ID: "bind_bite_circle", SkillID: "bite", TacticalState: "circle", DecisionPhase: "reposition", MinRangeCM: 260, MaxRangeCM: 760, Priority: 70, UsageWeight: 1, Enabled: true, RequiresLineOfSight: true},
+	)
+	brain := NewBrain(policy)
+	first := brain.Decide(Input{
+		Tick:             10,
+		CreaturePosition: domainmath.V3(0, 0, 0),
+		TargetPosition:   domainmath.V3(520, 0, 0),
+		LineOfSight:      true,
+		ResourceCurrent:  100,
+		ResourceMax:      100,
+	})
+	if first.SelectedSkill != "lunge" {
+		t.Fatalf("first selected skill = %q, want lunge", first.SelectedSkill)
+	}
+	second := brain.Decide(Input{
+		Tick:             20,
+		CreaturePosition: domainmath.V3(0, 0, 0),
+		TargetPosition:   domainmath.V3(520, 0, 0),
+		LineOfSight:      true,
+		ResourceCurrent:  100,
+		ResourceMax:      100,
+	})
+	if second.SelectedSkill != "bite" {
+		t.Fatalf("repeat penalty should choose alternative binding, got %#v", second)
+	}
+}
+
 func testPolicy() Policy {
 	return Policy{
 		DesiredRangeCM:          420,

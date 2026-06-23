@@ -70,6 +70,7 @@ type SkillRuntimeContract struct {
 	// when the DB is unavailable.
 	Damage        float64
 	PostureDamage float64
+	StaminaCost   float64
 	Range         float64
 	MaxTargets    int32
 	Blockable     bool
@@ -121,6 +122,11 @@ type WolfRuntimePolicy struct {
 	PreferLongSideCommit           bool
 	SideFlipChanceMultiplier       float64
 	LockSideDuringSetup            bool
+	RepeatSkillPenaltyWindowMS     int32
+	RepeatSkillPenaltyMultiplier   float64
+	DodgeStaminaCostMultiplier     float64
+	StaminaRegenPerSecond          float64
+	MaxStamina                     float64
 	SkillBehaviorBindings          []CreatureSkillBehaviorRuntimeBinding
 }
 
@@ -137,6 +143,16 @@ type CreatureSkillBehaviorRuntimeBinding struct {
 	CooldownGroup       string
 	RequiresLineOfSight bool
 	Enabled             bool
+}
+
+type creaturePressurePolicyJSON struct {
+	RepeatSkillPenaltyMultiplier float64 `json:"repeatSkillPenaltyMultiplier"`
+}
+
+type creatureStaminaPolicyJSON struct {
+	Max                 float64 `json:"max"`
+	DodgeCostMultiplier float64 `json:"dodgeCostMultiplier"`
+	RegenPerSecond      float64 `json:"regenPerSecond"`
 }
 
 type movementActionContractMetadata struct {
@@ -282,6 +298,7 @@ func loadWolfBrainRuntimeContracts(ctx context.Context, profiles ProfileContract
 	}
 	contracts.WolfPolicy.ContractID = behavior.GetId()
 	contracts.WolfPolicy.ContractHash = behavior.GetId()
+	applyWolfBehaviorPolicyJSON(&contracts.WolfPolicy, behavior)
 
 	targetPolicy := behavior.GetTargetOpportunityPolicy()
 	targetPolicyID := behavior.GetTargetOpportunityPolicyId()
@@ -334,6 +351,7 @@ func applyWolfTargetOpportunityPolicy(policy *WolfRuntimePolicy, target *dbv1.Cr
 	policy.LungeMaxRangeCM = target.GetLungeMaxRangeCm()
 	policy.MaulPressureThreshold = target.GetMaulPressureThreshold()
 	policy.TargetMemoryMS = target.GetTargetMemoryMs()
+	policy.RepeatSkillPenaltyWindowMS = target.GetTargetMemoryMs()
 	policy.NoReadySkillMemoryPolicy = target.GetNoReadySkillMemoryPolicy()
 	policy.CandidateCooldownVisibility = target.GetCandidateCooldownVisibility()
 	policy.AllowBacksideCommit = target.GetAllowBacksideCommit()
@@ -345,6 +363,26 @@ func applyWolfTargetOpportunityPolicy(policy *WolfRuntimePolicy, target *dbv1.Cr
 	}
 	if policy.BiteRangeCM > 0 {
 		policy.RetreatRangeCM = math.Min(policy.RetreatRangeCM, policy.BiteRangeCM)
+	}
+}
+
+func applyWolfBehaviorPolicyJSON(policy *WolfRuntimePolicy, behavior *dbv1.CreatureBehaviorRuntimeContract) {
+	if policy == nil || behavior == nil {
+		return
+	}
+	if staminaJSON := strings.TrimSpace(behavior.GetStaminaPolicyJson()); staminaJSON != "" {
+		var staminaPolicy creatureStaminaPolicyJSON
+		if err := json.Unmarshal([]byte(staminaJSON), &staminaPolicy); err == nil {
+			policy.MaxStamina = staminaPolicy.Max
+			policy.DodgeStaminaCostMultiplier = staminaPolicy.DodgeCostMultiplier
+			policy.StaminaRegenPerSecond = staminaPolicy.RegenPerSecond
+		}
+	}
+	if pressureJSON := strings.TrimSpace(behavior.GetPressurePolicyJson()); pressureJSON != "" {
+		var pressurePolicy creaturePressurePolicyJSON
+		if err := json.Unmarshal([]byte(pressureJSON), &pressurePolicy); err == nil {
+			policy.RepeatSkillPenaltyMultiplier = pressurePolicy.RepeatSkillPenaltyMultiplier
+		}
 	}
 }
 
@@ -565,6 +603,7 @@ func loadSkillRuntimeContract(ctx context.Context, skills ContractSource, skillI
 		s := skillResp.GetSkill()
 		contract.Damage = s.GetBaseDamage()
 		contract.PostureDamage = s.GetPostureDamage()
+		contract.StaminaCost = s.GetStaminaCost()
 		contract.Range = s.GetMaxRange()
 		contract.MaxTargets = s.GetMaxTargets()
 		contract.Blockable = s.GetIsBlockable()
@@ -690,6 +729,11 @@ func RecoveryFixtureRuntimeContracts() RuntimeContracts {
 			PreferLongSideCommit:           true,
 			SideFlipChanceMultiplier:       0.35,
 			LockSideDuringSetup:            true,
+			RepeatSkillPenaltyWindowMS:     1200,
+			RepeatSkillPenaltyMultiplier:   0.65,
+			DodgeStaminaCostMultiplier:     0.5,
+			StaminaRegenPerSecond:          12,
+			MaxStamina:                     100,
 			SkillBehaviorBindings: []CreatureSkillBehaviorRuntimeBinding{
 				{ID: "recovered_bind_bite_circle", SkillID: "bite", TacticalState: "circle", DecisionPhase: "reposition", MinRangeCM: 0, MaxRangeCM: 300, Priority: 70, UsageWeight: 0.85, CooldownGroup: "wolf_bite", RequiresLineOfSight: true, Enabled: true},
 				{ID: "recovered_bind_lunge_circle", SkillID: "lunge", TacticalState: "circle", DecisionPhase: "reposition", MinRangeCM: 180, MaxRangeCM: 760, Priority: 85, UsageWeight: 0.75, CooldownGroup: "wolf_lunge", RequiresLineOfSight: true, Enabled: true},
@@ -887,6 +931,21 @@ func recoveredSkillContract(skillID string, distance float64, durationMS, active
 	}
 }
 
+func recoveredCreatureSkillStaminaCost(skillID string) float64 {
+	switch skillID {
+	case "wolf_dodge":
+		return 6
+	case "bite":
+		return 10
+	case "maul":
+		return 22
+	case "lunge":
+		return 24
+	default:
+		return 0
+	}
+}
+
 func recoveredCreatureSkillContract(skillID string, contractID string, actionType string, reconciliation string, contactPolicy string, distance float64, durationMS, activeMS, recoveryMS, windupMS, skillRecoveryMS, cooldownMS int32) SkillRuntimeContract {
 	action := MovementActionRuntimeContract{
 		ID:                       contractID,
@@ -921,6 +980,7 @@ func recoveredCreatureSkillContract(skillID string, contractID string, actionTyp
 		ActiveMS:                 activeMS,
 		RecoveryMS:               skillRecoveryMS,
 		CooldownMS:               cooldownMS,
+		StaminaCost:              recoveredCreatureSkillStaminaCost(skillID),
 		MovementLockPolicy:       "contract",
 		QueuePolicy:              "none",
 		CancelPolicy:             "none",

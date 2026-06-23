@@ -451,6 +451,10 @@ func (r *Runtime) ensureWolfLocked(player *entityState) *entityState {
 		aggression:            0.75,
 		creatureCooldownUntil: map[string]time.Time{},
 	}
+	if r.contracts.WolfPolicy.MaxStamina > 0 {
+		wolf.maxStamina = r.contracts.WolfPolicy.MaxStamina
+		wolf.stamina = wolf.maxStamina
+	}
 	wolf.locomotion = r.locomotion("grounded", "orbit", "run", "active", wolf.position, wolf.position, 0)
 	wolf.creatureAI = &gamev1.CreatureAIState{
 		MovementTactic:          "flank",
@@ -496,6 +500,7 @@ func (r *Runtime) updateWolfPolicyLocked(wolf *entityState, player *entityState)
 	start := wolf.position
 
 	policy := r.contracts.WolfPolicy
+	r.regenerateCreatureStaminaLocked(wolf, policy)
 	lungeMinRangeCM := positiveOr(policy.LungeMinRangeCM, policy.LungeRangeCM)
 	lungeMaxRangeCM := positiveOr(policy.LungeMaxRangeCM, policy.ChaseRangeCM)
 	nowTime := time.Now()
@@ -511,6 +516,9 @@ func (r *Runtime) updateWolfPolicyLocked(wolf *entityState, player *entityState)
 		ActiveSkillID:    activeSkill,
 		LineOfSight:      true,
 		Pressure:         wolf.aggression,
+		ResourceCurrent:  wolf.stamina,
+		ResourceMax:      wolf.maxStamina,
+		SkillCosts:       r.creatureSkillCostsLocked(policy),
 		UnavailableSkill: r.creatureUnavailableSkillsLocked(wolf, nowTime),
 	})
 	action := decision.Action
@@ -581,11 +589,62 @@ func (r *Runtime) updateWolfPolicyLocked(wolf *entityState, player *entityState)
 		}
 		wolf.skillRuntime = &gamev1.SkillRuntimeState{CurrentSkillId: selectedSkill, State: action, StartedAtMs: startedAt, LastResolvedAtMs: now}
 		if startingSkill {
+			r.spendCreatureSkillStaminaLocked(wolf, selectedSkill, selectedRuntime)
 			r.startCreatureSkillCooldownLocked(wolf, selectedSkill, selectedRuntime, nowTime)
 		}
 	} else {
 		wolf.skillRuntime = &gamev1.SkillRuntimeState{State: "idle", LastResolvedAtMs: now}
 	}
+}
+
+func (r *Runtime) creatureSkillCostsLocked(policy WolfRuntimePolicy) map[string]float64 {
+	costs := map[string]float64{}
+	for _, binding := range policy.SkillBehaviorBindings {
+		if binding.SkillID == "" {
+			continue
+		}
+		contract := r.contracts.skillContract(binding.SkillID)
+		cost := contract.StaminaCost
+		if binding.SkillID == policy.DodgeSkillID && policy.DodgeStaminaCostMultiplier > 0 {
+			cost *= policy.DodgeStaminaCostMultiplier
+		}
+		if cost > 0 {
+			costs[binding.SkillID] = cost
+		}
+	}
+	if len(costs) == 0 {
+		return nil
+	}
+	return costs
+}
+
+func (r *Runtime) spendCreatureSkillStaminaLocked(creature *entityState, skillID string, contract SkillRuntimeContract) {
+	if creature == nil || skillID == "" {
+		return
+	}
+	cost := contract.StaminaCost
+	if skillID == r.contracts.WolfPolicy.DodgeSkillID && r.contracts.WolfPolicy.DodgeStaminaCostMultiplier > 0 {
+		cost *= r.contracts.WolfPolicy.DodgeStaminaCostMultiplier
+	}
+	if cost <= 0 {
+		return
+	}
+	creature.stamina = math.Max(0, creature.stamina-cost)
+}
+
+func (r *Runtime) regenerateCreatureStaminaLocked(creature *entityState, policy WolfRuntimePolicy) {
+	if creature == nil || policy.StaminaRegenPerSecond <= 0 {
+		return
+	}
+	maxStamina := creature.maxStamina
+	if policy.MaxStamina > 0 {
+		maxStamina = policy.MaxStamina
+		creature.maxStamina = maxStamina
+	}
+	if maxStamina <= 0 || creature.stamina >= maxStamina {
+		return
+	}
+	creature.stamina = math.Min(maxStamina, creature.stamina+(policy.StaminaRegenPerSecond/tickRate))
 }
 
 func (r *Runtime) creatureUnavailableSkillsLocked(creature *entityState, now time.Time) map[string]string {
@@ -654,6 +713,8 @@ func wolfBrainPolicy(policy WolfRuntimePolicy) creatureai.Policy {
 		PreferLongSideCommit:           policy.PreferLongSideCommit,
 		SideFlipChanceMultiplier:       policy.SideFlipChanceMultiplier,
 		LockSideDuringSetup:            policy.LockSideDuringSetup,
+		RepeatSkillPenaltyWindowTicks:  msToRuntimeTicks(policy.RepeatSkillPenaltyWindowMS),
+		RepeatSkillPenaltyMultiplier:   policy.RepeatSkillPenaltyMultiplier,
 		Bindings:                       wolfBrainBindings(policy.SkillBehaviorBindings),
 	}
 }
