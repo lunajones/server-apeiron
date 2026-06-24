@@ -736,3 +736,49 @@ window remained correct in the server trace.
 Do not reintroduce horizontal CharacterMovement velocity as the driver for active dodge. Dodge root
 motion is owned by the movement action contract while active; snapshots may feed phase/direction, but
 they must not make the client accumulate action motion from a stale or externally corrected root.
+
+## 2026-06-23 - Leap Contract-Owned Vertical Playback
+
+### Symptom
+
+Manual PIE showed the player leap looking like it touched or completed early on the server while the
+visible capsule kept falling. Near the end of the leap, the fall felt like a sudden drop instead of a
+natural landing.
+
+### Evidence
+
+Leap debug logs showed two separate problems:
+
+- After the server vertical model was restored, active leap snapshots started publishing airborne
+  `server_pos.z`/`server_root.z`, so action start tick and active server Z were no longer the main
+  issue.
+- The client still let Unreal `CharacterMovement` own vertical physics while the server used the
+  contract. At `duration=960ms`, server locomotion completed on the ground while the local pawn was
+  still falling for additional frames. Log signature: `LeapFlow post_duration_fall` with local Z
+  still far above ground.
+
+### Change
+
+- Server/DB leap contract timing now matches the declared ballistic model:
+  `JumpZ=480`, `GravityZ=980`, `duration/airborne=980ms`, `expected_apex=490ms`.
+- Unreal local leap prediction now applies vertical root from the same contract each tick. If the
+  contract has `JumpZVelocity`, the client evaluates the same ballistic equation; otherwise it uses
+  the vertical curve samples.
+- The post-duration path no longer becomes a second vertical physics owner; it re-applies contract
+  vertical before waiting for the final grounded handoff.
+
+### Tests
+
+- `go build ./...` passed in `server-apeiron`.
+- `go build ./...` passed in `db-apeiron`.
+- `PlainTestMapEditor Win64 Development` Unreal build succeeded with `-NoHotReload`.
+- `db-api` restarted, applied bootstrap seeds, and exposed gRPC on `50051`.
+- `game-server` restarted with `DB_APEIRON_ENDPOINT=127.0.0.1:50051` and loaded runtime contracts
+  from DB.
+
+### Guardrail
+
+Do not let generic Unreal falling physics become the owner of leap Z while the server is resolving
+leap from a movement action contract. Leap root has one owner: the shared contract. Landing/handoff
+may release to grounded movement only after the contract-owned vertical path reaches the ground and
+the client/server handoff agrees.
