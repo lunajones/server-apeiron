@@ -119,6 +119,7 @@ type actionMotionState struct {
 	ClientTick        uint64
 	MotionSource      string
 	StartedAt         time.Time
+	StartedTick       uint64
 	StartPosition     vector
 	ProjectedPosition vector
 	Direction         vector
@@ -1416,6 +1417,7 @@ func (r *Runtime) applyImpulse(player *entityState, cmd *gamev1.PlayerCommand, c
 		ClientTick:        cmd.GetClientTick(),
 		MotionSource:      "owned_locomotion",
 		StartedAt:         nowTime,
+		StartedTick:       r.tick,
 		StartPosition:     start,
 		ProjectedPosition: fromDomainVector(fullMotion.Projected),
 		Direction:         dir,
@@ -1519,6 +1521,7 @@ func (r *Runtime) applySkill(player *entityState, cmd *gamev1.PlayerCommand) {
 			ClientTick:        cmd.GetClientTick(),
 			MotionSource:      "skill_root",
 			StartedAt:         nowTime,
+			StartedTick:       r.tick,
 			StartPosition:     start,
 			ProjectedPosition: fromDomainVector(fullMotion.Projected),
 			Direction:         dir,
@@ -1784,6 +1787,10 @@ func (r *Runtime) advanceActionMotionLocked(entity *entityState, now time.Time) 
 func applyActionMotionLocomotionTiming(state *gamev1.LocomotionState, motion *actionMotionState, now time.Time) {
 	if state == nil || motion == nil || motion.StartedAt.IsZero() {
 		return
+	}
+	if motion.StartedTick > 0 {
+		state.ServerActionStartedTick = motion.StartedTick
+		state.ActionStartedTick = motion.StartedTick
 	}
 	elapsed := now.Sub(motion.StartedAt)
 	if elapsed < 0 {

@@ -18,6 +18,7 @@ The dodge fix proved that owned locomotion must present root movement from the s
 - `TickLocalLeapPrediction` drove horizontal leap movement by assigning horizontal velocity instead of replaying an absolute contract distance from the action start root.
 - The recovered leap tuning was too high/floaty for the current gameplay target: `jump_z_velocity=620`, vertical peak `180`, and speed curve ending at `0.35`, which felt like strong late-air deceleration.
 - The first low/fast retune attempt (`duration_ms=560`, `jump_z_velocity=520`, `gravity_scale=1.15`) was rejected after PIE feedback because it could end the authored action window before landing and produced an abrupt apex-to-ground drop.
+- Live LeapFlow monitoring showed `local_elapsed` near the end of leap while `server_elapsed` was still close to action start (`client_lead` around 0.7-0.8s). The server was rebuilding action-motion locomotion with `ActionStartedTick = current tick` every snapshot instead of preserving the original action-start tick.
 
 ### Change
 
@@ -35,6 +36,7 @@ The dodge fix proved that owned locomotion must present root movement from the s
 - Server fixture contract/curves were mirrored to avoid DB/runtime fixture divergence.
 - `db-api` was restarted before `game-server` so the canonical seed was actually reapplied; restarting only the game-server leaves the old DB contract active.
 - Leap diagnostics are temporarily enabled by default in Unreal and server bridge, while dodge diagnostics are disabled by default for this leap pass.
+- Server `actionMotionState` now stores `StartedTick` and `applyActionMotionLocomotionTiming` republishes that same start tick for every owned locomotion/skill-root snapshot. This keeps client action projection on the real action timeline instead of treating every snapshot as a fresh leap start.
 
 ### Tests
 
@@ -42,6 +44,7 @@ The dodge fix proved that owned locomotion must present root movement from the s
 - `go build ./...` in `server-apeiron` succeeded.
 - `go build ./...` in `db-apeiron` succeeded.
 - `db-api` boot log confirmed `bootstrap\014_action_runtime_contract_seed.sql` reapplied before the game-server restart.
+- After live monitoring, `go build ./...` in `server-apeiron` succeeded again with stable `StartedTick` publication.
 
 ### Guardrail
 
