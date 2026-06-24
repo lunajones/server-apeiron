@@ -269,8 +269,10 @@ type creatureStaminaPolicyJSON struct {
 type movementActionContractMetadata struct {
 	AbilityKey             string  `json:"ability_key"`
 	AirborneDurationMS     int32   `json:"airborne_duration_ms"`
+	VerticalMotionModel    string  `json:"vertical_motion_model"`
 	JumpZVelocity          float64 `json:"jump_z_velocity"`
 	GravityScale           float64 `json:"gravity_scale"`
+	GravityZCMSS           float64 `json:"gravity_z_cm_s2"`
 	ExpectedApexMS         int32   `json:"expected_apex_ms"`
 	LandingDetectionPolicy string  `json:"landing_detection_policy"`
 	GroundZPolicy          string  `json:"ground_z_policy"`
@@ -1406,7 +1408,7 @@ func DevFixtureRuntimeContracts() RuntimeContracts {
 		{ID: "grounded_move_v1", AbilityKey: "move", ActionType: "move", DurationMS: 180, ActiveMS: 120, RecoveryMS: 60, ReconciliationContractID: "grounded_move_reconciliation", ReconciliationCategory: "grounded_move_reconciliation", PhaseWindowPolicy: "server_authoritative", PredictionErrorPolicy: "bounded_smooth_correction"},
 		{ID: "turn_v1_rate_limited_contextual", AbilityKey: "turn", ActionType: "turn", DurationMS: 180, ActiveMS: 120, RecoveryMS: 60, YawRateDegPerSec: 720, ReconciliationContractID: "turn_reconciliation", ReconciliationCategory: "turn_reconciliation", PhaseWindowPolicy: "server_authoritative", PredictionErrorPolicy: "bounded_smooth_correction"},
 		{ID: "dodge_v1_full_iframe", AbilityKey: "dodge", ActionType: "dodge", DurationMS: 320, ActiveMS: 260, RecoveryMS: 60, DistanceCM: 360, BaseSpeedCMS: 1125, SpeedCurveSamples: fixtureMovementCurve("dodge_v1_full_iframe"), VerticalCurveSamples: fixtureVerticalCurve("dodge_v1_full_iframe"), ReconciliationContractID: "dodge_reconciliation", ReconciliationCategory: "dodge_reconciliation", PhaseWindowPolicy: "server_authoritative", PredictionErrorPolicy: "bounded_smooth_correction"},
-		{ID: "jump_v1_authoritative_grounded_handoff", AbilityKey: "jump", ActionType: "leap", DurationMS: 960, AirborneDurationMS: 900, ActiveMS: 900, RecoveryMS: 60, DistanceCM: 280, BaseSpeedCMS: 292, SpeedCurveSamples: fixtureMovementCurve("jump_v1_authoritative_grounded_handoff"), VerticalCurveSamples: fixtureVerticalCurve("jump_v1_authoritative_grounded_handoff"), JumpZVelocity: 480, GravityScale: 1, ExpectedApexMS: 245, LandingDetectionPolicy: "server_grounded_handoff", GroundZPolicy: "server_position_is_actor_root", AllowsAirControl: true, AirControlModifier: 0.35, ReconciliationContractID: "leap_reconciliation", ReconciliationCategory: "leap_reconciliation", PhaseWindowPolicy: "server_authoritative", PredictionErrorPolicy: "bounded_smooth_correction"},
+		{ID: "jump_v1_authoritative_grounded_handoff", AbilityKey: "jump", ActionType: "leap", DurationMS: 960, AirborneDurationMS: 900, ActiveMS: 900, RecoveryMS: 60, DistanceCM: 280, BaseSpeedCMS: 292, SpeedCurveSamples: fixtureMovementCurve("jump_v1_authoritative_grounded_handoff"), VerticalCurveSamples: fixtureVerticalCurve("jump_v1_authoritative_grounded_handoff"), VerticalMotionModel: "ballistic", JumpZVelocity: 480, GravityScale: 1, GravityZCMSS: movement.DefaultUnrealGravityZCMSS, ExpectedApexMS: 490, LandingDetectionPolicy: "server_grounded_handoff", GroundZPolicy: "server_position_is_actor_root", AllowsAirControl: true, AirControlModifier: 0.35, ReconciliationContractID: "leap_reconciliation", ReconciliationCategory: "leap_reconciliation", PhaseWindowPolicy: "server_authoritative", PredictionErrorPolicy: "bounded_smooth_correction"},
 	} {
 		contracts.ActionContracts[contract.AbilityKey] = contract
 	}
@@ -2057,6 +2059,7 @@ func fixtureCreatureSkillContract(skillID string, contractID string, actionType 
 		DistanceCM:               distance,
 		SpeedCurveSamples:        fixtureMovementCurve(skillID),
 		VerticalCurveSamples:     fixtureVerticalCurve(skillID),
+		VerticalMotionModel:      "curve",
 		GravityScale:             1,
 		ReconciliationContractID: reconciliation,
 		ReconciliationCategory:   reconciliation,
@@ -2288,8 +2291,10 @@ func runtimeContractFromDB(contract *dbv1.MovementActionContract, abilityKey str
 		BaseSpeedCMS:             contract.GetBaseSpeedCmS(),
 		SpeedCurveSamples:        movementCurvePointsFromDB(contract.GetSpeedCurve()),
 		VerticalCurveSamples:     movementCurvePointsFromDB(contract.GetVerticalCurve()),
+		VerticalMotionModel:      meta.VerticalMotionModel,
 		JumpZVelocity:            meta.JumpZVelocity,
 		GravityScale:             meta.GravityScale,
+		GravityZCMSS:             meta.GravityZCMSS,
 		ExpectedApexMS:           meta.ExpectedApexMS,
 		LandingDetectionPolicy:   meta.LandingDetectionPolicy,
 		GroundZPolicy:            meta.GroundZPolicy,

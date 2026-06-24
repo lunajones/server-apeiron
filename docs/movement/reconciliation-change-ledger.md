@@ -19,6 +19,7 @@ The dodge fix proved that owned locomotion must present root movement from the s
 - The recovered leap tuning was too high/floaty for the current gameplay target: `jump_z_velocity=620`, vertical peak `180`, and speed curve ending at `0.35`, which felt like strong late-air deceleration.
 - The first low/fast retune attempt (`duration_ms=560`, `jump_z_velocity=520`, `gravity_scale=1.15`) was rejected after PIE feedback because it could end the authored action window before landing and produced an abrupt apex-to-ground drop.
 - Live LeapFlow monitoring showed `local_elapsed` near the end of leap while `server_elapsed` was still close to action start (`client_lead` around 0.7-0.8s). The server was rebuilding action-motion locomotion with `ActionStartedTick = current tick` every snapshot instead of preserving the original action-start tick.
+- After `StartedTick` was fixed, live LeapFlow showed timeline alignment was healthy (`client_lead` around -0.05s), but snapshots still published `server_pos.z` at ground height (`96.9`) while the client was airborne (`local_pos.z` around 190-215). This made the leap look like the server/root had already touched the ground while the visible cylinder kept falling.
 
 ### Change
 
@@ -37,6 +38,10 @@ The dodge fix proved that owned locomotion must present root movement from the s
 - `db-api` was restarted before `game-server` so the canonical seed was actually reapplied; restarting only the game-server leaves the old DB contract active.
 - Leap diagnostics are temporarily enabled by default in Unreal and server bridge, while dodge diagnostics are disabled by default for this leap pass.
 - Server `actionMotionState` now stores `StartedTick` and `applyActionMotionLocomotionTiming` republishes that same start tick for every owned locomotion/skill-root snapshot. This keeps client action projection on the real action timeline instead of treating every snapshot as a fresh leap start.
+- Movement action progress now resolves vertical displacement through the same authoritative movement contract path:
+  - `vertical_motion_model=ballistic` uses `jump_z_velocity`, `gravity_scale`, and `gravity_z_cm_s2` for player jump/leap parity with Unreal CharacterMovement.
+  - `vertical_motion_model=curve` keeps curve-authored vertical arcs for actions such as wolf lunge, avoiding a player-leap fix that changes creature leap feel.
+- DB seed metadata now declares `vertical_motion_model` and `gravity_z_cm_s2`; player jump expected apex metadata was corrected to match the ballistic contract instead of the recovered stale value.
 
 ### Tests
 
@@ -45,6 +50,7 @@ The dodge fix proved that owned locomotion must present root movement from the s
 - `go build ./...` in `db-apeiron` succeeded.
 - `db-api` boot log confirmed `bootstrap\014_action_runtime_contract_seed.sql` reapplied before the game-server restart.
 - After live monitoring, `go build ./...` in `server-apeiron` succeeded again with stable `StartedTick` publication.
+- After vertical authority fix, `go build ./...` in `server-apeiron` and `db-apeiron` succeeded.
 
 ### Guardrail
 

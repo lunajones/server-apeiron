@@ -3,6 +3,7 @@ package movement
 import (
 	"math"
 	"sort"
+	"strings"
 	"time"
 
 	domainmath "server-apeiron/internal/domain/math"
@@ -60,6 +61,8 @@ type ActionMotionProgressResult struct {
 	TotalDistanceCM float64
 	Complete        bool
 }
+
+const DefaultUnrealGravityZCMSS = 980.0
 
 type ConstantStepInput struct {
 	Position         domainmath.Position
@@ -127,13 +130,17 @@ func ResolveActionMotionProgress(in ActionMotionProgressInput) ActionMotionProgr
 	progress := ActionMotionProgress(in.Contract, in.Elapsed)
 	distance := totalDistance * progress
 	projected := in.Position.Add(dir.Scale(distance))
+	verticalOffset, verticalVelocity := ActionVerticalMotion(in.Contract, in.Elapsed)
+	projected.Z = in.Position.Z + verticalOffset
 	elapsedRatio := math.Max(0, math.Min(1, in.Elapsed.Seconds()/duration.Seconds()))
 	speed := ActionProgressSpeed(in.Contract, totalDistance, duration, elapsedRatio)
+	velocity := dir.Scale(speed)
+	velocity.Z = verticalVelocity
 	out.MotionResult = MotionResult{
 		Start:            in.Position,
 		Projected:        projected,
 		Direction:        dir,
-		Velocity:         dir.Scale(speed),
+		Velocity:         velocity,
 		SpeedCMPerSecond: speed,
 		DistanceCM:       distance,
 		Stopped:          false,
@@ -141,6 +148,43 @@ func ResolveActionMotionProgress(in ActionMotionProgressInput) ActionMotionProgr
 	out.Progress = progress
 	out.Complete = progress >= 1
 	return out
+}
+
+func ActionVerticalMotion(contract RuntimeActionContract, elapsed time.Duration) (float64, float64) {
+	if elapsed <= 0 {
+		return 0, 0
+	}
+	if strings.EqualFold(contract.VerticalMotionModel, "ballistic") && contract.JumpZVelocity > 0 && contract.GravityScale > 0 {
+		gravity := contract.GravityZCMSS
+		if gravity <= 0 {
+			gravity = DefaultUnrealGravityZCMSS
+		}
+		t := elapsed.Seconds()
+		velocityZ := contract.JumpZVelocity - (gravity * contract.GravityScale * t)
+		offsetZ := (contract.JumpZVelocity * t) - (0.5 * gravity * contract.GravityScale * t * t)
+		if offsetZ <= 0 {
+			return 0, 0
+		}
+		return offsetZ, velocityZ
+	}
+	duration := ActionDuration(contract)
+	if duration <= 0 {
+		return 0, 0
+	}
+	samples := normalizedCurveSamples(contract.VerticalCurveSamples)
+	if len(samples) == 0 {
+		return 0, 0
+	}
+	t := math.Max(0, math.Min(1, elapsed.Seconds()/duration.Seconds()))
+	offsetZ := MovementActionCurve{Points: samples}.Sample(t)
+	prevT := math.Max(0, t-(1.0/30.0)/duration.Seconds())
+	prevZ := MovementActionCurve{Points: samples}.Sample(prevT)
+	dt := (t - prevT) * duration.Seconds()
+	velocityZ := 0.0
+	if dt > domainmath.Epsilon {
+		velocityZ = (offsetZ - prevZ) / dt
+	}
+	return math.Max(0, offsetZ), velocityZ
 }
 
 func ResolveConstantStep(in ConstantStepInput) MotionResult {

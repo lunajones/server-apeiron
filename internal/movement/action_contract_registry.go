@@ -15,8 +15,10 @@ type RuntimeActionContract struct {
 	SpeedCurveID             string
 	SpeedCurveSamples        []MovementActionCurvePoint
 	VerticalCurveSamples     []MovementActionCurvePoint
+	VerticalMotionModel      string
 	JumpZVelocity            float64
 	GravityScale             float64
+	GravityZCMSS             float64
 	ExpectedApexMS           int32
 	LandingDetectionPolicy   string
 	GroundZPolicy            string
