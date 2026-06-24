@@ -782,3 +782,41 @@ Do not let generic Unreal falling physics become the owner of leap Z while the s
 leap from a movement action contract. Leap root has one owner: the shared contract. Landing/handoff
 may release to grounded movement only after the contract-owned vertical path reaches the ground and
 the client/server handoff agrees.
+
+## 2026-06-23 - Leap Debug Logging Isolated From Global Movement Trace
+
+### Symptom
+
+Manual PIE with leap debugging enabled produced continuous logs while the player was standing still:
+`SnapshotTimeline player_apply`, `ApeironMoveTrace unreal_snapshot`, and `MoveTraceCycle` with
+`action=move_stop` / `mode=GroundedMove`. Those logs were not leap logs and made live diagnosis noisy.
+
+### Cause
+
+The Unreal bridge reused `bLogLeapReconciliationFlow` as a generic movement/snapshot trace gate.
+Because leap debug was enabled by default in recovered C++ fields, normal idle snapshots were printed
+even when the current focus was only player leap.
+
+### Change
+
+- Client `LeapFlow` logging is now off by default and enabled by `-ApeironLeapDebug`.
+- Bridge leap reconciliation logging is now off by default and enabled by `-ApeironLeapDebug`.
+- When `-ApeironLeapDebug` is active, the bridge forces leap-only movement debug filtering and keeps
+  global rubberband/player snapshot probes off.
+- `SnapshotTimeline` and `MoveTraceCycle` no longer print grounded `move_stop` spam under leap-only
+  debug.
+- Server `APEIRON_LEAP_DEBUG=true` now logs per-tick owned leap progress (`projected_z`,
+  `velocity_z`, elapsed/duration, completion) without enabling global movement logs.
+
+### Tests
+
+- `go build ./...` passed in `server-apeiron`.
+- `PlainTestMapEditor Win64 Development` Unreal build succeeded with `-NoHotReload`.
+- `game-server` restarted through `scripts/start_game_server_with_db.ps1 -Build -Restart -LeapDebug`
+  and loaded DB runtime contracts.
+
+### Guardrail
+
+Each movement investigation must have a narrow debug flag. Leap debug should emit only leap/action
+handoff evidence; dodge debug should emit only dodge evidence; global movement/rubberband traces are
+for broad scanner passes only.

@@ -1764,6 +1764,15 @@ func (r *Runtime) advanceActionMotionLocked(entity *entityState, now time.Time) 
 	entity.locomotion.ServerReceivedTick = r.tick
 	entity.locomotion.LastUpdatedTick = r.tick
 	applyActionInstanceLocomotionTiming(entity.locomotion, entity.actionInstance, now)
+	r.logLeapDebugStateLocked("owned_locomotion_progress", entity, map[string]string{
+		"phase":        entity.locomotion.GetPhase(),
+		"distance_cm":  strconv.FormatFloat(distanceCM, 'f', 1, 64),
+		"complete":     strconv.FormatBool(progress.Complete),
+		"projected_z":  strconv.FormatFloat(entity.position.z, 'f', 1, 64),
+		"velocity_z":   strconv.FormatFloat(entity.velocity.z, 'f', 1, 64),
+		"elapsed_ms":   strconv.FormatInt(progress.Elapsed.Milliseconds(), 10),
+		"duration_ms":  strconv.FormatInt(progress.Duration.Milliseconds(), 10),
+	})
 
 	if progress.Complete || contact.Stopped {
 		if progress.Complete && !contact.Stopped {
