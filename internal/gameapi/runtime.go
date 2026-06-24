@@ -131,6 +131,7 @@ type actionMotionState struct {
 	AllowsPassthrough bool
 	StopsAtContact    bool
 	ContactStopCM     float64
+	UseVerticalRoot   bool
 }
 
 type vector struct {
@@ -1406,10 +1407,11 @@ func (r *Runtime) applyImpulse(player *entityState, cmd *gamev1.PlayerCommand, c
 		Contract:  contract,
 	})
 	progress := movement.ResolveActionMotionProgress(movement.ActionMotionProgressInput{
-		Position:  toDomainVector(start),
-		Direction: toDomainVector(dir),
-		Contract:  contract,
-		Elapsed:   0,
+		Position:        toDomainVector(start),
+		Direction:       toDomainVector(dir),
+		Contract:        contract,
+		Elapsed:         0,
+		UseVerticalRoot: shouldUseOwnedLocomotionVerticalRoot(contract),
 	})
 	player.actionMotion = &actionMotionState{
 		CommandID:         cmd.GetCommandId(),
@@ -1424,6 +1426,7 @@ func (r *Runtime) applyImpulse(player *entityState, cmd *gamev1.PlayerCommand, c
 		Contract:          contract,
 		NormalInputPolicy: "blocked_during_owned_root",
 		TotalDistanceCM:   fullMotion.DistanceCM,
+		UseVerticalRoot:   shouldUseOwnedLocomotionVerticalRoot(contract),
 	}
 	player.position = start
 	player.velocity = fromDomainVector(progress.Velocity)
@@ -1452,6 +1455,13 @@ func (r *Runtime) applyImpulse(player *entityState, cmd *gamev1.PlayerCommand, c
 		"requested_ability": contract.AbilityKey,
 		"lock_ms":           strconv.FormatInt(int64(lockMS), 10),
 	})
+}
+
+func shouldUseOwnedLocomotionVerticalRoot(contract MovementActionRuntimeContract) bool {
+	if !strings.EqualFold(contract.ActionType, "leap") {
+		return false
+	}
+	return contract.VerticalMotionModel != "" || len(contract.VerticalCurveSamples) > 0 || contract.JumpZVelocity > 0
 }
 
 func (r *Runtime) beginOwnedLocomotionActionLocked(player *entityState, now time.Time) {
@@ -1727,6 +1737,7 @@ func (r *Runtime) advanceActionMotionLocked(entity *entityState, now time.Time) 
 		Contract:           motion.Contract,
 		FallbackDistanceCM: motion.TotalDistanceCM,
 		Elapsed:            now.Sub(motion.StartedAt),
+		UseVerticalRoot:    motion.UseVerticalRoot,
 	})
 
 	projected := fromDomainVector(progress.Projected)
@@ -1765,13 +1776,13 @@ func (r *Runtime) advanceActionMotionLocked(entity *entityState, now time.Time) 
 	entity.locomotion.LastUpdatedTick = r.tick
 	applyActionInstanceLocomotionTiming(entity.locomotion, entity.actionInstance, now)
 	r.logLeapDebugStateLocked("owned_locomotion_progress", entity, map[string]string{
-		"phase":        entity.locomotion.GetPhase(),
-		"distance_cm":  strconv.FormatFloat(distanceCM, 'f', 1, 64),
-		"complete":     strconv.FormatBool(progress.Complete),
-		"projected_z":  strconv.FormatFloat(entity.position.z, 'f', 1, 64),
-		"velocity_z":   strconv.FormatFloat(entity.velocity.z, 'f', 1, 64),
-		"elapsed_ms":   strconv.FormatInt(progress.Elapsed.Milliseconds(), 10),
-		"duration_ms":  strconv.FormatInt(progress.Duration.Milliseconds(), 10),
+		"phase":       entity.locomotion.GetPhase(),
+		"distance_cm": strconv.FormatFloat(distanceCM, 'f', 1, 64),
+		"complete":    strconv.FormatBool(progress.Complete),
+		"projected_z": strconv.FormatFloat(entity.position.z, 'f', 1, 64),
+		"velocity_z":  strconv.FormatFloat(entity.velocity.z, 'f', 1, 64),
+		"elapsed_ms":  strconv.FormatInt(progress.Elapsed.Milliseconds(), 10),
+		"duration_ms": strconv.FormatInt(progress.Duration.Milliseconds(), 10),
 	})
 
 	if progress.Complete || contact.Stopped {

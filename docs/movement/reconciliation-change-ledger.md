@@ -820,3 +820,49 @@ even when the current focus was only player leap.
 Each movement investigation must have a narrow debug flag. Leap debug should emit only leap/action
 handoff evidence; dodge debug should emit only dodge evidence; global movement/rubberband traces are
 for broad scanner passes only.
+
+## 2026-06-23 - Leap Vertical Root Ownership Isolated From Creature Skill Root
+
+### Symptom
+
+Manual PIE after leap vertical restoration showed two regressions:
+
+- Player leap had less landing rubber, but after touching down the character moved slowly for a
+  short window before normal control returned.
+- Wolf lunge made the creature visually/physically climb higher on repeated lunges.
+
+### Hypothesis
+
+The restored vertical action model was too broadly attached to action-motion progress. Player
+`owned_locomotion` leap needs contract-owned vertical root. Creature `skill_root` lunge needs
+authoritative planar root plus temporary visual arc; otherwise its server root can accumulate Z and
+the client can keep rendering the creature above the combat plane.
+
+The slow player post-landing feel came from treating any recent leap exit as a grounded transition
+that can override sprint/ground speed even when no explicit grounded handoff is active.
+
+### Change
+
+- `internal/movement.ResolveActionMotionProgress` now applies vertical root only when the caller
+  explicitly sets `UseVerticalRoot`.
+- Server player `owned_locomotion` sets `UseVerticalRoot` from the movement action contract when the
+  action type is `leap` and the contract declares vertical motion.
+- Creature/player skill root, impact control, and grounded skill movement remain planar on the
+  authoritative server root unless a future contract path explicitly opts into vertical root.
+- Unreal no longer suppresses sprint or runs grounded-move velocity sync merely because a leap ended
+  recently. Leap after touchdown releases to normal grounded input unless a real grounded carry
+  handoff is active.
+
+### Tests
+
+- `go test ./internal/movement ./internal/gameapi` passed.
+- `go build ./...` passed in `server-apeiron`.
+- `go build ./...` passed in `db-apeiron`.
+- `PlainTestMapEditor Win64 Development` Unreal build succeeded with `-NoHotReload`.
+
+### Guardrail
+
+Do not attach player jump/leap vertical ownership to generic skill root motion. Creature lunge can
+look airborne through visual arc and temporal hitbox contracts, but its authoritative collision root
+must stay planar until a dedicated creature-airborne-root contract exists and is consumed by both
+server and client.

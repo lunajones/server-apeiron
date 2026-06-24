@@ -51,6 +51,7 @@ type ActionMotionProgressInput struct {
 	Contract           RuntimeActionContract
 	FallbackDistanceCM float64
 	Elapsed            time.Duration
+	UseVerticalRoot    bool
 }
 
 type ActionMotionProgressResult struct {
@@ -130,8 +131,12 @@ func ResolveActionMotionProgress(in ActionMotionProgressInput) ActionMotionProgr
 	progress := ActionMotionProgress(in.Contract, in.Elapsed)
 	distance := totalDistance * progress
 	projected := in.Position.Add(dir.Scale(distance))
-	verticalOffset, verticalVelocity := ActionVerticalMotion(in.Contract, in.Elapsed)
-	projected.Z = in.Position.Z + verticalOffset
+	verticalVelocity := 0.0
+	if in.UseVerticalRoot {
+		verticalOffset, velocityZ := ActionVerticalMotion(in.Contract, in.Elapsed)
+		projected.Z = in.Position.Z + verticalOffset
+		verticalVelocity = velocityZ
+	}
 	elapsedRatio := math.Max(0, math.Min(1, in.Elapsed.Seconds()/duration.Seconds()))
 	speed := ActionProgressSpeed(in.Contract, totalDistance, duration, elapsedRatio)
 	velocity := dir.Scale(speed)
