@@ -1406,7 +1406,7 @@ func DevFixtureRuntimeContracts() RuntimeContracts {
 		{ID: "grounded_move_v1", AbilityKey: "move", ActionType: "move", DurationMS: 180, ActiveMS: 120, RecoveryMS: 60, ReconciliationContractID: "grounded_move_reconciliation", ReconciliationCategory: "grounded_move_reconciliation", PhaseWindowPolicy: "server_authoritative", PredictionErrorPolicy: "bounded_smooth_correction"},
 		{ID: "turn_v1_rate_limited_contextual", AbilityKey: "turn", ActionType: "turn", DurationMS: 180, ActiveMS: 120, RecoveryMS: 60, YawRateDegPerSec: 720, ReconciliationContractID: "turn_reconciliation", ReconciliationCategory: "turn_reconciliation", PhaseWindowPolicy: "server_authoritative", PredictionErrorPolicy: "bounded_smooth_correction"},
 		{ID: "dodge_v1_full_iframe", AbilityKey: "dodge", ActionType: "dodge", DurationMS: 320, ActiveMS: 260, RecoveryMS: 60, DistanceCM: 360, BaseSpeedCMS: 1125, SpeedCurveSamples: fixtureMovementCurve("dodge_v1_full_iframe"), VerticalCurveSamples: fixtureVerticalCurve("dodge_v1_full_iframe"), ReconciliationContractID: "dodge_reconciliation", ReconciliationCategory: "dodge_reconciliation", PhaseWindowPolicy: "server_authoritative", PredictionErrorPolicy: "bounded_smooth_correction"},
-		{ID: "jump_v1_authoritative_grounded_handoff", AbilityKey: "jump", ActionType: "leap", DurationMS: 620, AirborneDurationMS: 560, ActiveMS: 560, RecoveryMS: 60, DistanceCM: 280, BaseSpeedCMS: 452, SpeedCurveSamples: fixtureMovementCurve("jump_v1_authoritative_grounded_handoff"), VerticalCurveSamples: fixtureVerticalCurve("jump_v1_authoritative_grounded_handoff"), JumpZVelocity: 620, GravityScale: 1, ExpectedApexMS: 310, LandingDetectionPolicy: "server_grounded_handoff", GroundZPolicy: "server_position_is_actor_root", AllowsAirControl: true, AirControlModifier: 0.35, ReconciliationContractID: "leap_reconciliation", ReconciliationCategory: "leap_reconciliation", PhaseWindowPolicy: "server_authoritative", PredictionErrorPolicy: "bounded_smooth_correction"},
+		{ID: "jump_v1_authoritative_grounded_handoff", AbilityKey: "jump", ActionType: "leap", DurationMS: 960, AirborneDurationMS: 900, ActiveMS: 900, RecoveryMS: 60, DistanceCM: 280, BaseSpeedCMS: 292, SpeedCurveSamples: fixtureMovementCurve("jump_v1_authoritative_grounded_handoff"), VerticalCurveSamples: fixtureVerticalCurve("jump_v1_authoritative_grounded_handoff"), JumpZVelocity: 480, GravityScale: 1, ExpectedApexMS: 245, LandingDetectionPolicy: "server_grounded_handoff", GroundZPolicy: "server_position_is_actor_root", AllowsAirControl: true, AirControlModifier: 0.35, ReconciliationContractID: "leap_reconciliation", ReconciliationCategory: "leap_reconciliation", PhaseWindowPolicy: "server_authoritative", PredictionErrorPolicy: "bounded_smooth_correction"},
 	} {
 		contracts.ActionContracts[contract.AbilityKey] = contract
 	}
@@ -1674,7 +1674,7 @@ func fixtureMovementCurve(contractID string) []movement.MovementActionCurvePoint
 	case "dodge_v1_full_iframe":
 		return []movement.MovementActionCurvePoint{curvePoint(0, 0.35), curvePoint(0.35, 1), curvePoint(1, 0.2)}
 	case "jump_v1_authoritative_grounded_handoff":
-		return []movement.MovementActionCurvePoint{curvePoint(0, 0.25), curvePoint(0.35, 0.85), curvePoint(1, 0.35)}
+		return []movement.MovementActionCurvePoint{curvePoint(0, 0.35), curvePoint(0.35, 0.95), curvePoint(1, 0.62)}
 	case "player_basic_attack_1":
 		return []movement.MovementActionCurvePoint{curvePoint(0, 0.35), curvePoint(0.35, 1), curvePoint(1, 0.2)}
 	case "player_basic_attack_2":
@@ -1701,7 +1701,7 @@ func fixtureVerticalCurve(contractID string) []movement.MovementActionCurvePoint
 	case "dodge_v1_full_iframe":
 		return []movement.MovementActionCurvePoint{curvePoint(0, 0), curvePoint(0.4, 18), curvePoint(1, 0)}
 	case "jump_v1_authoritative_grounded_handoff":
-		return []movement.MovementActionCurvePoint{curvePoint(0, 0), curvePoint(0.5, 180), curvePoint(1, 0)}
+		return []movement.MovementActionCurvePoint{curvePoint(0, 0), curvePoint(0.46, 110), curvePoint(1, 0)}
 	case "lunge":
 		return []movement.MovementActionCurvePoint{curvePoint(0, 0), curvePoint(0.36, 120), curvePoint(1, 0)}
 	case "wolf_dodge":

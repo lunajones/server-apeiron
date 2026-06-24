@@ -4,6 +4,7 @@ param(
     [switch]$MovementValidation,
     [switch]$DisableCreatures,
     [switch]$DodgeDebug,
+    [switch]$LeapDebug,
     [string]$DbEndpoint = "127.0.0.1:50051"
 )
 
@@ -40,11 +41,12 @@ $env:STATICDATA_PRELOAD_WEAPON_KIT_IDS = "weaponkit_sword_shield"
 $env:MOVEMENT_VALIDATION = if ($MovementValidation) { "true" } else { "false" }
 $env:CREATURE_RUNTIME_ENABLED = if ($DisableCreatures -or $MovementValidation) { "false" } else { "true" }
 $env:APEIRON_DODGE_DEBUG = if ($DodgeDebug) { "true" } else { "false" }
+$env:APEIRON_LEAP_DEBUG = if ($LeapDebug) { "true" } else { "false" }
 
 $OutLog = Join-Path $LogDir "game-server-db-$Stamp.out.log"
 $ErrLog = Join-Path $LogDir "game-server-db-$Stamp.err.log"
 
 Start-Process -FilePath $Bin -WorkingDirectory $Root -RedirectStandardOutput $OutLog -RedirectStandardError $ErrLog -WindowStyle Hidden
-Write-Host "game-server started with DB_APEIRON_ENDPOINT=$DbEndpoint MOVEMENT_VALIDATION=$env:MOVEMENT_VALIDATION CREATURE_RUNTIME_ENABLED=$env:CREATURE_RUNTIME_ENABLED APEIRON_DODGE_DEBUG=$env:APEIRON_DODGE_DEBUG"
+Write-Host "game-server started with DB_APEIRON_ENDPOINT=$DbEndpoint MOVEMENT_VALIDATION=$env:MOVEMENT_VALIDATION CREATURE_RUNTIME_ENABLED=$env:CREATURE_RUNTIME_ENABLED APEIRON_DODGE_DEBUG=$env:APEIRON_DODGE_DEBUG APEIRON_LEAP_DEBUG=$env:APEIRON_LEAP_DEBUG"
 Write-Host "stdout: $OutLog"
 Write-Host "stderr: $ErrLog"

@@ -1308,6 +1308,10 @@ func (r *Runtime) applyMoveHandoffLocked(player *entityState, cmd *gamev1.Player
 	player.locomotion.ClientActionSequence = move.GetHandoffSequence()
 	player.locomotion.LastUpdatedTick = r.tick
 	player.locomotion.LandingHandoffActive = false
+	r.logLeapDebugStateLocked("landing_handoff_applied", player, map[string]string{
+		"handoff_sequence":    strconv.FormatUint(move.GetHandoffSequence(), 10),
+		"handoff_client_tick": strconv.FormatUint(move.GetHandoffClientTick(), 10),
+	})
 	return true
 }
 
@@ -1368,8 +1372,16 @@ func (r *Runtime) applyImpulse(player *entityState, cmd *gamev1.PlayerCommand, c
 		"requested_action":  contract.ActionType,
 		"requested_ability": contract.AbilityKey,
 	})
+	r.logLeapDebugStateLocked("owned_locomotion_begin_before_clear", player, map[string]string{
+		"requested_action":  contract.ActionType,
+		"requested_ability": contract.AbilityKey,
+	})
 	r.beginOwnedLocomotionActionLocked(player, nowTime)
 	r.logDodgeDebugStateLocked("owned_locomotion_begin_after_clear", player, map[string]string{
+		"requested_action":  contract.ActionType,
+		"requested_ability": contract.AbilityKey,
+	})
+	r.logLeapDebugStateLocked("owned_locomotion_begin_after_clear", player, map[string]string{
 		"requested_action":  contract.ActionType,
 		"requested_ability": contract.AbilityKey,
 	})
@@ -1429,6 +1441,11 @@ func (r *Runtime) applyImpulse(player *entityState, cmd *gamev1.PlayerCommand, c
 	player.actionLockedUntil = nowTime.Add(time.Duration(lockMS) * time.Millisecond)
 	player.actionLockReason = "active_locomotion:" + contract.ActionType
 	r.logDodgeDebugStateLocked("owned_locomotion_apply_complete", player, map[string]string{
+		"requested_action":  contract.ActionType,
+		"requested_ability": contract.AbilityKey,
+		"lock_ms":           strconv.FormatInt(int64(lockMS), 10),
+	})
+	r.logLeapDebugStateLocked("owned_locomotion_apply_complete", player, map[string]string{
 		"requested_action":  contract.ActionType,
 		"requested_ability": contract.AbilityKey,
 		"lock_ms":           strconv.FormatInt(int64(lockMS), 10),
@@ -1845,6 +1862,10 @@ func (r *Runtime) completeActionMotionLocked(entity *entityState, motion *action
 			"completed_action":  motion.Contract.ActionType,
 			"completed_ability": motion.Contract.AbilityKey,
 		})
+		r.logLeapDebugStateLocked("owned_locomotion_complete_before_clear", entity, map[string]string{
+			"completed_action":  motion.Contract.ActionType,
+			"completed_ability": motion.Contract.AbilityKey,
+		})
 		entity.movementState = "grounded"
 		entity.skillState = "idle"
 		entity.combatState = "ready"
@@ -1853,6 +1874,10 @@ func (r *Runtime) completeActionMotionLocked(entity *entityState, motion *action
 		entity.actionLockedUntil = time.Time{}
 		entity.actionLockReason = ""
 		r.logDodgeDebugStateLocked("owned_locomotion_complete_after_clear", entity, map[string]string{
+			"completed_action":  motion.Contract.ActionType,
+			"completed_ability": motion.Contract.AbilityKey,
+		})
+		r.logLeapDebugStateLocked("owned_locomotion_complete_after_clear", entity, map[string]string{
 			"completed_action":  motion.Contract.ActionType,
 			"completed_ability": motion.Contract.AbilityKey,
 		})

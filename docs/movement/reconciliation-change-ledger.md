@@ -2,6 +2,51 @@
 
 This ledger records movement and skill-movement reconciliation changes that affected rubberbanding, prediction, action root ownership, and automated validation.
 
+## 2026-06-23 - Leap Root Playback Uses Contract Distance
+
+### Symptom
+
+Manual PIE reported player leap still rubberbanding near the end of the fall/landing, with the jump feeling too high and the descent/airborne horizontal motion feeling over-braked. Dodge had already been stabilized, so leap needed an isolated fix without changing dodge, walk/run, turn, or skill movement feel.
+
+### Hypothesis
+
+The dodge fix proved that owned locomotion must present root movement from the same movement action contract the server uses. Leap still differed: Unreal cached leap speed, timing, jump z and gravity, but did not receive/apply the authored horizontal distance into `ApplyAuthoritativeLeapContract`. Local leap prediction therefore remained velocity-driven while generic CharacterMovement and snapshot/ACK correction could perturb the root near the landing window.
+
+### Cause
+
+- The DB/server leap contract had `distance_cm`, but the Unreal contract application path only passed `base_speed_cm_s` into player leap prediction.
+- `TickLocalLeapPrediction` drove horizontal leap movement by assigning horizontal velocity instead of replaying an absolute contract distance from the action start root.
+- The recovered leap tuning was too high/floaty for the current gameplay target: `jump_z_velocity=620`, vertical peak `180`, and speed curve ending at `0.35`, which felt like strong late-air deceleration.
+- The first low/fast retune attempt (`duration_ms=560`, `jump_z_velocity=520`, `gravity_scale=1.15`) was rejected after PIE feedback because it could end the authored action window before landing and produced an abrupt apex-to-ground drop.
+
+### Change
+
+- Unreal leap contract application now receives `HorizontalDistanceCm` from cached contracts and ACK bootstrap, matching dodge contract semantics.
+- Local leap prediction now replays horizontal root position absolutely from `LocalLeapPredictionStartRootLocation` using the contract speed curve integral, while preserving Unreal vertical physics.
+- During active leap root playback, horizontal CharacterMovement velocity is zeroed after the contract move to prevent double integration between ticks.
+- DB canonical `jump_v1_authoritative_grounded_handoff` tuning was lowered while keeping the contract alive through the full landing window:
+  - `duration_ms: 620 -> 960`
+  - `active/airborne_ms: 560 -> 900`
+  - `base_speed_cm_s: 452 -> 292`
+  - `jump_z_velocity: 620 -> 480`
+  - `gravity_scale: 1.0 -> 1.0`
+  - vertical curve peak `180 -> 110`
+  - horizontal curve end `0.35 -> 0.62`
+- Server fixture contract/curves were mirrored to avoid DB/runtime fixture divergence.
+- `db-api` was restarted before `game-server` so the canonical seed was actually reapplied; restarting only the game-server leaves the old DB contract active.
+- Leap diagnostics are temporarily enabled by default in Unreal and server bridge, while dodge diagnostics are disabled by default for this leap pass.
+
+### Tests
+
+- `PlainTestMapEditor Win64 Development -NoHotReload` build succeeded.
+- `go build ./...` in `server-apeiron` succeeded.
+- `go build ./...` in `db-apeiron` succeeded.
+- `db-api` boot log confirmed `bootstrap\014_action_runtime_contract_seed.sql` reapplied before the game-server restart.
+
+### Guardrail
+
+Do not fix leap rubber by increasing leap deadzones or changing dodge. Leap horizontal movement is an owned root action during the contract window: server owns the final authority, but Unreal presentation must replay the same contract distance from the same start root and only use vertical CharacterMovement for jump physics.
+
 ## 2026-06-22 - Recovery Baseline After Project Deletion
 
 ### Symptom
@@ -600,3 +645,85 @@ This is diagnostic-only observability plus the existing owned-locomotion isolati
 the resulting logs to justify deadzones, hidden smoothing, disabled lateral movement, or client-only
 rollback. The next runtime fix must identify which authority still owns dodge after it should have
 released, or why the server rejects/damages during an iframe window.
+
+## 2026-06-23 - Dodge Zero-Speed Exit Handoff Releases Client Ownership
+
+### Symptom
+
+Manual PIE reported dodge improving but still showing rubber/snap at the end. The player could
+complete the visible dodge, then the next movement made the capsule appear offset or corrected.
+
+### Hypothesis
+
+The server-side dodge contract ends owned locomotion with an explicit grounded exit handoff and
+`LandingExitSpeed = 0`. That means the server is not asking the client to continue moving after
+the dodge root finishes. Unreal still had paths that could treat that snapshot as an active
+authoritative dodge state or seed local grounded carry from the local curve endpoint.
+
+### Change
+
+- Unreal now treats dodge `exit_handoff` with zero exit speed as a release marker, not active
+  movement ownership.
+- `StopLocalDodgePrediction` no longer invents a local endpoint carry speed when the authoritative
+  dodge exit speed is zero.
+- Rich locomotion snapshots and legacy dodge snapshots now share the same zero-speed exit behavior.
+- The change is isolated to dodge exit ownership. It does not alter dodge distance, iframe, stamina,
+  walk/run, leap, turn, or skill movement tuning.
+
+### Tests
+
+- `PlainTestMapEditor Win64 Development` Unreal build succeeded with `-NoHotReload`.
+
+### Guardrail
+
+Do not fix dodge end rubber by adding deadzone or changing dodge distance. If rubber remains, inspect
+whether the server is still publishing nonzero exit speed or whether a later grounded snapshot is
+anchored behind the client endpoint.
+
+## 2026-06-23 - Dodge Root-Owned Absolute Contract Playback
+
+### Symptom
+
+Manual and focused validation showed dodge no longer sliding infinitely, but the capsule could still
+visibly snap backward during active dodge. The log signature was a `client_move_suppressed` location
+moving opposite the dodge direction between local prediction ticks, while the server completed the
+same dodge at the correct 360cm endpoint.
+
+### Hypothesis
+
+Two presentation problems were active on the client:
+
+- CharacterMovement still had enough horizontal state to move the capsule between root-owned dodge
+  ticks after `SafeMoveUpdatedComponent`.
+- The local dodge integrator was incremental. If any ACK/snapshot/collision path perturbed the root
+  mid-dodge, the next tick continued from the wrong current location instead of re-owning the root
+  from the action contract's start point and timeline fraction.
+
+This was not a dodge distance/deadzone tuning issue. The server-owned locomotion state and iframe
+window remained correct in the server trace.
+
+### Change
+
+- During local dodge prediction, Unreal now treats the dodge as root-owned action movement:
+  `SafeMoveUpdatedComponent` applies the contract movement and the CharacterMovement horizontal
+  velocity is zeroed afterward, avoiding double integration between action ticks.
+- Dodge playback is now absolute against `LocalDodgePredictionStartRootLocation` and the contract
+  speed curve. Each tick computes the target root position for the current timeline fraction and
+  moves toward that target, instead of accumulating a delta from whatever root position another
+  system left behind.
+- The fix is generic for player dodge and does not alter the DB contract, dodge distance, stamina
+  cost, iframe timing, walk/run, leap, turn, or skill movement tuning.
+
+### Tests
+
+- `PlainTestMapEditor Win64 Development` Unreal build succeeded with `-NoHotReload`.
+- Dedicated Unreal dodge suite passed:
+  `Apeiron movement validation log scan passed`.
+- Extra log audit projected each dodge frame onto the dodge direction and found:
+  `dodge_monotonic_check passed drops=0`.
+
+### Guardrail
+
+Do not reintroduce horizontal CharacterMovement velocity as the driver for active dodge. Dodge root
+motion is owned by the movement action contract while active; snapshots may feed phase/direction, but
+they must not make the client accumulate action motion from a stale or externally corrected root.
