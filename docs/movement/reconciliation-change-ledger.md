@@ -866,3 +866,48 @@ Do not attach player jump/leap vertical ownership to generic skill root motion. 
 look airborne through visual arc and temporal hitbox contracts, but its authoritative collision root
 must stay planar until a dedicated creature-airborne-root contract exists and is consumed by both
 server and client.
+
+## 2026-06-23 - Leap Landing Handoff Cannot Outlive Active Leap Motion
+
+### Symptom
+
+Manual PIE after the vertical-root fix showed the leap itself landing cleanly, but grounded movement
+immediately after touchdown felt like slow motion until it recovered.
+
+### Evidence
+
+Server leap debug showed the player `owned_locomotion` leap completing on the ground with zero
+velocity. After that completion, Unreal still submitted grounded `move` / `move_stop` commands with
+`handoff=leap` and the old leap sequence. The server accepted those late handoffs even when
+`player.actionMotion == nil`, which let stale landing metadata overwrite the freshly grounded
+movement state.
+
+### Cause
+
+Leap landing handoff was treated as sticky metadata instead of a one-window action transition. Once
+the authoritative leap motion completed, the client-side pending handoff became stale, but both the
+client and server still allowed it to ride on normal grounded movement.
+
+### Change
+
+- Server `applyMoveHandoffLocked` now accepts leap landing handoff only while a matching active
+  `owned_locomotion` leap motion exists.
+- Late, mismatched, or non-owned leap handoffs are ignored and logged through leap debug instead of
+  mutating player position/velocity.
+- Unreal now considers a pending leap landing handoff current only while local leap prediction or an
+  authoritative leap state is still active.
+- Grounded `move` and `move_stop` paths clear stale pending leap handoff before submitting normal
+  movement, preventing `handoff=leap` from contaminating post-landing walk/run.
+
+### Tests
+
+- `go test ./internal/gameapi ./internal/movement` passed.
+- `go build ./...` passed in `server-apeiron`.
+- `go build ./...` passed in `db-apeiron`.
+- `PlainTestMapEditor Win64 Development` Unreal build succeeded with `-NoHotReload`.
+
+### Guardrail
+
+Landing handoff is an action transition, not a grounded movement mode. It must be consumed while the
+matching action is active or discarded. Never let old leap handoff metadata travel on later
+walk/run/turn commands.

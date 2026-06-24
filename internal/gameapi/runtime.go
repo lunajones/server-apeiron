@@ -1273,13 +1273,33 @@ func (r *Runtime) applyMoveHandoffLocked(player *entityState, cmd *gamev1.Player
 		return false
 	}
 	motion := player.actionMotion
-	if motion != nil {
-		if motion.Contract.ActionType != "leap" {
-			return false
-		}
-		if move.GetHandoffSequence() > 0 && motion.Sequence > 0 && move.GetHandoffSequence() != motion.Sequence {
-			return false
-		}
+	if motion == nil {
+		r.logLeapDebugStateLocked("landing_handoff_ignored", player, map[string]string{
+			"reason":              "no_active_motion",
+			"handoff_sequence":    strconv.FormatUint(move.GetHandoffSequence(), 10),
+			"handoff_client_tick": strconv.FormatUint(move.GetHandoffClientTick(), 10),
+		})
+		return false
+	}
+	if !strings.EqualFold(motion.MotionSource, "owned_locomotion") || !strings.EqualFold(motion.Contract.ActionType, "leap") {
+		r.logLeapDebugStateLocked("landing_handoff_ignored", player, map[string]string{
+			"reason":              "motion_not_active_leap",
+			"motion_source":       motion.MotionSource,
+			"motion_action":       motion.Contract.ActionType,
+			"motion_sequence":     strconv.FormatUint(motion.Sequence, 10),
+			"handoff_sequence":    strconv.FormatUint(move.GetHandoffSequence(), 10),
+			"handoff_client_tick": strconv.FormatUint(move.GetHandoffClientTick(), 10),
+		})
+		return false
+	}
+	if move.GetHandoffSequence() > 0 && motion.Sequence > 0 && move.GetHandoffSequence() != motion.Sequence {
+		r.logLeapDebugStateLocked("landing_handoff_ignored", player, map[string]string{
+			"reason":              "sequence_mismatch",
+			"motion_sequence":     strconv.FormatUint(motion.Sequence, 10),
+			"handoff_sequence":    strconv.FormatUint(move.GetHandoffSequence(), 10),
+			"handoff_client_tick": strconv.FormatUint(move.GetHandoffClientTick(), 10),
+		})
+		return false
 	}
 
 	if pos := move.GetHandoffPosition(); pos != nil {
