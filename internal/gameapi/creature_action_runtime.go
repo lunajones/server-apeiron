@@ -206,7 +206,42 @@ func (r *Runtime) applyCreatureSkillRootMotionLocked(creature *entityState, targ
 		return false
 	}
 	r.advanceActionMotionLocked(creature, now)
+	r.reaimCreatureLungeAtTakeoffLocked(creature, target, contract, instance, now)
 	return true
+}
+
+// reaimCreatureLungeAtTakeoffLocked commits a takeoff-latching action (lunge) to the current
+// target at the moment it goes airborne, then leaves it fixed. The remaining path is rotated
+// around the creature's current position so travel stays continuous — only the heading snaps.
+// This is what makes the pre-commit window meaningful: the body aligns during pre-commit, then
+// the lunge line locks onto the target at takeoff instead of staying fixed to the pre-commit
+// start aim. It fires once per action and only for latch_at_takeoff orientation policies.
+func (r *Runtime) reaimCreatureLungeAtTakeoffLocked(creature *entityState, target *entityState, contract SkillRuntimeContract, instance *actionruntime.Instance, now time.Time) {
+	if creature == nil || target == nil || instance == nil {
+		return
+	}
+	motion := creature.actionMotion
+	if motion == nil || motion.ReaimedAtTakeoff {
+		return
+	}
+	if contract.Orientation == nil || !strings.EqualFold(strings.TrimSpace(contract.Orientation.GetAttackYawLatchPolicy()), "latch_at_takeoff") {
+		return
+	}
+	envelope := creatureActionMovementEnvelopeAt(*instance, contract, now)
+	if envelope.AirborneStartsAt.IsZero() || now.Before(envelope.AirborneStartsAt) {
+		return
+	}
+	newDir := normalize(vector{x: target.position.x - creature.position.x, y: target.position.y - creature.position.y})
+	if newDir == (vector{}) {
+		return
+	}
+	start2D := vector{x: motion.StartPosition.x, y: motion.StartPosition.y}
+	cur2D := vector{x: creature.position.x, y: creature.position.y}
+	distSoFar := distance(start2D, cur2D)
+	motion.StartPosition = vector{x: creature.position.x - newDir.x*distSoFar, y: creature.position.y - newDir.y*distSoFar, z: motion.StartPosition.z}
+	motion.Direction = newDir
+	motion.ProjectedPosition = vector{x: motion.StartPosition.x + newDir.x*motion.TotalDistanceCM, y: motion.StartPosition.y + newDir.y*motion.TotalDistanceCM, z: motion.ProjectedPosition.z}
+	motion.ReaimedAtTakeoff = true
 }
 
 func (r *Runtime) startCreatureSkillRootMotionLocked(creature *entityState, target *entityState, decision creatureai.Decision, contract SkillRuntimeContract, instance actionruntime.Instance, rootStart time.Time) {

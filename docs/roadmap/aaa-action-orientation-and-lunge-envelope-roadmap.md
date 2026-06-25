@@ -1215,12 +1215,21 @@ and were confirmed pre-existing by reverting this pass's logic and re-running:
 These need either fixture-data updates (turn rate + stamina) or test expectation updates
 (lunge vertical, maul contact). Left untouched to avoid masking a possible real regression.
 
-### Deferred (next AAA steps)
+### Done - 2026-06-25 (airborne root re-aim at takeoff)
 
-- **Airborne root re-aim:** physical root direction is committed at root-start; the latch
-  captures that same direction so hitbox/presentation are consistent, but the 100ms
-  pre-commit alignment does not yet re-resolve the physical airborne path to the latched
-  yaw. Doing so risks reintroducing rubberband, so it needs care.
+- The lunge root now commits to the **current** target at takeoff instead of staying locked
+  to the pre-commit-start aim — this is what finally makes the pre-commit window matter.
+  `reaimCreatureLungeAtTakeoffLocked` (creature_action_runtime.go) rotates the remaining root
+  path around the creature's current position (travel stays continuous; only the heading
+  snaps), fires once per action, gated to `latch_at_takeoff` policies. The latch then captures
+  the re-aimed direction, so hitbox + presentation + root all agree on the committed line.
+  `actionMotionState.ReaimedAtTakeoff` guards the once-only behavior.
+- Server-side only (creature is server-sim, no client rubberband). Vertical arc is unaffected
+  (re-aim is horizontal; z curve is time-based). Test `TestCreatureLungeReaimsRootTowardTargetAtTakeoff`.
+- PIE note: re-aim is currently unbounded; if a far-moved target produces an ugly sharp flip
+  at takeoff, add a max re-aim angle to the orientation policy and clamp here.
+
+### Deferred (next AAA steps)
 - **`commit_align_ms`:** now honored (body finishes aligning by takeoff). All turn rates
   applied.
 - **`_source` fields:** now honored (see Done above). Player aim/camera resolution is the

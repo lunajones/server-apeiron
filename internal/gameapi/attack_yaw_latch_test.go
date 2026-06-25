@@ -279,3 +279,61 @@ func TestCreatureCommitAlignFinishesBodyAlignmentWithinWindow(t *testing.T) {
 		t.Fatalf("commit_align should align far better than the slow base rate: aligned %.1f vs slow %.1f", alignedErr, slowErr)
 	}
 }
+
+// TestCreatureLungeReaimsRootTowardTargetAtTakeoff locks that the lunge commits its root line
+// to the current target at takeoff (so the pre-commit window matters), rotating the remaining
+// path around the current position without breaking travel continuity, and only once.
+func TestCreatureLungeReaimsRootTowardTargetAtTakeoff(t *testing.T) {
+	runtime := NewRuntimeWithContracts(DevFixtureRuntimeContracts())
+	player := runtime.ensurePlayerLocked("local_player")
+	wolf := runtime.ensureWolfLocked(player)
+	// Wolf has already crept 50cm east during pre-commit (root started at origin aimed east).
+	wolf.position = vector{x: 50, y: 0, z: player.position.z}
+
+	contract := runtime.contracts.skillContract("lunge")
+	contract.Orientation = &dbv1.ActionOrientationPolicy{Id: "o", AttackYawLatchPolicy: "latch_at_takeoff"}
+	contract.Envelope = &dbv1.ActionEnvelopePolicy{PreCommitMs: 100, AirborneMs: 520, LandingInertiaMs: 200}
+
+	startedAt := time.Now()
+	instance := runtime.newCreatureActionInstance(wolf, "lunge", contract, vector{}, startedAt)
+	wolf.actionInstance = &instance
+	wolf.actionMotion = &actionMotionState{
+		SkillID:           "lunge",
+		CommandID:         instance.InstanceID,
+		MotionSource:      "skill_root",
+		StartedAt:         startedAt,
+		StartPosition:     vector{x: 0, y: 0, z: wolf.position.z},
+		ProjectedPosition: vector{x: 900, y: 0, z: wolf.position.z},
+		Direction:         vector{x: 1},
+		TotalDistanceCM:   900,
+		Contract:          contract.MovementAction,
+	}
+	// Target moved north during pre-commit; takeoff must commit the lunge toward it.
+	player.position = vector{x: 0, y: 600, z: player.position.z}
+	takeoff := creatureActionMovementEnvelopeAt(instance, contract, startedAt).AirborneStartsAt
+
+	runtime.reaimCreatureLungeAtTakeoffLocked(wolf, player, contract, &instance, takeoff.Add(5*time.Millisecond))
+
+	if !wolf.actionMotion.ReaimedAtTakeoff {
+		t.Fatal("lunge did not re-aim at takeoff")
+	}
+	wantDir := normalize(vector{x: player.position.x - wolf.position.x, y: player.position.y - wolf.position.y})
+	if d := math.Abs(normalizeYawDelta(vectorYaw(wolf.actionMotion.Direction) - vectorYaw(wantDir))); d > 0.5 {
+		t.Fatalf("re-aimed dir yaw %.1f not toward target yaw %.1f", vectorYaw(wolf.actionMotion.Direction), vectorYaw(wantDir))
+	}
+	// Continuity: the re-aimed path still passes through the wolf's current position.
+	recon := vector{
+		x: wolf.actionMotion.StartPosition.x + wolf.actionMotion.Direction.x*50,
+		y: wolf.actionMotion.StartPosition.y + wolf.actionMotion.Direction.y*50,
+	}
+	if distance(vector{x: recon.x, y: recon.y}, vector{x: wolf.position.x, y: wolf.position.y}) > 0.5 {
+		t.Fatalf("re-aim broke position continuity: recon %v vs pos (%.1f,%.1f)", recon, wolf.position.x, wolf.position.y)
+	}
+	// Latch-once: a later target move does not re-aim again (airborne uses the committed line).
+	committed := wolf.actionMotion.Direction
+	player.position = vector{x: 600, y: 0, z: player.position.z}
+	runtime.reaimCreatureLungeAtTakeoffLocked(wolf, player, contract, &instance, takeoff.Add(60*time.Millisecond))
+	if wolf.actionMotion.Direction != committed {
+		t.Fatal("lunge re-aimed twice; airborne should stay on the committed line")
+	}
+}

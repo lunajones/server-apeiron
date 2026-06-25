@@ -146,6 +146,7 @@ type actionMotionState struct {
 	StopsAtContact    bool
 	ContactStopCM     float64
 	UseVerticalRoot   bool
+	ReaimedAtTakeoff  bool
 }
 
 type vector struct {
