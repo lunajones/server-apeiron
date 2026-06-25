@@ -25,6 +25,7 @@ func ValidatePolicy(policy Policy) []string {
 	issues = append(issues, requirePositive("lunge speed", policy.LungeSpeedCMS)...)
 	issues = append(issues, requirePositive("maul speed", policy.MaulSpeedCMS)...)
 	issues = append(issues, requirePositive("retreat speed", policy.RetreatSpeedCMS)...)
+	issues = append(issues, requirePositive("turn rate", policy.TurnRateDegPerSec)...)
 	issues = append(issues, requirePositive("orbit speed scale", policy.OrbitSpeedScale)...)
 	issues = append(issues, requirePositive("maul counter chance", policy.MaulCounterChance)...)
 	issues = append(issues, requirePositive("dodge retreat multiplier", policy.DodgeRetreatMultiplier)...)

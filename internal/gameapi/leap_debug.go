@@ -18,6 +18,9 @@ func (r *Runtime) logLeapDebugStateLocked(label string, player *entityState, ext
 	if !apeironLeapDebugEnabled() || player == nil {
 		return
 	}
+	if player.entityType != "player" {
+		return
+	}
 	now := time.Now()
 	motionSource := "<none>"
 	motionAction := "<none>"

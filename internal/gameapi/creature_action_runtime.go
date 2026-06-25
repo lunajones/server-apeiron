@@ -20,6 +20,10 @@ type creatureActionRuntimeUpdate struct {
 }
 
 func (r *Runtime) applyCreatureActionRuntimeLocked(creature *entityState, target *entityState, decision creatureai.Decision, contract SkillRuntimeContract, start vector, now time.Time) creatureActionRuntimeUpdate {
+	if creatureActionTransitionActive(creature) {
+		r.refreshCreatureActionTransitionLocked(creature, now)
+		return creatureActionRuntimeUpdate{Active: true, RootMotionApplied: true, Phase: actionruntime.PhaseRecovery}
+	}
 	if creature == nil || !creatureai.PublishesSkill(decision.Action) || decision.SelectedSkill == "" {
 		r.clearCreatureActionRuntimeLocked(creature, now)
 		return creatureActionRuntimeUpdate{Phase: actionruntime.PhaseComplete}
@@ -77,6 +81,10 @@ func (r *Runtime) shouldStartCreatureActionInstanceLocked(creature *entityState,
 
 func (r *Runtime) clearCreatureActionRuntimeLocked(creature *entityState, now time.Time) {
 	if creature == nil {
+		return
+	}
+	if creatureActionTransitionActive(creature) {
+		r.refreshCreatureActionTransitionLocked(creature, now)
 		return
 	}
 	if entityActionRuntimeActiveAt(creature, now) {
@@ -216,13 +224,18 @@ func (r *Runtime) startCreatureSkillRootMotionLocked(creature *entityState, targ
 	if target != nil {
 		contactTargetID = target.id
 	}
+	startPosition := creature.position
+	if creatureSkillUsesVerticalRoot(contract) {
+		startPosition = r.entityGroundRootPosition(creature, startPosition)
+		creature.position = startPosition
+	}
 	creature.actionMotion = &actionMotionState{
 		SkillID:           decision.SelectedSkill,
 		CommandID:         instance.InstanceID,
 		Sequence:          instance.CommandSequence,
 		MotionSource:      "skill_root",
 		StartedAt:         rootStart,
-		StartPosition:     creature.position,
+		StartPosition:     startPosition,
 		ProjectedPosition: fromDomainVector(fullMotion.Projected),
 		Direction:         dir,
 		Contract:          contract.MovementAction,
@@ -233,7 +246,17 @@ func (r *Runtime) startCreatureSkillRootMotionLocked(creature *entityState, targ
 		AllowsPassthrough: contact.AllowsPassthrough,
 		StopsAtContact:    contact.StopsAtContact,
 		ContactStopCM:     contact.StopDistanceCM,
+		UseVerticalRoot:   creatureSkillUsesVerticalRoot(contract),
 	}
+}
+
+func creatureSkillUsesVerticalRoot(contract SkillRuntimeContract) bool {
+	if !strings.EqualFold(strings.TrimSpace(contract.MovementAction.ActionType), "leap") {
+		return false
+	}
+	return contract.MovementAction.AirborneDurationMS > 0 ||
+		len(contract.MovementAction.VerticalCurveSamples) > 0 ||
+		strings.TrimSpace(contract.MovementAction.VerticalMotionModel) != ""
 }
 
 func creatureSkillRootDirection(creature *entityState, target *entityState, decision creatureai.Decision, contract SkillRuntimeContract) vector {

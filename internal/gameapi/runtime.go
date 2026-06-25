@@ -32,6 +32,11 @@ const (
 	defaultZoneID   = "plain_test_map"
 	defaultBiomeID  = "frontier_grassland"
 	tickRate        = 30
+
+	// PlainTestMap player actor-root height. This was previously embedded at
+	// spawn only; keeping it named prevents leap/grounded paths from preserving
+	// contaminated airborne Z after recovery handoffs.
+	defaultPlayerGroundRootZ = 98.0
 )
 
 type Runtime struct {
@@ -81,6 +86,7 @@ type entityState struct {
 	maxHealth                   float64
 	stamina                     float64
 	maxStamina                  float64
+	staminaSpendLockedUntilFull bool
 	posture                     float64
 	maxPosture                  float64
 	movementState               string
@@ -89,6 +95,8 @@ type entityState struct {
 	aggroState                  string
 	aggression                  float64
 	impactResponseProfile       string
+	groundRootZ                 float64
+	groundRootKnown             bool
 	lastSequence                uint64
 	lastClientTick              uint64
 	processedCommandIDs         map[string]struct{}
@@ -97,6 +105,7 @@ type entityState struct {
 	skillRuntime                *gamev1.SkillRuntimeState
 	actionInstance              *actionruntime.Instance
 	actionMotion                *actionMotionState
+	creatureActionTransition    *creatureActionTransitionState
 	actionHandoffUntil          time.Time
 	actionHandoffAction         string
 	combatMode                  *gamev1.CombatModeState
@@ -688,7 +697,9 @@ func (r *Runtime) ensurePlayerLocked(playerID string) *entityState {
 		templateID:            "player_sword_shield",
 		archetype:             "sword_shield",
 		visualID:              "player",
-		position:              vector{x: -2500, y: 1900, z: 98},
+		position:              vector{x: -2500, y: 1900, z: defaultPlayerGroundRootZ},
+		groundRootZ:           defaultPlayerGroundRootZ,
+		groundRootKnown:       true,
 		yaw:                   0,
 		health:                100,
 		maxHealth:             100,
@@ -722,6 +733,8 @@ func (r *Runtime) ensureWolfLocked(player *entityState) *entityState {
 		archetype:             "wolf",
 		visualID:              "steppe_wolf",
 		position:              vector{x: player.position.x + 520, y: player.position.y + 120, z: player.position.z},
+		groundRootZ:           player.position.z,
+		groundRootKnown:       true,
 		yaw:                   180,
 		health:                160,
 		maxHealth:             160,
@@ -1056,6 +1069,7 @@ func wolfBrainPolicy(policy WolfRuntimePolicy) creatureai.Policy {
 		LungeSpeedCMS:                  policy.LungeSpeedCMS,
 		MaulSpeedCMS:                   policy.MaulSpeedCMS,
 		RetreatSpeedCMS:                policy.RetreatSpeedCMS,
+		TurnRateDegPerSec:              policy.TurnRateDegPerSec,
 		DodgeSkillID:                   policy.DodgeSkillID,
 		EvasionLateralBias:             policy.EvasionLateralBias,
 		EvasionBackstepBias:            policy.EvasionBackstepBias,
@@ -1217,8 +1231,16 @@ func (r *Runtime) applyMove(player *entityState, cmd *gamev1.PlayerCommand) {
 
 	dir := normalize(fromProto(move.GetDirection()))
 	if dir == (vector{}) {
+		if !handoffApplied {
+			r.normalizePlayerGroundedRootLocked(player, r.contracts.contractForAbility("move"), "move_stop")
+		}
 		player.velocity = vector{}
 		player.movementState = "idle"
+		r.logGroundedMoveDebugStateLocked("move_stop", player, map[string]string{
+			"sequence":    strconv.FormatUint(cmd.GetSequence(), 10),
+			"client_tick": strconv.FormatUint(cmd.GetClientTick(), 10),
+			"handoff":     strconv.FormatBool(handoffApplied),
+		})
 		if handoffApplied {
 			contract := r.contracts.contractForAbility("jump")
 			player.locomotion = locomotionFromContractWithOverrides(contract, "complete", player.position, player.position, r.tick, cmd.GetSequence(), 0, 0)
@@ -1232,22 +1254,28 @@ func (r *Runtime) applyMove(player *entityState, cmd *gamev1.PlayerCommand) {
 		}
 		return
 	}
+	r.normalizePlayerGroundedRootLocked(player, r.contracts.contractForAbility("move"), "move")
 	facingYaw := player.yaw
 	if move.TargetYaw != nil {
 		facingYaw = move.GetTargetYaw()
+	}
+	effectiveSprint := move.GetSprint()
+	if effectiveSprint {
+		effectiveSprint = r.spendPlayerSprintStaminaLocked(player)
 	}
 	motion := movement.ResolveGroundedMove(movement.GroundedMoveInput{
 		Position:        toDomainVector(player.position),
 		Direction:       toDomainVector(dir),
 		FacingYawDeg:    facingYaw,
 		AnalogMagnitude: move.GetAnalogMagnitude(),
-		Sprint:          move.GetSprint(),
+		Sprint:          effectiveSprint,
 		TickRate:        tickRate,
 		Profile:         r.movementSpeedProfile(),
 	})
 	if player.combatState == "blocking" {
 		motion = capBlockMotion(motion, r.movementSpeedProfile())
 	}
+	profile := r.movementSpeedProfile()
 	start := player.position
 	player.position = fromDomainVector(motion.Projected)
 	player.velocity = fromDomainVector(motion.Velocity)
@@ -1255,6 +1283,23 @@ func (r *Runtime) applyMove(player *entityState, cmd *gamev1.PlayerCommand) {
 	if move.TargetYaw != nil {
 		player.yaw = move.GetTargetYaw()
 	}
+	r.logGroundedMoveDebugStateLocked("move", player, map[string]string{
+		"sequence":         strconv.FormatUint(cmd.GetSequence(), 10),
+		"client_tick":      strconv.FormatUint(cmd.GetClientTick(), 10),
+		"dir":              fmt.Sprintf("(%.3f,%.3f,%.3f)", dir.x, dir.y, dir.z),
+		"analog":           strconv.FormatFloat(move.GetAnalogMagnitude(), 'f', 2, 64),
+		"sprint":           strconv.FormatBool(move.GetSprint()),
+		"effective_sprint": strconv.FormatBool(effectiveSprint),
+		"stamina":          strconv.FormatFloat(player.stamina, 'f', 2, 64),
+		"stamina_locked":   strconv.FormatBool(player.staminaSpendLockedUntilFull),
+		"facing_yaw":       strconv.FormatFloat(facingYaw, 'f', 1, 64),
+		"speed":            strconv.FormatFloat(motion.SpeedCMPerSecond, 'f', 1, 64),
+		"distance":         strconv.FormatFloat(motion.DistanceCM, 'f', 1, 64),
+		"profile_walk":     strconv.FormatFloat(profile.MaxSpeed, 'f', 1, 64),
+		"profile_sprint":   strconv.FormatFloat(profile.SprintSpeedMultiplier, 'f', 2, 64),
+		"profile_strafe":   strconv.FormatFloat(profile.StrafeSprintSpeedMultiplier, 'f', 2, 64),
+		"profile_backped":  strconv.FormatFloat(profile.BackpedalSprintSpeedMultiplier, 'f', 2, 64),
+	})
 	player.locomotion = locomotionFromContractWithOverrides(r.contracts.contractForAbility("move"), "active", start, player.position, r.tick, cmd.GetSequence(), motion.SpeedCMPerSecond, motion.DistanceCM)
 	player.locomotion.MovementMode = "grounded"
 	player.locomotion.Action = "move"
@@ -1302,8 +1347,11 @@ func (r *Runtime) applyMoveHandoffLocked(player *entityState, cmd *gamev1.Player
 		return false
 	}
 
+	contract := r.contracts.contractForAbility("jump")
 	if pos := move.GetHandoffPosition(); pos != nil {
-		player.position = fromProto(pos)
+		player.position = r.playerGroundRootPosition(fromProto(pos), contract)
+	} else {
+		player.position = r.playerGroundRootPosition(player.position, contract)
 	}
 	handoffVelocity := fromProto(move.GetHandoffVelocity())
 	handoffVelocity.z = 0
@@ -1318,11 +1366,11 @@ func (r *Runtime) applyMoveHandoffLocked(player *entityState, cmd *gamev1.Player
 		player.actionInstance = nil
 	}
 
-	contract := r.contracts.contractForAbility("jump")
 	start := player.position
 	if motion != nil {
 		start = motion.StartPosition
 	}
+	start = r.playerGroundRootPosition(start, contract)
 	player.locomotion = locomotionFromContractWithOverrides(contract, "complete", start, player.position, r.tick, cmd.GetSequence(), 0, distance(start, player.position))
 	player.locomotion.MovementMode = "grounded"
 	player.locomotion.Action = "leap"
@@ -1378,9 +1426,68 @@ func (r *Runtime) movementSpeedProfile() movement.SpeedProfile {
 	}
 }
 
+func (r *Runtime) playerGroundRootZ(contract MovementActionRuntimeContract) float64 {
+	z := defaultPlayerGroundRootZ
+	if strings.EqualFold(contract.GroundZPolicy, "server_position_is_actor_root") {
+		z += contract.CapsuleBaseOffset
+	}
+	return z
+}
+
+func (r *Runtime) playerGroundRootPosition(pos vector, contract MovementActionRuntimeContract) vector {
+	pos.z = r.playerGroundRootZ(contract)
+	return pos
+}
+
+func (r *Runtime) entityGroundRootPosition(entity *entityState, pos vector) vector {
+	if entity != nil && entity.groundRootKnown {
+		pos.z = entity.groundRootZ
+		return pos
+	}
+	if entity != nil {
+		pos.z = entity.position.z
+		return pos
+	}
+	return pos
+}
+
+func (r *Runtime) normalizePlayerGroundedRootLocked(player *entityState, contract MovementActionRuntimeContract, reason string) {
+	if player == nil || player.entityType != "player" {
+		return
+	}
+	if player.actionMotion != nil && player.actionMotion.MotionSource == "owned_locomotion" && player.actionMotion.UseVerticalRoot {
+		return
+	}
+	grounded := r.playerGroundRootPosition(player.position, contract)
+	if math.Abs(player.position.z-grounded.z) <= 0.01 {
+		return
+	}
+	beforeZ := player.position.z
+	player.position = grounded
+	if player.velocity.z != 0 {
+		player.velocity.z = 0
+	}
+	if player.locomotion != nil {
+		player.locomotion.ActionProjectedPosition = toProto(player.position)
+		player.locomotion.LastUpdatedTick = r.tick
+	}
+	r.logLeapDebugStateLocked("grounded_root_normalized", player, map[string]string{
+		"reason":   reason,
+		"before_z": strconv.FormatFloat(beforeZ, 'f', 1, 64),
+		"after_z":  strconv.FormatFloat(player.position.z, 'f', 1, 64),
+	})
+}
+
 func (r *Runtime) applyTurn(player *entityState, cmd *gamev1.PlayerCommand) {
 	turn := cmd.GetTurn()
+	r.normalizePlayerGroundedRootLocked(player, r.contracts.contractForAbility("move"), "turn")
 	player.yaw = turn.GetTargetYaw()
+	r.logGroundedMoveDebugStateLocked("turn", player, map[string]string{
+		"sequence":    strconv.FormatUint(cmd.GetSequence(), 10),
+		"client_tick": strconv.FormatUint(cmd.GetClientTick(), 10),
+		"target_yaw":  strconv.FormatFloat(turn.GetTargetYaw(), 'f', 1, 64),
+		"current_yaw": strconv.FormatFloat(turn.GetCurrentYaw(), 'f', 1, 64),
+	})
 	if player.locomotion == nil {
 		player.locomotion = r.locomotion("grounded", "turn", "turn", "active", player.position, player.position, cmd.GetSequence())
 	}
@@ -1390,6 +1497,9 @@ func (r *Runtime) applyTurn(player *entityState, cmd *gamev1.PlayerCommand) {
 
 func (r *Runtime) applyImpulse(player *entityState, cmd *gamev1.PlayerCommand, contract MovementActionRuntimeContract) {
 	nowTime := time.Now()
+	if strings.EqualFold(contract.ActionType, "leap") {
+		r.normalizePlayerGroundedRootLocked(player, contract, "leap_start")
+	}
 	r.logDodgeDebugStateLocked("owned_locomotion_begin_before_clear", player, map[string]string{
 		"requested_action":  contract.ActionType,
 		"requested_ability": contract.AbilityKey,
@@ -1421,8 +1531,12 @@ func (r *Runtime) applyImpulse(player *entityState, cmd *gamev1.PlayerCommand, c
 		}
 	}
 	start := player.position
+	if strings.EqualFold(contract.ActionType, "leap") {
+		start = r.playerGroundRootPosition(start, contract)
+		player.position = start
+	}
 	fullMotion := movement.ResolveActionMotion(movement.ActionMotionInput{
-		Position:  toDomainVector(player.position),
+		Position:  toDomainVector(start),
 		Direction: toDomainVector(dir),
 		Contract:  contract,
 	})
@@ -1603,6 +1717,14 @@ func (r *Runtime) applyDefense(player *entityState, cmd *gamev1.PlayerCommand) {
 	} else {
 		player.combatState = "blocking"
 	}
+	if player.actionMotion != nil && player.actionMotion.MotionSource == "owned_locomotion" {
+		r.logLeapDebugStateLocked("defense_preserved_owned_locomotion", player, map[string]string{
+			"command_sequence": strconv.FormatUint(cmd.GetSequence(), 10),
+			"defense_state":    player.combatState,
+		})
+		return
+	}
+	r.normalizePlayerGroundedRootLocked(player, r.contracts.contractForAbility("move"), "defense")
 	player.locomotion = r.locomotion("grounded", "defense", "block", "active", player.position, player.position, cmd.GetSequence())
 }
 
@@ -1656,6 +1778,7 @@ func (r *Runtime) refreshActionRuntimeStatesLocked(now time.Time) {
 		}
 		r.refreshCompletedActionHandoffLocked(entity, now)
 		r.advanceActionMotionLocked(entity, now)
+		r.refreshCreatureActionTransitionLocked(entity, now)
 		if entity.actionInstance == nil || entity.skillRuntime == nil {
 			continue
 		}
@@ -1689,11 +1812,67 @@ func (r *Runtime) spendPlayerDodgeStaminaLocked(player *entityState) (bool, stri
 	if cost <= 0 {
 		return true, "", ""
 	}
+	if !r.canSpendPlayerStaminaLocked(player) {
+		return false, "stamina_recovery_locked", "stamina is exhausted and must fully recover before spending"
+	}
 	if player.stamina+1e-6 < cost {
 		return false, "insufficient_stamina", "not enough stamina for dodge"
 	}
-	player.stamina = math.Max(0, player.stamina-cost)
+	r.spendPlayerStaminaLocked(player, cost)
 	return true, "", ""
+}
+
+func (r *Runtime) spendPlayerSprintStaminaLocked(player *entityState) bool {
+	if player == nil {
+		return false
+	}
+	profile := r.contracts.combatCoreProfileForEntity(player)
+	if profile == nil {
+		return false
+	}
+	r.syncPlayerStaminaProfileLocked(player, profile)
+	costPerSecond := profile.GetSprintStaminaCostPerSec()
+	if costPerSecond <= 0 {
+		return true
+	}
+	if !r.canSpendPlayerStaminaLocked(player) {
+		return false
+	}
+	cost := costPerSecond / tickRate
+	if player.stamina+1e-6 < cost {
+		r.markPlayerStaminaExhaustedLocked(player)
+		return false
+	}
+	r.spendPlayerStaminaLocked(player, cost)
+	return true
+}
+
+func (r *Runtime) canSpendPlayerStaminaLocked(player *entityState) bool {
+	if player == nil {
+		return false
+	}
+	if !player.staminaSpendLockedUntilFull {
+		return true
+	}
+	return player.maxStamina > 0 && player.stamina+1e-6 >= player.maxStamina
+}
+
+func (r *Runtime) spendPlayerStaminaLocked(player *entityState, cost float64) {
+	if player == nil || cost <= 0 {
+		return
+	}
+	player.stamina = math.Max(0, player.stamina-cost)
+	if player.stamina <= 1e-6 {
+		r.markPlayerStaminaExhaustedLocked(player)
+	}
+}
+
+func (r *Runtime) markPlayerStaminaExhaustedLocked(player *entityState) {
+	if player == nil {
+		return
+	}
+	player.stamina = 0
+	player.staminaSpendLockedUntilFull = true
 }
 
 func (r *Runtime) regeneratePlayerStaminaLocked(player *entityState) {
@@ -1709,7 +1888,18 @@ func (r *Runtime) regeneratePlayerStaminaLocked(player *entityState) {
 	if regen <= 0 || player.maxStamina <= 0 || player.stamina >= player.maxStamina {
 		return
 	}
+	if player.staminaSpendLockedUntilFull {
+		multiplier := profile.GetStaminaZeroRegenMultiplier()
+		if multiplier <= 0 {
+			return
+		}
+		regen *= multiplier
+	}
 	player.stamina = math.Min(player.maxStamina, player.stamina+(regen/tickRate))
+	if player.stamina+1e-6 >= player.maxStamina {
+		player.stamina = player.maxStamina
+		player.staminaSpendLockedUntilFull = false
+	}
 }
 
 func (r *Runtime) syncPlayerStaminaProfileLocked(player *entityState, profile *dbv1.CombatCoreProfile) {
@@ -1720,6 +1910,9 @@ func (r *Runtime) syncPlayerStaminaProfileLocked(player *entityState, profile *d
 		player.maxStamina = profile.GetMaxStamina()
 		if player.stamina > player.maxStamina {
 			player.stamina = player.maxStamina
+		}
+		if player.stamina+1e-6 >= player.maxStamina {
+			player.staminaSpendLockedUntilFull = false
 		}
 	}
 }
@@ -1806,8 +1999,15 @@ func (r *Runtime) advanceActionMotionLocked(entity *entityState, now time.Time) 
 	})
 
 	if progress.Complete || contact.Stopped {
+		finalVelocity := velocity
+		finalDistanceCM := distanceCM
 		if progress.Complete && !contact.Stopped {
 			entity.position = motion.ProjectedPosition
+		}
+		if entity.entityType == "creature" && motion.UseVerticalRoot {
+			entity.position = r.entityGroundRootPosition(entity, entity.position)
+			velocity.z = 0
+			finalVelocity.z = 0
 		}
 		entity.velocity = vector{}
 		entity.locomotion.ActionProjectedPosition = toProto(entity.position)
@@ -1816,7 +2016,10 @@ func (r *Runtime) advanceActionMotionLocked(entity *entityState, now time.Time) 
 		} else {
 			entity.locomotion.ActionDistanceTraveled = distanceCM
 		}
-		r.applyOwnedLocomotionExitHandoffLocked(entity, motion, now)
+		creatureTransitionStarted := r.beginCreatureActionTransitionLocked(entity, motion, now, entity.position, finalVelocity, finalDistanceCM)
+		if !creatureTransitionStarted {
+			r.applyOwnedLocomotionExitHandoffLocked(entity, motion, now)
+		}
 		r.completeActionMotionLocked(entity, motion)
 		entity.actionMotion = nil
 		return false
@@ -1913,6 +2116,14 @@ func (r *Runtime) completeActionMotionLocked(entity *entityState, motion *action
 			"completed_action":  motion.Contract.ActionType,
 			"completed_ability": motion.Contract.AbilityKey,
 		})
+		if strings.EqualFold(motion.Contract.ActionType, "leap") {
+			entity.position = r.playerGroundRootPosition(entity.position, motion.Contract)
+			entity.velocity.z = 0
+			if entity.locomotion != nil {
+				entity.locomotion.ActionProjectedPosition = toProto(entity.position)
+				entity.locomotion.LandingHandoffActive = false
+			}
+		}
 		entity.movementState = "grounded"
 		entity.skillState = "idle"
 		entity.combatState = "ready"
@@ -1928,6 +2139,21 @@ func (r *Runtime) completeActionMotionLocked(entity *entityState, motion *action
 			"completed_action":  motion.Contract.ActionType,
 			"completed_ability": motion.Contract.AbilityKey,
 		})
+	case "skill_root":
+		if entity.entityType == "creature" && creatureActionTransitionActive(entity) {
+			entity.actionInstance = nil
+			entity.creatureActiveSetupPolicyID = ""
+			entity.skillState = "recovery"
+			entity.combatState = "committed"
+			return
+		}
+		if entity.entityType == "creature" {
+			entity.movementState = "grounded"
+			entity.skillState = "idle"
+			entity.combatState = "ready"
+			entity.skillRuntime = nil
+			entity.actionInstance = nil
+		}
 	}
 }
 

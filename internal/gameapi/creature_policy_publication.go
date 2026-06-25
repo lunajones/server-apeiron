@@ -1,6 +1,7 @@
 package gameapi
 
 import (
+	"math"
 	"time"
 
 	gamev1 "server-apeiron/gen/apeiron/game/v1"
@@ -63,10 +64,14 @@ func applyCreatureDecisionMotion(creature *entityState, target *entityState, dec
 	if creature == nil {
 		return
 	}
+	if creatureActionTransitionActive(creature) {
+		return
+	}
 	creature.position = fromDomainVector(resolved.Motion.Projected)
 	creature.velocity = fromDomainVector(resolved.Motion.Velocity)
 	if target != nil {
-		creature.yaw = vectorYaw(normalize(vector{x: target.position.x - creature.position.x, y: target.position.y - creature.position.y}))
+		targetYaw := vectorYaw(normalize(vector{x: target.position.x - creature.position.x, y: target.position.y - creature.position.y}))
+		creature.yaw = approachCreatureYaw(creature.yaw, targetYaw, decision.TurnRateDegPerSec)
 	}
 	creature.movementState = decision.Action
 	if creatureai.PublishesSkill(decision.Action) {
@@ -76,8 +81,47 @@ func applyCreatureDecisionMotion(creature *entityState, target *entityState, dec
 	}
 }
 
+func approachCreatureYaw(current, target, turnRateDegPerSec float64) float64 {
+	if turnRateDegPerSec <= 0 {
+		return target
+	}
+	maxStep := turnRateDegPerSec / tickRate
+	delta := normalizeYawDelta(target - current)
+	if math.Abs(delta) <= maxStep {
+		return normalizeYaw(target)
+	}
+	if delta > 0 {
+		return normalizeYaw(current + maxStep)
+	}
+	return normalizeYaw(current - maxStep)
+}
+
+func normalizeYawDelta(delta float64) float64 {
+	for delta > 180 {
+		delta -= 360
+	}
+	for delta < -180 {
+		delta += 360
+	}
+	return delta
+}
+
+func normalizeYaw(yaw float64) float64 {
+	for yaw >= 360 {
+		yaw -= 360
+	}
+	for yaw < 0 {
+		yaw += 360
+	}
+	return yaw
+}
+
 func (r *Runtime) publishWolfLocomotionLocked(wolf *entityState, decision creatureai.Decision, contract SkillRuntimeContract, actionUpdate creatureActionRuntimeUpdate, resolved creatureDecisionMotion, now time.Time) {
 	if wolf == nil {
+		return
+	}
+	if creatureActionTransitionActive(wolf) {
+		r.publishCreatureActionTransitionLocomotionLocked(wolf, now)
 		return
 	}
 	locoContract := r.contracts.contractForAbility("move")
@@ -103,6 +147,30 @@ func (r *Runtime) publishWolfLocomotionLocked(wolf *entityState, decision creatu
 
 func (r *Runtime) publishWolfAIStateLocked(wolf *entityState, decision creatureai.Decision, policy WolfRuntimePolicy, contract SkillRuntimeContract, actionUpdate creatureActionRuntimeUpdate, rangeCM float64, lungeMinRangeCM float64, lungeMaxRangeCM float64) {
 	if wolf == nil {
+		return
+	}
+	if transition := wolf.creatureActionTransition; transition != nil {
+		wolf.creatureAI = &gamev1.CreatureAIState{
+			MovementTactic:          transition.Kind,
+			CombatTactic:            "action_transition",
+			Commitment:              "recovering",
+			CapabilityId:            policy.CapabilityID,
+			ContractId:              policy.ContractID,
+			ContractHash:            policy.ContractHash,
+			LastReason:              creatureActionTransitionOwner,
+			TacticalDestination:     toProto(transition.Endpoint),
+			BehaviorFamily:          "beast_harasser",
+			CombatRole:              "duelist",
+			ActualRangeCm:           rangeCM,
+			PathState:               creatureActionTransitionOwner,
+			LosState:                "clear",
+			SelectedSkillId:         transition.SkillID,
+			ProfileSource:           r.contracts.Source,
+			SkillRecoveryMs:         int32(transition.EndsAt.Sub(transition.StartedAt).Milliseconds()),
+			SkillActionLockMs:       int32(transition.EndsAt.Sub(transition.StartedAt).Milliseconds()),
+			SkillMovementType:       transition.ActionType,
+			SkillMovementDistanceCm: transition.DistanceAtHandoffCM,
+		}
 		return
 	}
 	movementPresentation := creatureSkillMovementPresentation{}

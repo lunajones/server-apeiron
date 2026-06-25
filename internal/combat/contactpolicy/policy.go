@@ -42,6 +42,10 @@ func (c *Classification) merge(other Classification) {
 
 func classifyOne(value string) Classification {
 	classification := Classification{Canonical: value}
+	if containsAny(value, "lateral_counter_contact") {
+		classification.CarriesTarget = true
+		return classification
+	}
 	if containsAny(value, "passthrough", "phase_through", "phase-through", "airborne_passthrough") {
 		classification.AllowsPassthrough = true
 	}

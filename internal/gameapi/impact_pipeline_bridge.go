@@ -349,7 +349,7 @@ func runtimeEntityCombatPipelineStateAt(entity *entityState, now time.Time) stri
 	if entity == nil {
 		return ""
 	}
-	if runtimeEntityOwnedDodgeMotionActiveAt(entity, now) {
+	if runtimeEntityDodgeMotionActiveAt(entity, now) {
 		return "dodge"
 	}
 	state := strings.ToLower(strings.TrimSpace(entity.combatState))
@@ -370,11 +370,15 @@ func runtimeEntityHasIFrameStateAt(entity *entityState, now time.Time) bool {
 	return state == "iframe" || state == "evade" || state == "dodge" || strings.Contains(state, "iframe")
 }
 
-func runtimeEntityOwnedDodgeMotionActiveAt(entity *entityState, now time.Time) bool {
-	if entity == nil || entity.actionMotion == nil || entity.actionMotion.MotionSource != "owned_locomotion" {
+func runtimeEntityDodgeMotionActiveAt(entity *entityState, now time.Time) bool {
+	if entity == nil || entity.actionMotion == nil {
 		return false
 	}
 	motion := entity.actionMotion
+	if !strings.EqualFold(strings.TrimSpace(motion.MotionSource), "owned_locomotion") &&
+		!strings.EqualFold(strings.TrimSpace(motion.MotionSource), "skill_root") {
+		return false
+	}
 	if !strings.EqualFold(strings.TrimSpace(motion.Contract.ActionType), "dodge") &&
 		!strings.EqualFold(strings.TrimSpace(motion.Contract.AbilityKey), "dodge") {
 		return false

@@ -1605,9 +1605,9 @@ func fakeMovementActionContract(id string, abilityKey string, actionType string,
 	case "low_fast_lunge_v1":
 		durationMS = 860
 		activeMS = 380
-		recoveryMS = 240
-		distanceCM = 918
-		baseSpeedCMS = 1310
+		recoveryMS = 180
+		distanceCM = 1652
+		baseSpeedCMS = 1920
 		contactPolicy = "airborne_passthrough"
 	case "wolf_dodge_lateral_leap_v1":
 		durationMS = 520

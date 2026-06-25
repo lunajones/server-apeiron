@@ -16,8 +16,18 @@ func (r *Runtime) completeCreatureActionRuntimeLocked(creature *entityState, now
 	if creature == nil {
 		return
 	}
+	if creatureActionTransitionActive(creature) {
+		creature.actionInstance = nil
+		creature.actionMotion = nil
+		creature.creatureActiveSetupPolicyID = ""
+		r.publishCreatureActionTransitionSkillRuntimeLocked(creature, now)
+		creature.skillState = "recovery"
+		creature.combatState = "committed"
+		return
+	}
 	creature.actionInstance = nil
 	creature.actionMotion = nil
+	creature.creatureActionTransition = nil
 	creature.creatureActiveSetupPolicyID = ""
 	r.publishEntityTerminalSkillRuntimeLocked(creature, skillRuntimeStateIdle, now)
 	creature.skillState = "idle"

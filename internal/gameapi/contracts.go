@@ -145,6 +145,7 @@ type WolfRuntimePolicy struct {
 	LungeSpeedCMS                  float64
 	MaulSpeedCMS                   float64
 	RetreatSpeedCMS                float64
+	TurnRateDegPerSec              float64
 	LungeWindupMS                  int32
 	LungeActiveEndMS               int32
 	LungeRecoveryMS                int32
@@ -250,14 +251,15 @@ type creaturePressurePolicyJSON struct {
 }
 
 type creatureRangePolicyJSON struct {
-	DesiredRangeCM  float64 `json:"desiredRangeCm"`
-	ChaseRangeCM    float64 `json:"chaseRangeCm"`
-	RetreatRangeCM  float64 `json:"retreatRangeCm"`
-	OrbitSpeedCMS   float64 `json:"orbitSpeedCmS"`
-	ChaseSpeedCMS   float64 `json:"chaseSpeedCmS"`
-	LungeSpeedCMS   float64 `json:"lungeSpeedCmS"`
-	MaulSpeedCMS    float64 `json:"maulSpeedCmS"`
-	RetreatSpeedCMS float64 `json:"retreatSpeedCmS"`
+	DesiredRangeCM    float64 `json:"desiredRangeCm"`
+	ChaseRangeCM      float64 `json:"chaseRangeCm"`
+	RetreatRangeCM    float64 `json:"retreatRangeCm"`
+	OrbitSpeedCMS     float64 `json:"orbitSpeedCmS"`
+	ChaseSpeedCMS     float64 `json:"chaseSpeedCmS"`
+	LungeSpeedCMS     float64 `json:"lungeSpeedCmS"`
+	MaulSpeedCMS      float64 `json:"maulSpeedCmS"`
+	RetreatSpeedCMS   float64 `json:"retreatSpeedCmS"`
+	TurnRateDegPerSec float64 `json:"turnRateDegPerSec"`
 }
 
 type creatureStaminaPolicyJSON struct {
@@ -580,6 +582,7 @@ func applyWolfBehaviorPolicyJSON(policy *WolfRuntimePolicy, behavior *dbv1.Creat
 			policy.LungeSpeedCMS = rangePolicy.LungeSpeedCMS
 			policy.MaulSpeedCMS = rangePolicy.MaulSpeedCMS
 			policy.RetreatSpeedCMS = rangePolicy.RetreatSpeedCMS
+			policy.TurnRateDegPerSec = rangePolicy.TurnRateDegPerSec
 		}
 	}
 	if pressureJSON := strings.TrimSpace(behavior.GetPressurePolicyJson()); pressureJSON != "" {
@@ -1083,6 +1086,18 @@ func validateCombatCoreProfile(profileID string, profile *dbv1.CombatCoreProfile
 	if profile.GetParryRewardMultiplier() <= 0 {
 		missing = append(missing, "combat core parry reward "+profileID)
 	}
+	if profile.GetMaxStamina() <= 0 {
+		missing = append(missing, "combat core max stamina "+profileID)
+	}
+	if profile.GetStaminaRegenPerSec() <= 0 {
+		missing = append(missing, "combat core stamina regen "+profileID)
+	}
+	if profile.GetSprintStaminaCostPerSec() <= 0 {
+		missing = append(missing, "combat core sprint stamina drain "+profileID)
+	}
+	if profile.GetStaminaZeroRegenMultiplier() <= 0 || profile.GetStaminaZeroRegenMultiplier() > 1 {
+		missing = append(missing, "combat core zero stamina regen multiplier "+profileID)
+	}
 	return missing
 }
 
@@ -1391,14 +1406,14 @@ func DevFixtureRuntimeContracts() RuntimeContracts {
 			MaxStamina:                     100,
 			SkillBehaviorBindings: []CreatureSkillBehaviorRuntimeBinding{
 				{ID: "fixture_bind_bite_circle", SkillID: "bite", TacticalState: "circle", DecisionPhase: "reposition", MinRangeCM: 0, MaxRangeCM: 300, Priority: 70, UsageWeight: 0.85, CooldownGroup: "wolf_bite", RequiresLineOfSight: true, Enabled: true},
-				{ID: "fixture_bind_lunge_circle", SkillID: "lunge", TacticalState: "circle", DecisionPhase: "reposition", SetupPolicyID: "wolf_lunge_flank_windup_v1", MinRangeCM: 180, MaxRangeCM: 760, Priority: 85, UsageWeight: 0.75, CooldownGroup: "wolf_lunge", RequiresLineOfSight: true, Enabled: true},
-				{ID: "fixture_bind_lunge_approach", SkillID: "lunge", TacticalState: "approach", DecisionPhase: "acquire", SetupPolicyID: "wolf_lunge_chase_windup_v1", MinRangeCM: 420, MaxRangeCM: 980, Priority: 95, UsageWeight: 1, CooldownGroup: "wolf_lunge", RequiresLineOfSight: true, Enabled: true},
+				{ID: "fixture_bind_lunge_circle", SkillID: "lunge", TacticalState: "circle", DecisionPhase: "reposition", SetupPolicyID: "wolf_lunge_flank_windup_v1", MinRangeCM: 180, MaxRangeCM: 980, Priority: 84, UsageWeight: 0.42, CooldownGroup: "wolf_lunge", RequiresLineOfSight: true, Enabled: true},
+				{ID: "fixture_bind_lunge_approach", SkillID: "lunge", TacticalState: "approach", DecisionPhase: "acquire", SetupPolicyID: "wolf_lunge_chase_windup_v1", MinRangeCM: 420, MaxRangeCM: 1400, Priority: 86, UsageWeight: 0.50, CooldownGroup: "wolf_lunge", RequiresLineOfSight: true, Enabled: true},
 				{ID: "fixture_bind_maul_pressure", SkillID: "maul", TacticalState: "pressure", DecisionPhase: "counter", SetupPolicyID: "wolf_maul_pressure_counter_v1", MinRangeCM: 0, MaxRangeCM: 260, Priority: 100, UsageWeight: 0.9, CooldownGroup: "wolf_maul", RequiresLineOfSight: true, Enabled: true},
 				{ID: "fixture_bind_dodge_pressure", SkillID: "wolf_dodge", TacticalState: "pressure", DecisionPhase: "evade", MinRangeCM: 0, MaxRangeCM: 420, Priority: 110, UsageWeight: 1.15, CooldownGroup: "wolf_dodge", RequiresLineOfSight: false, Enabled: true},
 			},
 			SkillSetupPolicies: []CreatureSkillSetupRuntimePolicy{
-				{ID: "wolf_lunge_flank_windup_v1", SkillID: "lunge", SetupType: "moving_windup", MinSetupMS: 3000, MaxSetupMS: 4200, CommitDistanceCM: 520, PreferredMinRangeCM: 180, PreferredMaxRangeCM: 700, MovementTactic: "circle_then_curve_to_target", LockSideDuringSetup: true, Enabled: true},
-				{ID: "wolf_lunge_chase_windup_v1", SkillID: "lunge", SetupType: "chase_windup", MinSetupMS: 1200, MaxSetupMS: 2600, CommitDistanceCM: 640, PreferredMinRangeCM: 520, PreferredMaxRangeCM: 1200, MovementTactic: "run_chase_then_jump", LockSideDuringSetup: false, Enabled: true},
+				{ID: "wolf_lunge_flank_windup_v1", SkillID: "lunge", SetupType: "moving_windup", MinSetupMS: 3000, MaxSetupMS: 4200, CommitDistanceCM: 760, PreferredMinRangeCM: 180, PreferredMaxRangeCM: 980, MovementTactic: "circle_then_curve_to_target", LockSideDuringSetup: true, Enabled: true},
+				{ID: "wolf_lunge_chase_windup_v1", SkillID: "lunge", SetupType: "chase_windup", MinSetupMS: 1200, MaxSetupMS: 2600, CommitDistanceCM: 900, PreferredMinRangeCM: 520, PreferredMaxRangeCM: 1400, MovementTactic: "run_chase_then_jump", LockSideDuringSetup: false, Enabled: true},
 				{ID: "wolf_maul_pressure_counter_v1", SkillID: "maul", SetupType: "pressure_counter", MinSetupMS: 160, MaxSetupMS: 420, CommitDistanceCM: 220, PreferredMinRangeCM: 0, PreferredMaxRangeCM: 260, MovementTactic: "lateral_counter_dash", LockSideDuringSetup: true, Enabled: true},
 			},
 		},
@@ -1419,7 +1434,7 @@ func DevFixtureRuntimeContracts() RuntimeContracts {
 		fixtureSkillContract("player_shield_bash", 95, 300, 170, 120),
 		fixtureSkillContract("player_shield_rush", 864, 1100, 720, 260),
 		fixtureCreatureSkillContract("bite", "wolf_bite_melee_commit_v1", "grounded_skill", "grounded_skill_action_reconciliation", "melee_contact", 0, 520, 220, 180, 120, 180, 900),
-		fixtureCreatureSkillContract("lunge", "low_fast_lunge_v1", "leap", "leap_reconciliation", "airborne_passthrough", 918, 860, 380, 240, 3600, 520, 7200),
+		fixtureCreatureSkillContract("lunge", "low_fast_lunge_v1", "leap", "leap_reconciliation", "airborne_passthrough", 1652, 860, 380, 180, 3600, 520, 9000),
 		fixtureCreatureSkillContract("wolf_dodge", "wolf_dodge_lateral_leap_v1", "dodge", "dodge_reconciliation", "iframe", 210, 520, 420, 100, 0, 100, 0),
 		fixtureCreatureSkillContract("maul", "wolf_maul_lateral_counter_v1", "grounded_skill", "grounded_skill_action_reconciliation", "lateral_counter_contact", 420, 920, 520, 220, 220, 220, 5200),
 	} {
@@ -1431,43 +1446,47 @@ func DevFixtureRuntimeContracts() RuntimeContracts {
 
 func fixturePlayerCombatCoreProfile() *dbv1.CombatCoreProfile {
 	return &dbv1.CombatCoreProfile{
-		DamageDealtMultiplier:   1,
-		DamageTakenMultiplier:   1,
-		CanBlock:                true,
-		BlockDamageReduction:    1,
-		MaxPosture:              100,
-		PostureDamageMultiplier: 1,
-		PostureBreakDurationMs:  2200,
-		CanParry:                true,
-		ParryWindowMs:           220,
-		ParryRewardMultiplier:   1.4,
-		DodgeIframeMs:           320,
-		MaxStamina:              100,
-		StaminaRegenPerSec:      14,
-		DodgeStaminaCost:        24,
-		BlockStaminaCostPerSec:  2,
-		AttackStaminaCost:       0,
+		DamageDealtMultiplier:      1,
+		DamageTakenMultiplier:      1,
+		CanBlock:                   true,
+		BlockDamageReduction:       1,
+		MaxPosture:                 100,
+		PostureDamageMultiplier:    1,
+		PostureBreakDurationMs:     2200,
+		CanParry:                   true,
+		ParryWindowMs:              220,
+		ParryRewardMultiplier:      1.4,
+		DodgeIframeMs:              320,
+		MaxStamina:                 100,
+		StaminaRegenPerSec:         14,
+		DodgeStaminaCost:           24,
+		SprintStaminaCostPerSec:    7,
+		BlockStaminaCostPerSec:     2,
+		AttackStaminaCost:          0,
+		StaminaZeroRegenMultiplier: 0.5,
 	}
 }
 
 func fixtureCreatureCombatCoreProfile() *dbv1.CombatCoreProfile {
 	return &dbv1.CombatCoreProfile{
-		DamageDealtMultiplier:   0.95,
-		DamageTakenMultiplier:   1.05,
-		CanBlock:                false,
-		BlockDamageReduction:    0,
-		MaxPosture:              65,
-		PostureDamageMultiplier: 1.15,
-		PostureBreakDurationMs:  1800,
-		CanParry:                false,
-		ParryWindowMs:           0,
-		ParryRewardMultiplier:   1,
-		DodgeIframeMs:           220,
-		MaxStamina:              100,
-		StaminaRegenPerSec:      12,
-		DodgeStaminaCost:        24,
-		BlockStaminaCostPerSec:  0,
-		AttackStaminaCost:       0,
+		DamageDealtMultiplier:      0.95,
+		DamageTakenMultiplier:      1.05,
+		CanBlock:                   false,
+		BlockDamageReduction:       0,
+		MaxPosture:                 65,
+		PostureDamageMultiplier:    1.15,
+		PostureBreakDurationMs:     1800,
+		CanParry:                   false,
+		ParryWindowMs:              0,
+		ParryRewardMultiplier:      1,
+		DodgeIframeMs:              220,
+		MaxStamina:                 100,
+		StaminaRegenPerSec:         12,
+		DodgeStaminaCost:           24,
+		SprintStaminaCostPerSec:    5,
+		BlockStaminaCostPerSec:     0,
+		AttackStaminaCost:          0,
+		StaminaZeroRegenMultiplier: 0.5,
 	}
 }
 
@@ -1705,7 +1724,7 @@ func fixtureVerticalCurve(contractID string) []movement.MovementActionCurvePoint
 	case "jump_v1_authoritative_grounded_handoff":
 		return []movement.MovementActionCurvePoint{curvePoint(0, 0), curvePoint(0.46, 110), curvePoint(1, 0)}
 	case "lunge":
-		return []movement.MovementActionCurvePoint{curvePoint(0, 0), curvePoint(0.36, 120), curvePoint(1, 0)}
+		return []movement.MovementActionCurvePoint{curvePoint(0, 0), curvePoint(0.22, 18), curvePoint(1, 0)}
 	case "wolf_dodge":
 		return []movement.MovementActionCurvePoint{curvePoint(0, 0), curvePoint(0.4, 28), curvePoint(1, 0)}
 	default:
@@ -2069,8 +2088,8 @@ func fixtureCreatureSkillContract(skillID string, contractID string, actionType 
 		ContactPolicy:            contactPolicy,
 	}
 	if skillID == "lunge" {
-		action.JumpZVelocity = 700
-		action.ExpectedApexMS = 320
+		action.JumpZVelocity = 180
+		action.ExpectedApexMS = 160
 		action.LandingDetectionPolicy = "server_grounded_handoff"
 		action.GroundZPolicy = "server_position_is_actor_root"
 	}

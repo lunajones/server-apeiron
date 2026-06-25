@@ -14,6 +14,7 @@ type Policy struct {
 	LungeSpeedCMS                  float64
 	MaulSpeedCMS                   float64
 	RetreatSpeedCMS                float64
+	TurnRateDegPerSec              float64
 	DodgeSkillID                   string
 	EvasionLateralBias             float64
 	EvasionBackstepBias            float64
@@ -99,22 +100,23 @@ type Input struct {
 }
 
 type Decision struct {
-	Action         string
-	SelectedSkill  string
-	TacticalState  string
-	DecisionPhase  string
-	MovementTactic string
-	CombatTactic   string
-	Commitment     string
-	OrbitSide      string
-	Reason         string
-	Score          float64
-	ResourceCost   float64
-	ResourceState  string
-	SpeedCMPerSec  float64
-	Direction      domainmath.Vec3
-	Destination    domainmath.Position
-	RangeCM        float64
-	SetupPolicyID  string
-	Threat         ThreatAssessment
+	Action            string
+	SelectedSkill     string
+	TacticalState     string
+	DecisionPhase     string
+	MovementTactic    string
+	CombatTactic      string
+	Commitment        string
+	OrbitSide         string
+	Reason            string
+	Score             float64
+	ResourceCost      float64
+	ResourceState     string
+	SpeedCMPerSec     float64
+	TurnRateDegPerSec float64
+	Direction         domainmath.Vec3
+	Destination       domainmath.Position
+	RangeCM           float64
+	SetupPolicyID     string
+	Threat            ThreatAssessment
 }
