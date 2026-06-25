@@ -230,3 +230,52 @@ func TestCreatureOrientationHonorsYawSources(t *testing.T) {
 		t.Fatalf("attack_yaw_source=target not honored: attack %.1f != target %.1f", orientation.AttackYawDeg, targetYaw)
 	}
 }
+
+// TestCreatureCommitAlignFinishesBodyAlignmentWithinWindow locks that commit_align_ms forces
+// the body to finish rotating onto the attack line by takeoff, even when the base body turn
+// rate is far too slow to get there on its own.
+func TestCreatureCommitAlignFinishesBodyAlignmentWithinWindow(t *testing.T) {
+	runtime := NewRuntimeWithContracts(DevFixtureRuntimeContracts())
+	player := runtime.ensurePlayerLocked("local_player")
+	wolf := runtime.ensureWolfLocked(player)
+	wolf.position = vector{x: 0, y: 0, z: player.position.z}
+	player.position = vector{x: -600, y: 0, z: player.position.z} // target ~180 deg from body yaw 0
+
+	base := runtime.contracts.skillContract("lunge")
+	base.Envelope = &dbv1.ActionEnvelopePolicy{PreCommitMs: 100, AirborneMs: 520, LandingInertiaMs: 200}
+	startedAt := time.Now()
+	instance := runtime.newCreatureActionInstance(wolf, "lunge", base, wolf.position, startedAt)
+	wolf.actionInstance = &instance
+	nearTakeoff := creatureActionMovementEnvelopeAt(instance, base, startedAt).AirborneStartsAt.Add(-10 * time.Millisecond)
+	decision := creatureai.Decision{Action: "lunge", SelectedSkill: "lunge"}
+
+	resolveWith := func(commitAlignMs int32) actionOrientationRuntimeState {
+		wolf.yaw = 0
+		wolf.orientationFocusYawKnown, wolf.orientationAttackYawKnown = false, false
+		c := base
+		c.Orientation = &dbv1.ActionOrientationPolicy{
+			Id:                      "orientation_commit_align_test",
+			AttackYawSource:         "target",
+			AttackTurnRateDegS:      100000, // snap attack so the attack line equals the target
+			BodyTurnRateDegS:        8,      // far too slow to align in 100ms on its own
+			AllowBodySideOnMovement: true,
+			CommitAlignMs:           commitAlignMs,
+			AttackYawLatchPolicy:    "latch_at_takeoff",
+		}
+		return resolveCreatureActionOrientation(wolf, player, decision, c, creatureActionMovementEnvelopeAt(instance, c, nearTakeoff), nearTakeoff)
+	}
+
+	withAlign := resolveWith(100)
+	withoutAlign := resolveWith(0)
+	if withAlign.Phase != "pre_commit" {
+		t.Fatalf("expected pre_commit phase, got %q", withAlign.Phase)
+	}
+	alignedErr := math.Abs(normalizeYawDelta(withAlign.BodyYawDeg - withAlign.AttackYawDeg))
+	slowErr := math.Abs(normalizeYawDelta(withoutAlign.BodyYawDeg - withoutAlign.AttackYawDeg))
+	if alignedErr > 2 {
+		t.Fatalf("commit_align did not finish body alignment by takeoff: residual %.1f deg", alignedErr)
+	}
+	if slowErr <= alignedErr+10 {
+		t.Fatalf("commit_align should align far better than the slow base rate: aligned %.1f vs slow %.1f", alignedErr, slowErr)
+	}
+}

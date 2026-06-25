@@ -1177,6 +1177,27 @@ orientation/envelope data real gameplay authority. It covers roadmap orientation
   phase+side-on logic as the `movement_direction_until_commit` default.
 - Test `TestCreatureOrientationHonorsYawSources`.
 
+### Done - 2026-06-25 (commit_align_ms - creature orientation model complete)
+
+- `commit_align_ms` is honored: during pre_commit the body turn rate is boosted via
+  `commitAlignBodyTurnRate` so the body finishes aligning onto the attack line by takeoff,
+  regardless of a slow base `body_turn_rate`. Bounded by the real time-to-takeoff.
+- Test `TestCreatureCommitAlignFinishesBodyAlignmentWithinWindow`.
+- **Every `action_orientation_policy` field is now honored in the creature runtime**
+  (body/focus/attack sources, all three turn rates, commit_align_ms, attack_yaw_latch_policy,
+  allow_body_side_on_movement). The creature-side orientation model is data-driven and
+  complete. Remaining work is player generalization (Slice 6) and PIE feel tuning.
+
+### Player path note (investigated 2026-06-25)
+
+The player skill hitbox does NOT have the creature's rule-5 problem: `applySkill`
+(`runtime.go`) snapshots `dir` from `cast.aim_direction` once and enqueues the schedule a
+single time, so it does not re-aim at a moving target each tick. Player generalization
+(Slice 6) is therefore about: (a) publishing orientation phase/yaws for players (no
+`CreatureAIState` today), and (b) optionally letting the player attack yaw track during
+windup and latch at active-start per policy instead of committing at cast — which is
+prediction-sensitive (the client predicted the cast-time aim) and needs PIE validation.
+
 ### Pre-existing test debt found (NOT caused by this pass - for Codex to fix)
 
 `go build` was green but `go test ./internal/gameapi/` did not even compile at HEAD `e0b931a`:
@@ -1200,9 +1221,8 @@ These need either fixture-data updates (turn rate + stamina) or test expectation
   captures that same direction so hitbox/presentation are consistent, but the 100ms
   pre-commit alignment does not yet re-resolve the physical airborne path to the latched
   yaw. Doing so risks reintroducing rubberband, so it needs care.
-- **`commit_align_ms`:** still unused (defines the body alignment-blend window during
-  pre-commit; body currently rate-limits via `body_turn_rate` which is close enough until
-  PIE tuning). `focus_turn_rate_deg_s`/`attack_turn_rate_deg_s` are now applied.
+- **`commit_align_ms`:** now honored (body finishes aligning by takeoff). All turn rates
+  applied.
 - **`_source` fields:** now honored (see Done above). Player aim/camera resolution is the
   remaining piece, tied to Slice 6.
 - **Player generalization (Slice 6):** the latch/orientation runtime only runs on the wolf

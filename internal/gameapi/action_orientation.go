@@ -153,8 +153,38 @@ func resolveCreatureActionOrientation(creature *entityState, target *entityState
 			bodyTarget = state.AttackYawDeg
 		}
 	}
-	state.BodyYawDeg = approachCreatureYaw(entityYaw(creature), bodyTarget, orientationBodyTurnRate(contract, decision.TurnRateDegPerSec))
+	bodyRate := orientationBodyTurnRate(contract, decision.TurnRateDegPerSec)
+	if state.Phase == "pre_commit" {
+		bodyRate = commitAlignBodyTurnRate(contract, bodyRate, entityYaw(creature), bodyTarget, envelope, now)
+	}
+	state.BodyYawDeg = approachCreatureYaw(entityYaw(creature), bodyTarget, bodyRate)
 	return state
+}
+
+// commitAlignBodyTurnRate boosts the body turn rate during pre-commit so the body finishes
+// aligning onto the attack line within commit_align_ms (the post-flank alignment window),
+// regardless of a slow base body turn rate. Returns the base rate when no commit window is
+// configured. The remaining time to takeoff bounds the boost so alignment lands at takeoff.
+func commitAlignBodyTurnRate(contract SkillRuntimeContract, baseRate, currentYaw, targetYaw float64, envelope creatureActionMovementEnvelope, now time.Time) float64 {
+	if contract.Orientation == nil || contract.Orientation.GetCommitAlignMs() <= 0 {
+		return baseRate
+	}
+	remaining := time.Duration(contract.Orientation.GetCommitAlignMs()) * time.Millisecond
+	if !envelope.AirborneStartsAt.IsZero() {
+		remaining = envelope.AirborneStartsAt.Sub(now)
+	}
+	angle := math.Abs(normalizeYawDelta(targetYaw - currentYaw))
+	seconds := remaining.Seconds()
+	if seconds <= 0 {
+		if angle > 0 {
+			return math.Max(baseRate, angle*tickRate) // align within one tick at/after takeoff
+		}
+		return baseRate
+	}
+	if required := angle / seconds; required > baseRate {
+		return required
+	}
+	return baseRate
 }
 
 func applyCreatureOrientationState(creature *entityState, orientation actionOrientationRuntimeState) {
