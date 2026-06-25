@@ -19,11 +19,11 @@ type creatureActionTransitionState struct {
 	ActionContractID    string
 	ActionType          string
 	Kind                string
+	StartPosition       vector
 	StartedAt           time.Time
 	EndsAt              time.Time
 	LastAdvancedAt      time.Time
 	Endpoint            vector
-	Position            vector
 	ExitDirection       vector
 	ExitSpeedCMPerSec   float64
 	Sequence            uint64
@@ -32,6 +32,7 @@ type creatureActionTransitionState struct {
 	ContactPolicy       string
 	Contract            MovementActionRuntimeContract
 	DistanceAtHandoffCM float64
+	TotalDistanceCM     float64
 }
 
 func (r *Runtime) beginCreatureActionTransitionLocked(entity *entityState, motion *actionMotionState, now time.Time, endpoint vector, exitVelocity vector, distanceAtHandoffCM float64) bool {
@@ -55,6 +56,7 @@ func (r *Runtime) beginCreatureActionTransitionLocked(entity *entityState, motio
 	}
 	exitSpeed := length(exitVelocity)
 	kind := creatureActionTransitionKind(motion.Contract)
+	totalDistanceCM := distance(entity.position, endpoint)
 	entity.creatureActionTransition = &creatureActionTransitionState{
 		SkillID:             motion.SkillID,
 		ActionContractID:    motion.Contract.ID,
@@ -63,8 +65,8 @@ func (r *Runtime) beginCreatureActionTransitionLocked(entity *entityState, motio
 		StartedAt:           now,
 		EndsAt:              now.Add(duration),
 		LastAdvancedAt:      now,
+		StartPosition:       entity.position,
 		Endpoint:            endpoint,
-		Position:            endpoint,
 		ExitDirection:       direction,
 		ExitSpeedCMPerSec:   exitSpeed,
 		Sequence:            motion.Sequence,
@@ -73,10 +75,10 @@ func (r *Runtime) beginCreatureActionTransitionLocked(entity *entityState, motio
 		ContactPolicy:       motion.ContactPolicy,
 		Contract:            motion.Contract,
 		DistanceAtHandoffCM: distanceAtHandoffCM,
+		TotalDistanceCM:     totalDistanceCM,
 	}
 	entity.actionInstance = nil
 	entity.creatureActiveSetupPolicyID = ""
-	entity.position = endpoint
 	entity.velocity = scale(direction, exitSpeed)
 	entity.movementState = kind
 	entity.skillState = "recovery"
@@ -119,6 +121,9 @@ func (r *Runtime) refreshCreatureActionTransitionLocked(entity *entityState, now
 		phaseT = 1
 	}
 	speed := transition.ExitSpeedCMPerSec * (1 - phaseT)
+	if speed < 0 {
+		speed = 0
+	}
 	motion := movement.ResolveConstantStep(movement.ConstantStepInput{
 		Position:         toDomainVector(entity.position),
 		Direction:        toDomainVector(transition.ExitDirection),
@@ -127,8 +132,17 @@ func (r *Runtime) refreshCreatureActionTransitionLocked(entity *entityState, now
 	})
 	projected := fromDomainVector(motion.Projected)
 	projected.z = transition.Endpoint.z
-	entity.position = projected
-	entity.velocity = fromDomainVector(motion.Velocity)
+	distanceToEndpointCM := distance(entity.position, transition.Endpoint)
+	if distanceToEndpointCM <= 0 {
+		entity.position = r.entityGroundRootPosition(entity, transition.Endpoint)
+		entity.velocity = vector{}
+	} else if stepDistanceCM := distance(entity.position, projected); stepDistanceCM >= distanceToEndpointCM {
+		entity.position = r.entityGroundRootPosition(entity, transition.Endpoint)
+		entity.velocity = vector{}
+	} else {
+		entity.position = projected
+		entity.velocity = fromDomainVector(motion.Velocity)
+	}
 	entity.velocity.z = 0
 	if transition.ExitDirection != (vector{}) {
 		entity.yaw = vectorYaw(transition.ExitDirection)
@@ -136,7 +150,6 @@ func (r *Runtime) refreshCreatureActionTransitionLocked(entity *entityState, now
 	entity.movementState = transition.Kind
 	entity.skillState = "recovery"
 	entity.combatState = "committed"
-	transition.Position = entity.position
 	transition.LastAdvancedAt = now
 	r.publishCreatureActionTransitionLocomotionLocked(entity, now)
 	r.publishCreatureActionTransitionSkillRuntimeLocked(entity, now)
@@ -149,7 +162,7 @@ func (r *Runtime) completeCreatureActionTransitionLocked(entity *entityState, no
 	}
 	transition := entity.creatureActionTransition
 	entity.creatureActionTransition = nil
-	entity.position = r.entityGroundRootPosition(entity, entity.position)
+	entity.position = r.entityGroundRootPosition(entity, transition.Endpoint)
 	entity.velocity = vector{}
 	entity.movementState = "grounded"
 	entity.skillState = "idle"
@@ -193,7 +206,10 @@ func (r *Runtime) publishCreatureActionTransitionLocomotionLocked(entity *entity
 	if strings.EqualFold(transition.ActionType, "leap") {
 		phase = "landing_handoff"
 	}
-	distanceTraveled := distance(transition.Endpoint, entity.position)
+	distanceTraveled := distance(transition.StartPosition, entity.position)
+	if transition.EndsAt.Before(now) {
+		distanceTraveled = distance(transition.StartPosition, transition.Endpoint)
+	}
 	loco := locomotionFromContractWithOverrides(transition.Contract, phase, transition.Endpoint, entity.position, r.tick, transition.Sequence, length(entity.velocity), distanceTraveled)
 	loco.Action = transition.SkillID
 	loco.AbilityKey = transition.SkillID
@@ -204,7 +220,7 @@ func (r *Runtime) publishCreatureActionTransitionLocomotionLocked(entity *entity
 	loco.LandingHandoffActive = true
 	loco.LandingExitDirection = toProto(transition.ExitDirection)
 	loco.LandingExitSpeed = transition.ExitSpeedCMPerSec
-	loco.ActionStartPosition = toProto(transition.Endpoint)
+	loco.ActionStartPosition = toProto(transition.StartPosition)
 	loco.ActionProjectedPosition = toProto(entity.position)
 	loco.ActionDistanceTraveled = transition.DistanceAtHandoffCM + distanceTraveled
 	loco.TargetSpeed = length(entity.velocity)

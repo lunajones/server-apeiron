@@ -2,6 +2,35 @@
 
 This ledger records movement and skill-movement reconciliation changes that affected rubberbanding, prediction, action root ownership, and automated validation.
 
+## 2026-06-24 - Creature Action Transition Endpoint Clamp Fix
+
+### Symptom
+
+Creature transitions from skill-root actions (mainly lunge/dodge exit) still showed tiny micro-snap corrections on landing/recovery, especially when player/dodge/leap timing was aggressive.
+
+### Hypothesis
+
+`ResolveConstantStep` produced step projections that could move past the planned transition endpoint. In the transition completion path, using the current grounded position (`entityGroundRootPosition(entity, entity.position)`) could preserve a residual offset, then force a late correction.
+
+### Change
+
+- Added explicit transition endpoint anchoring in `beginCreatureActionTransitionLocked`:
+  - stores transition `Endpoint` and planned exit distance.
+- Added endpoint-aware advance logic in `refreshCreatureActionTransitionLocked`:
+  - if projected step reaches/passes endpoint, snaps exactly to endpoint and zeroes velocity;
+  - if transition is already at endpoint, clamps there directly.
+- Changed `completeCreatureActionTransitionLocked` to terminate on `transition.Endpoint` (grounded) instead of `entity.position`.
+- Kept transition handoff contract and contract-driven motion unchanged; no dodge/walk/run/turn tuning changes.
+
+### Result
+
+- `go build ./internal/gameapi ./cmd/game-server` passed after fix.
+- Reduces transition-end reconciliation drift risk for creature action exits.
+
+### Guardrail
+
+No endpoint clamp should be removed; if a post-action snap appears, investigate transition duration/handoff contract ownership first instead of deadzone inflation.
+
 ## 2026-06-23 - Leap Root Playback Uses Contract Distance
 
 ### Symptom
