@@ -1119,14 +1119,14 @@ Done when:
 
 This roadmap is complete when:
 
-- wolf can circle/flank side-on while focus/head points at player;
-- lunge has explicit post-flank pre-commit alignment/run;
-- lunge has low 520ms airborne travel;
-- lunge has 200ms landing inertia;
-- body yaw, focus yaw and attack yaw are separate in runtime/presentation;
-- lunge hitbox/damage follows latched attack direction and temporal contact;
-- tactical movement resumes after explicit reentry;
-- same model is available for player actions without wolf-specific code.
+- [x] wolf can circle/flank side-on while focus/head points at player; (orientation model + sources)
+- [x] lunge has explicit post-flank pre-commit alignment/run; (envelope pre_commit + commit_align_ms)
+- [x] lunge has low 520ms airborne travel; (envelope airborne_ms)
+- [x] lunge has 200ms landing inertia; (envelope landing_inertia + transition)
+- [x] body yaw, focus yaw and attack yaw are separate in runtime/presentation; (latch + sources + turn rates)
+- [x] lunge hitbox/damage follows latched attack direction and temporal contact; (attack_yaw latch + re-aim)
+- [x] tactical movement resumes after explicit reentry; (envelope reentry phase + transition handoff)
+- [~] same model is available for player actions without wolf-specific code. (code generalized; see Slice 6 status)
 
 ## Implementation Progress - 2026-06-25 (attack_yaw latch)
 
@@ -1197,6 +1197,30 @@ single time, so it does not re-aim at a moving target each tick. Player generali
 `CreatureAIState` today), and (b) optionally letting the player attack yaw track during
 windup and latch at active-start per policy instead of committing at cast — which is
 prediction-sensitive (the client predicted the cast-time aim) and needs PIE validation.
+
+### Slice 6 status - 2026-06-25 (player generalization)
+
+Done now:
+- **Code is no longer wolf-specific.** `resolveCreatureActionOrientation` was split into a
+  generic `resolveActionOrientation(entity, target, actionOrientationInput, contract,
+  envelope, now)` that works for any actor; the creature call is a thin wrapper that builds
+  the input from the AI `Decision`. The latch state (`creatureActionOrientationLatch`) and the
+  persisted yaws live on the shared `entityState`, so players can use the exact same path.
+- **The player is already behaviorally compliant** with rules 3-5: it commits the attack
+  direction once at cast and the hitbox follows it (no moving-target re-aim). So no player
+  bug needs fixing here.
+
+Deferred to Codex (needs PIE + is prediction-coupled, not blind-safe):
+- Wiring the player to actually *call* `resolveActionOrientation` and publishing its
+  body/focus/attack yaw + phase. Hook points: `applySkill`/`applyMove` in `runtime.go`
+  (player is command-driven, not server-ticked like the wolf). The snapshot channel is the
+  decision: today orientation rides on `CreatureAiState` (creature-named); for players either
+  add a dedicated `ActionOrientationState` message to `SnapshotEntity.snapshot()` or extend an
+  existing player-facing state. Do NOT just populate `CreatureAiState` for players (Unreal may
+  branch on it).
+- Optional: let the player attack track during windup and latch at active_start per
+  `orientation_forward_commit_v1` instead of committing at cast. This changes what the client
+  predicted, so it must be validated in PIE and reconciled.
 
 ### Pre-existing test debt found (NOT caused by this pass - for Codex to fix)
 

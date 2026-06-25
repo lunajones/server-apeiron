@@ -38,7 +38,27 @@ type creatureActionOrientationLatch struct {
 	Latched      bool
 }
 
+// actionOrientationInput carries the actor-agnostic inputs the orientation resolver needs so
+// creatures (from an AI decision) and players (from input/aim) share one code path.
+type actionOrientationInput struct {
+	MovementDir          vector
+	TurnRateFallbackDegS float64
+	PublishesSkill       bool
+}
+
 func resolveCreatureActionOrientation(creature *entityState, target *entityState, decision creatureai.Decision, contract SkillRuntimeContract, envelope creatureActionMovementEnvelope, now time.Time) actionOrientationRuntimeState {
+	return resolveActionOrientation(creature, target, actionOrientationInput{
+		MovementDir:          fromDomainVector(flattenDomainDirection(decision.Direction)),
+		TurnRateFallbackDegS: decision.TurnRateDegPerSec,
+		PublishesSkill:       creatureai.PublishesSkill(decision.Action),
+	}, contract, envelope, now)
+}
+
+// resolveActionOrientation resolves body/focus/attack/movement yaw + phase for any actor
+// (creature or player) from its action/orientation contract. Actor-specific inputs arrive via
+// actionOrientationInput; the entityState fields it reads (latch, persisted yaws, transition)
+// are shared by players and creatures.
+func resolveActionOrientation(creature *entityState, target *entityState, in actionOrientationInput, contract SkillRuntimeContract, envelope creatureActionMovementEnvelope, now time.Time) actionOrientationRuntimeState {
 	state := actionOrientationRuntimeState{
 		BodyYawDeg:     entityYaw(creature),
 		FocusYawDeg:    entityYaw(creature),
@@ -55,7 +75,7 @@ func resolveCreatureActionOrientation(creature *entityState, target *entityState
 		state.AirborneMS = contract.Envelope.GetAirborneMs()
 		state.LandingInertiaMS = contract.Envelope.GetLandingInertiaMs()
 	}
-	movementDir := fromDomainVector(flattenDomainDirection(decision.Direction))
+	movementDir := in.MovementDir
 	if movementDir == (vector{}) && creature != nil {
 		movementDir = normalize(creature.velocity)
 	}
@@ -87,8 +107,8 @@ func resolveCreatureActionOrientation(creature *entityState, target *entityState
 		focusPrev, focusKnown = creature.orientationFocusYaw, creature.orientationFocusYawKnown
 		attackPrev, attackKnown = creature.orientationAttackYaw, creature.orientationAttackYawKnown
 	}
-	state.FocusYawDeg = approachPersistedOrientationYaw(focusKnown, focusPrev, focusDesired, orientationFocusTurnRate(contract, decision.TurnRateDegPerSec))
-	state.AttackYawDeg = approachPersistedOrientationYaw(attackKnown, attackPrev, attackDesired, orientationAttackTurnRate(contract, decision.TurnRateDegPerSec))
+	state.FocusYawDeg = approachPersistedOrientationYaw(focusKnown, focusPrev, focusDesired, orientationFocusTurnRate(contract, in.TurnRateFallbackDegS))
+	state.AttackYawDeg = approachPersistedOrientationYaw(attackKnown, attackPrev, attackDesired, orientationAttackTurnRate(contract, in.TurnRateFallbackDegS))
 	state.Phase = "tactical_setup"
 	if creatureActionTransitionActive(creature) {
 		state.Phase = "landing_inertia"
@@ -96,7 +116,7 @@ func resolveCreatureActionOrientation(creature *entityState, target *entityState
 			if creature.creatureActionTransition.ExitDirection != (vector{}) {
 				state.MovementYawDeg = vectorYaw(creature.creatureActionTransition.ExitDirection)
 			}
-			state.BodyYawDeg = approachCreatureYaw(entityYaw(creature), state.MovementYawDeg, orientationBodyTurnRate(contract, decision.TurnRateDegPerSec))
+			state.BodyYawDeg = approachCreatureYaw(entityYaw(creature), state.MovementYawDeg, orientationBodyTurnRate(contract, in.TurnRateFallbackDegS))
 			// Landing inertia preserves the latched attack line so the strike direction
 			// stays stable through the inertia tail instead of snapping to the exit move.
 			if latch := creature.actionOrientationLatch; latch != nil && latch.Latched {
@@ -108,7 +128,7 @@ func resolveCreatureActionOrientation(creature *entityState, target *entityState
 		}
 		return state
 	}
-	if creature != nil && creature.actionInstance != nil && creatureai.PublishesSkill(decision.Action) {
+	if creature != nil && creature.actionInstance != nil && in.PublishesSkill {
 		switch {
 		case envelope.PreCommitActive:
 			state.Phase = "pre_commit"
@@ -153,7 +173,7 @@ func resolveCreatureActionOrientation(creature *entityState, target *entityState
 			bodyTarget = state.AttackYawDeg
 		}
 	}
-	bodyRate := orientationBodyTurnRate(contract, decision.TurnRateDegPerSec)
+	bodyRate := orientationBodyTurnRate(contract, in.TurnRateFallbackDegS)
 	if state.Phase == "pre_commit" {
 		bodyRate = commitAlignBodyTurnRate(contract, bodyRate, entityYaw(creature), bodyTarget, envelope, now)
 	}
