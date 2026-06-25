@@ -73,15 +73,22 @@ func resolveCreatureActionOrientation(creature *entityState, target *entityState
 			targetYaw = vectorYaw(toTarget)
 		}
 	}
-	// Focus (head/attention) and pre-latch attack yaw ease toward the target at their own
-	// contract turn rates instead of snapping, so the head leads and the strike winds up.
+	// Focus (head/attention) and pre-latch attack yaw ease toward their contract-defined
+	// source at their own turn rates instead of snapping, so the head leads and the strike
+	// winds up. Sources are data-driven so the same code serves player aim policies later.
+	hasTarget := creature != nil && target != nil
+	focusDesired, attackDesired := targetYaw, targetYaw
+	if contract.Orientation != nil {
+		focusDesired = orientationDesiredSourceYaw(contract.Orientation.GetFocusYawSource(), targetYaw, state.MovementYawDeg, targetYaw, hasTarget)
+		attackDesired = orientationDesiredSourceYaw(contract.Orientation.GetAttackYawSource(), targetYaw, state.MovementYawDeg, targetYaw, hasTarget)
+	}
 	focusPrev, focusKnown, attackPrev, attackKnown := 0.0, false, 0.0, false
 	if creature != nil {
 		focusPrev, focusKnown = creature.orientationFocusYaw, creature.orientationFocusYawKnown
 		attackPrev, attackKnown = creature.orientationAttackYaw, creature.orientationAttackYawKnown
 	}
-	state.FocusYawDeg = approachPersistedOrientationYaw(focusKnown, focusPrev, targetYaw, orientationFocusTurnRate(contract, decision.TurnRateDegPerSec))
-	state.AttackYawDeg = approachPersistedOrientationYaw(attackKnown, attackPrev, targetYaw, orientationAttackTurnRate(contract, decision.TurnRateDegPerSec))
+	state.FocusYawDeg = approachPersistedOrientationYaw(focusKnown, focusPrev, focusDesired, orientationFocusTurnRate(contract, decision.TurnRateDegPerSec))
+	state.AttackYawDeg = approachPersistedOrientationYaw(attackKnown, attackPrev, attackDesired, orientationAttackTurnRate(contract, decision.TurnRateDegPerSec))
 	state.Phase = "tactical_setup"
 	if creatureActionTransitionActive(creature) {
 		state.Phase = "landing_inertia"
@@ -127,8 +134,24 @@ func resolveCreatureActionOrientation(creature *entityState, target *entityState
 		}
 	}
 	bodyTarget := state.MovementYawDeg
-	if !orientationAllowsSideOn(contract) || state.Phase == "pre_commit" || state.Phase == "airborne" {
+	bodySource := ""
+	if contract.Orientation != nil {
+		bodySource = strings.ToLower(strings.TrimSpace(contract.Orientation.GetBodyYawSource()))
+	}
+	switch bodySource {
+	case "aim_direction", "target", "attack_yaw", "aim":
+		// Committed-facing actions (player shield rush/bash, heavy) keep the body on the
+		// attack line the whole time.
 		bodyTarget = state.AttackYawDeg
+	case "movement_direction", "movement", "velocity":
+		bodyTarget = state.MovementYawDeg
+	default:
+		// movement_direction_until_commit / none / unset: follow movement during setup,
+		// snap the body onto the attack line once the action commits (pre_commit/airborne),
+		// or whenever side-on movement is disallowed.
+		if !orientationAllowsSideOn(contract) || state.Phase == "pre_commit" || state.Phase == "airborne" {
+			bodyTarget = state.AttackYawDeg
+		}
 	}
 	state.BodyYawDeg = approachCreatureYaw(entityYaw(creature), bodyTarget, orientationBodyTurnRate(contract, decision.TurnRateDegPerSec))
 	return state
@@ -180,6 +203,25 @@ func orientationBodyTurnRate(contract SkillRuntimeContract, fallback float64) fl
 		return fallback
 	}
 	return 360
+}
+
+// orientationDesiredSourceYaw maps an action_orientation_policy *_yaw_source to a concrete
+// desired yaw. Creatures have no camera/aim, so aim/camera/target/commit-snapshot sources all
+// resolve to the target bearing; movement sources resolve to the movement direction. "none",
+// empty, or unknown returns the fallback unchanged so the yaw holds its current intent.
+// (For players this is where aim_direction would resolve to the camera/aim yaw instead.)
+func orientationDesiredSourceYaw(source string, targetYaw, movementYaw, fallback float64, hasTarget bool) float64 {
+	switch strings.ToLower(strings.TrimSpace(source)) {
+	case "target", "aim_direction", "focus_or_camera", "commit_target_snapshot", "commit_aim_snapshot", "aim", "camera":
+		if hasTarget {
+			return targetYaw
+		}
+		return fallback
+	case "movement_direction", "movement_direction_until_commit", "movement", "velocity":
+		return movementYaw
+	default:
+		return fallback
+	}
 }
 
 func orientationFocusTurnRate(contract SkillRuntimeContract, fallback float64) float64 {

@@ -196,3 +196,37 @@ func TestCreatureOrientationFocusAndAttackEaseAtContractTurnRates(t *testing.T) 
 		t.Fatal("focus eased away from the target instead of toward it")
 	}
 }
+
+// TestCreatureOrientationHonorsYawSources locks that the *_yaw_source policy fields drive
+// where each yaw points: a policy can send focus to the movement direction while attack
+// tracks the target, instead of the runtime hardcoding both to the target.
+func TestCreatureOrientationHonorsYawSources(t *testing.T) {
+	runtime := NewRuntimeWithContracts(DevFixtureRuntimeContracts())
+	player := runtime.ensurePlayerLocked("local_player")
+	wolf := runtime.ensureWolfLocked(player)
+	wolf.position = vector{x: 0, y: 0, z: player.position.z}
+	player.position = vector{x: 0, y: 600, z: player.position.z} // target due north
+
+	contract := runtime.contracts.skillContract("lunge")
+	contract.Orientation = &dbv1.ActionOrientationPolicy{
+		Id:                   "orientation_source_test",
+		FocusYawSource:       "movement_direction",
+		AttackYawSource:      "target",
+		AttackYawLatchPolicy: "none",
+		// turn rates 0 -> snap, so the resolved source is observable in one tick.
+	}
+	// Movement intent points east, away from the (north) target.
+	decision := creatureai.Decision{Direction: toDomainVector(vector{x: 1})}
+
+	movementYaw := normalizeYaw(vectorYaw(vector{x: 1}))
+	targetYaw := normalizeYaw(vectorYaw(vector{x: 0, y: 1}))
+
+	orientation := resolveCreatureActionOrientation(wolf, player, decision, contract, creatureActionMovementEnvelope{}, time.Now())
+
+	if d := math.Abs(normalizeYawDelta(orientation.FocusYawDeg - movementYaw)); d > 0.5 {
+		t.Fatalf("focus_yaw_source=movement_direction not honored: focus %.1f != movement %.1f", orientation.FocusYawDeg, movementYaw)
+	}
+	if d := math.Abs(normalizeYawDelta(orientation.AttackYawDeg - targetYaw)); d > 0.5 {
+		t.Fatalf("attack_yaw_source=target not honored: attack %.1f != target %.1f", orientation.AttackYawDeg, targetYaw)
+	}
+}

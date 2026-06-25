@@ -1165,6 +1165,18 @@ orientation/envelope data real gameplay authority. It covers roadmap orientation
   Write-back in `applyCreatureOrientationState`. Latched attack still overrides (frozen).
 - Test `TestCreatureOrientationFocusAndAttackEaseAtContractTurnRates`.
 
+### Done - 2026-06-25 (data-driven yaw sources)
+
+- `body_yaw_source` / `focus_yaw_source` / `attack_yaw_source` are now read and honored via
+  `orientationDesiredSourceYaw`, instead of the runtime hardcoding every yaw to the target.
+  Creatures map aim/camera/target/commit-snapshot sources to the target bearing and
+  movement sources to the movement direction; this is the seam where player aim policies
+  (`aim_direction`, `commit_aim_snapshot`) will resolve to camera/aim yaw during Slice 6.
+  Wolf lunge behavior is unchanged (its sources already resolve to the same values).
+- Body yaw honors explicit `aim_direction`/`movement_direction` sources and keeps the
+  phase+side-on logic as the `movement_direction_until_commit` default.
+- Test `TestCreatureOrientationHonorsYawSources`.
+
 ### Pre-existing test debt found (NOT caused by this pass - for Codex to fix)
 
 `go build` was green but `go test ./internal/gameapi/` did not even compile at HEAD `e0b931a`:
@@ -1191,8 +1203,7 @@ These need either fixture-data updates (turn rate + stamina) or test expectation
 - **`commit_align_ms`:** still unused (defines the body alignment-blend window during
   pre-commit; body currently rate-limits via `body_turn_rate` which is close enough until
   PIE tuning). `focus_turn_rate_deg_s`/`attack_turn_rate_deg_s` are now applied.
-- **Honor the `_source` fields:** `body_yaw_source`/`focus_yaw_source`/`attack_yaw_source`
-  are not yet read to pick the source; the runtime hardcodes sources that happen to match
-  the seeds. Read them to stay fully data-driven.
+- **`_source` fields:** now honored (see Done above). Player aim/camera resolution is the
+  remaining piece, tied to Slice 6.
 - **Player generalization (Slice 6):** the latch/orientation runtime only runs on the wolf
   path today; players still don't consume the policies. Same model, plus prediction layer.
