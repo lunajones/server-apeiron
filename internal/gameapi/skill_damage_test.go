@@ -13,7 +13,7 @@ import (
 // pulls base_damage/posture_damage/max_range from the DB Skill (GetSkill) into the
 // runtime contract. The fake source returns 12/20/300.
 func TestLoadSkillRuntimeContractMapsDBDamage(t *testing.T) {
-	c, ok := loadSkillRuntimeContract(context.Background(), fakeRuntimeContractSource{}, "player_shield_rush")
+	c, ok := loadSkillRuntimeContract(context.Background(), fakeRuntimeContractSource{}, fakeRuntimeContractSource{}, "player_shield_rush")
 	if !ok {
 		t.Fatal("expected skill to load from DB source")
 	}

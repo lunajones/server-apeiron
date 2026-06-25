@@ -106,6 +106,7 @@ type entityState struct {
 	actionInstance              *actionruntime.Instance
 	actionMotion                *actionMotionState
 	creatureActionTransition    *creatureActionTransitionState
+	actionOrientationLatch      *creatureActionOrientationLatch
 	actionHandoffUntil          time.Time
 	actionHandoffAction         string
 	combatMode                  *gamev1.CombatModeState
@@ -902,9 +903,23 @@ func (r *Runtime) creatureSkillImpactScheduleLocked(creature *entityState, playe
 	}
 	elapsedMS := float64(now.UnixMilli() - startedAtMS)
 
+	instanceID := ""
+	startedAt := time.UnixMilli(startedAtMS)
+	if creature.actionInstance != nil && creature.actionInstance.SkillID.String() == skill.SkillID {
+		instanceID = creature.actionInstance.InstanceID
+		startedAt = creature.actionInstance.StartedAt
+	}
+
 	dir := normalize(vector{x: player.position.x - creature.position.x, y: player.position.y - creature.position.y})
 	if dir == (vector{}) {
 		dir = yawVector(creature.yaw)
+	}
+	// A committed action sweeps along its latched attack line, so the strike follows where
+	// the creature actually lunged instead of re-aiming at the moving target every tick.
+	if latch := creature.actionOrientationLatch; latch != nil && latch.Latched && instanceID != "" && latch.InstanceID == instanceID {
+		if latchedDir := yawVector(latch.AttackYawDeg); latchedDir != (vector{}) {
+			dir = latchedDir
+		}
 	}
 	reach := skillRangeToCM(skill.Range)
 	if reach <= 0 {
@@ -914,12 +929,6 @@ func (r *Runtime) creatureSkillImpactScheduleLocked(creature *entityState, playe
 		reach = maxSkillHitboxReachCM(skill)
 	}
 	end := vector{x: creature.position.x + dir.x*reach, y: creature.position.y + dir.y*reach, z: creature.position.z}
-	instanceID := ""
-	startedAt := time.UnixMilli(startedAtMS)
-	if creature.actionInstance != nil && creature.actionInstance.SkillID.String() == skill.SkillID {
-		instanceID = creature.actionInstance.InstanceID
-		startedAt = creature.actionInstance.StartedAt
-	}
 	return skillImpactScheduleFromActionInstance(
 		creature,
 		skill,

@@ -21,6 +21,21 @@ type actionOrientationRuntimeState struct {
 	AirborneMS           int32
 	LandingInertiaMS     int32
 	AttackYawLatchPolicy string
+	AttackYawLatched     bool
+}
+
+// creatureActionOrientationLatch is the per-action persistent attack-direction lock.
+// Once an action commits (at the policy-defined latch point), attack_yaw stops tracking
+// the moving target and freezes to the committed line. The hitbox, airborne root and
+// presentation all read this frozen value, so the strike follows where the actor actually
+// lunged instead of re-aiming at the target every tick (roadmap orientation rules 3-5).
+// It is keyed by the owning action InstanceID so a new action resets it cleanly.
+type creatureActionOrientationLatch struct {
+	InstanceID   string
+	SkillID      string
+	LatchPolicy  string
+	AttackYawDeg float64
+	Latched      bool
 }
 
 func resolveCreatureActionOrientation(creature *entityState, target *entityState, decision creatureai.Decision, contract SkillRuntimeContract, envelope creatureActionMovementEnvelope, now time.Time) actionOrientationRuntimeState {
@@ -68,7 +83,14 @@ func resolveCreatureActionOrientation(creature *entityState, target *entityState
 				state.MovementYawDeg = vectorYaw(creature.creatureActionTransition.ExitDirection)
 			}
 			state.BodyYawDeg = approachCreatureYaw(entityYaw(creature), state.MovementYawDeg, orientationBodyTurnRate(contract, decision.TurnRateDegPerSec))
-			state.AttackYawDeg = state.MovementYawDeg
+			// Landing inertia preserves the latched attack line so the strike direction
+			// stays stable through the inertia tail instead of snapping to the exit move.
+			if latch := creature.actionOrientationLatch; latch != nil && latch.Latched {
+				state.AttackYawDeg = normalizeYaw(latch.AttackYawDeg)
+				state.AttackYawLatched = true
+			} else {
+				state.AttackYawDeg = state.MovementYawDeg
+			}
 		}
 		return state
 	}
@@ -87,6 +109,14 @@ func resolveCreatureActionOrientation(creature *entityState, target *entityState
 			} else if phase == actionruntime.PhaseRecovery {
 				state.Phase = "reentry"
 			}
+		}
+	}
+	// Once the action commits, attack yaw freezes to the latched committed line while
+	// focus_yaw keeps tracking the target above — the two are now genuinely separate.
+	if creature != nil && creature.actionInstance != nil {
+		if latch := creature.actionOrientationLatch; latch != nil && latch.Latched {
+			state.AttackYawDeg = normalizeYaw(latch.AttackYawDeg)
+			state.AttackYawLatched = true
 		}
 	}
 	bodyTarget := state.MovementYawDeg
@@ -133,4 +163,77 @@ func orientationPolicyHasLungeCommit(contract SkillRuntimeContract) bool {
 	}
 	id := strings.ToLower(strings.TrimSpace(contract.Orientation.GetId()))
 	return strings.Contains(id, "lunge") && strings.Contains(id, "commit")
+}
+
+// updateCreatureActionOrientationLatchLocked maintains the per-action attack-yaw latch.
+// It runs each tick of an owned creature action, before the hitbox schedule is enqueued,
+// so the committed attack direction is available to both damage resolution and presentation.
+func (r *Runtime) updateCreatureActionOrientationLatchLocked(creature *entityState, target *entityState, contract SkillRuntimeContract, instance *actionruntime.Instance, now time.Time) {
+	if creature == nil || instance == nil {
+		return
+	}
+	// Only actions carrying an orientation policy participate; others keep target tracking.
+	if contract.Orientation == nil {
+		creature.actionOrientationLatch = nil
+		return
+	}
+	latchPolicy := strings.ToLower(strings.TrimSpace(contract.Orientation.GetAttackYawLatchPolicy()))
+	// A new action instance owns a fresh latch (resets any prior committed direction).
+	if creature.actionOrientationLatch == nil || creature.actionOrientationLatch.InstanceID != instance.InstanceID {
+		creature.actionOrientationLatch = &creatureActionOrientationLatch{
+			InstanceID:  instance.InstanceID,
+			SkillID:     instance.SkillID.String(),
+			LatchPolicy: latchPolicy,
+		}
+	}
+	latch := creature.actionOrientationLatch
+	if latch.Latched {
+		return
+	}
+	if latchPolicy == "" || latchPolicy == "none" {
+		return
+	}
+	if !creatureActionAttackYawLatchReached(contract, instance, now) {
+		return
+	}
+	latch.AttackYawDeg = creatureActionCommittedAttackYaw(creature, target)
+	latch.Latched = true
+}
+
+// creatureActionAttackYawLatchReached reports whether the action has reached its policy
+// latch point. latch_at_takeoff fires at airborne start (after the pre-commit alignment
+// window); latch_at_active_start fires once the action leaves windup.
+func creatureActionAttackYawLatchReached(contract SkillRuntimeContract, instance *actionruntime.Instance, now time.Time) bool {
+	if instance == nil || contract.Orientation == nil {
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(contract.Orientation.GetAttackYawLatchPolicy())) {
+	case "latch_at_takeoff":
+		envelope := creatureActionMovementEnvelopeAt(*instance, contract, now)
+		if envelope.AirborneStartsAt.IsZero() {
+			return !now.Before(envelope.MovementStartsAt)
+		}
+		return !now.Before(envelope.AirborneStartsAt)
+	case "latch_at_active_start":
+		phase := instance.PhaseAt(now)
+		return phase != actionruntime.PhaseAccepted && phase != actionruntime.PhaseWindup
+	default:
+		return false
+	}
+}
+
+// creatureActionCommittedAttackYaw captures the committed attack direction. It prefers the
+// physical owned-root direction so the hitbox sweep matches actual travel; otherwise it
+// snapshots the current target bearing at the latch point.
+func creatureActionCommittedAttackYaw(creature *entityState, target *entityState) float64 {
+	if creature != nil && creature.actionMotion != nil && creature.actionMotion.Direction != (vector{}) {
+		return normalizeYaw(vectorYaw(creature.actionMotion.Direction))
+	}
+	if creature != nil && target != nil {
+		toTarget := normalize(vector{x: target.position.x - creature.position.x, y: target.position.y - creature.position.y})
+		if toTarget != (vector{}) {
+			return normalizeYaw(vectorYaw(toTarget))
+		}
+	}
+	return entityYaw(creature)
 }

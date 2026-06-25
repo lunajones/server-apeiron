@@ -200,6 +200,7 @@ func (r *Runtime) publishWolfAIStateLocked(wolf *entityState, target *entityStat
 			AirborneMs:              orientation.AirborneMS,
 			LandingInertiaMs:        orientation.LandingInertiaMS,
 			AttackYawLatchPolicy:    orientation.AttackYawLatchPolicy,
+			AttackYawLatched:        orientation.AttackYawLatched,
 		}
 		return
 	}
@@ -261,6 +262,7 @@ func (r *Runtime) publishWolfAIStateLocked(wolf *entityState, target *entityStat
 		AirborneMs:                            orientation.AirborneMS,
 		LandingInertiaMs:                      orientation.LandingInertiaMS,
 		AttackYawLatchPolicy:                  orientation.AttackYawLatchPolicy,
+		AttackYawLatched:                      orientation.AttackYawLatched,
 	}
 }
 

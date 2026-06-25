@@ -521,6 +521,7 @@ message CreatureAIState {
   int32 airborne_ms = 58;
   int32 landing_inertia_ms = 59;
   string attack_yaw_latch_policy = 60;
+  bool attack_yaw_latched = 61;
 }
 
 message HealthResponse {

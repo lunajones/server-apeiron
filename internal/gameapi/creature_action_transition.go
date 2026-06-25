@@ -169,6 +169,7 @@ func (r *Runtime) completeCreatureActionTransitionLocked(entity *entityState, no
 	entity.combatState = "ready"
 	entity.actionInstance = nil
 	entity.actionMotion = nil
+	entity.actionOrientationLatch = nil
 	entity.creatureActiveSetupPolicyID = ""
 	r.publishEntityTerminalSkillRuntimeLocked(entity, skillRuntimeStateIdle, now)
 	if entity.locomotion != nil && (entity.locomotion.GetAction() == transition.SkillID || entity.locomotion.GetAction() == transition.Kind) {

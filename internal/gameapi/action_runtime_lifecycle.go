@@ -28,6 +28,7 @@ func (r *Runtime) completeCreatureActionRuntimeLocked(creature *entityState, now
 	creature.actionInstance = nil
 	creature.actionMotion = nil
 	creature.creatureActionTransition = nil
+	creature.actionOrientationLatch = nil
 	creature.creatureActiveSetupPolicyID = ""
 	r.publishEntityTerminalSkillRuntimeLocked(creature, skillRuntimeStateIdle, now)
 	creature.skillState = "idle"
@@ -40,6 +41,7 @@ func (r *Runtime) interruptEntityActionRuntimeLocked(entity *entityState, now ti
 	}
 	cancelled := r.cancelEntityActionImpactScheduleLocked(entity)
 	entity.actionInstance = nil
+	entity.actionOrientationLatch = nil
 	entity.creatureActiveSetupPolicyID = ""
 	if entity.actionMotion != nil && entity.actionMotion.MotionSource != preserveMotionSource {
 		entity.actionMotion = nil

@@ -4053,6 +4053,7 @@ type CreatureAIState struct {
 	AirborneMs                            int32                  `protobuf:"varint,58,opt,name=airborne_ms,json=airborneMs,proto3" json:"airborne_ms,omitempty"`
 	LandingInertiaMs                      int32                  `protobuf:"varint,59,opt,name=landing_inertia_ms,json=landingInertiaMs,proto3" json:"landing_inertia_ms,omitempty"`
 	AttackYawLatchPolicy                  string                 `protobuf:"bytes,60,opt,name=attack_yaw_latch_policy,json=attackYawLatchPolicy,proto3" json:"attack_yaw_latch_policy,omitempty"`
+	AttackYawLatched                      bool                   `protobuf:"varint,61,opt,name=attack_yaw_latched,json=attackYawLatched,proto3" json:"attack_yaw_latched,omitempty"`
 	unknownFields                         protoimpl.UnknownFields
 	sizeCache                             protoimpl.SizeCache
 }
@@ -4505,6 +4506,13 @@ func (x *CreatureAIState) GetAttackYawLatchPolicy() string {
 		return x.AttackYawLatchPolicy
 	}
 	return ""
+}
+
+func (x *CreatureAIState) GetAttackYawLatched() bool {
+	if x != nil {
+		return x.AttackYawLatched
+	}
+	return false
 }
 
 type HealthResponse struct {
@@ -5154,7 +5162,7 @@ const file_proto_apeiron_game_v1_game_proto_rawDesc = "" +
 	"\x12action_instance_id\x18\a \x01(\tR\x10actionInstanceId\x12>\n" +
 	"\n" +
 	"mode_slots\x18\b \x03(\v2\x1f.apeiron.game.v1.CombatModeSlotR\tmodeSlots\x120\n" +
-	"\x14combat_mode_enforced\x18\t \x01(\bR\x12combatModeEnforced\"\xf4\x14\n" +
+	"\x14combat_mode_enforced\x18\t \x01(\bR\x12combatModeEnforced\"\xa2\x15\n" +
 	"\x0fCreatureAIState\x12'\n" +
 	"\x0fmovement_tactic\x18\x01 \x01(\tR\x0emovementTactic\x12#\n" +
 	"\rcombat_tactic\x18\x02 \x01(\tR\fcombatTactic\x12\x1e\n" +
@@ -5230,7 +5238,8 @@ const file_proto_apeiron_game_v1_game_proto_rawDesc = "" +
 	"\vairborne_ms\x18: \x01(\x05R\n" +
 	"airborneMs\x12,\n" +
 	"\x12landing_inertia_ms\x18; \x01(\x05R\x10landingInertiaMs\x125\n" +
-	"\x17attack_yaw_latch_policy\x18< \x01(\tR\x14attackYawLatchPolicy\"B\n" +
+	"\x17attack_yaw_latch_policy\x18< \x01(\tR\x14attackYawLatchPolicy\x12,\n" +
+	"\x12attack_yaw_latched\x18= \x01(\bR\x10attackYawLatched\"B\n" +
 	"\x0eHealthResponse\x12\x18\n" +
 	"\ahealthy\x18\x01 \x01(\bR\ahealthy\x12\x16\n" +
 	"\x06status\x18\x02 \x01(\tR\x06status\"E\n" +

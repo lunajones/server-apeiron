@@ -1127,3 +1127,59 @@ This roadmap is complete when:
 - lunge hitbox/damage follows latched attack direction and temporal contact;
 - tactical movement resumes after explicit reentry;
 - same model is available for player actions without wolf-specific code.
+
+## Implementation Progress - 2026-06-25 (attack_yaw latch)
+
+This pass implemented the attack-yaw latch, which is what gives the already-plumbed
+orientation/envelope data real gameplay authority. It covers roadmap orientation rules 3-5.
+
+### Done
+
+- New persistent runtime state `creatureActionOrientationLatch` on `entityState`
+  (`internal/gameapi/runtime.go`), keyed by the owning action `InstanceID`.
+- `updateCreatureActionOrientationLatchLocked` (`internal/gameapi/action_orientation.go`)
+  runs each tick inside `applyCreatureActionRuntimeLocked`, **before** the hitbox is
+  enqueued, and latches attack yaw at the policy-defined point:
+  - `latch_at_takeoff` -> at airborne start (after the pre-commit alignment window);
+  - `latch_at_active_start` -> when the action leaves windup;
+  - `none`/empty -> never latches (target tracking preserved, e.g. bite).
+- Committed attack yaw prefers the physical owned-root direction (`actionMotion.Direction`)
+  so the hitbox sweep matches actual travel; falls back to the target snapshot.
+- Hitbox: `creatureSkillImpactScheduleLocked` now sweeps along the latched line instead of
+  re-aiming at the moving target every tick (was the rule-5 violation).
+- Presentation: `resolveCreatureActionOrientation` freezes `attack_yaw` to the latch while
+  `focus_yaw` keeps tracking the target — the two are now genuinely separate. Latch survives
+  into the landing-inertia transition so attack direction stays stable through the tail.
+- Latch is reset on new instance and cleared on complete/interrupt/transition-complete.
+- New proto field `CreatureAIState.attack_yaw_latched` (game.proto field 61, regenerated)
+  so Unreal can show latch state in the debug label.
+- Tests: `internal/gameapi/attack_yaw_latch_test.go` (latch-at-takeoff + hitbox follows
+  latched line + focus/attack separation + per-instance reset). Both pass.
+
+### Pre-existing test debt found (NOT caused by this pass - for Codex to fix)
+
+`go build` was green but `go test ./internal/gameapi/` did not even compile at HEAD `e0b931a`:
+the `d2b0390` commit added 3 methods to `ProfileContractSource` and changed
+`loadSkillRuntimeContract`'s signature without updating the test fakes. Fixed the compile
+(added the 3 fake methods + the call site) so the suite runs again. After that, 5 tests fail
+and were confirmed pre-existing by reverting this pass's logic and re-running:
+
+- `TestStrictRuntimeCoverageAllowsNonDamagingMovementSkillWithoutHitbox` - fake wolf policy missing turn rate.
+- `TestLoadRuntimeContractsFromDBUsesRequiredSkillBindings` - fake combat-core profiles missing stamina fields.
+- `TestDBRuntimeSourcePromotesOnlyAfterStrictCompleteLoad` - same stamina/turn-rate fake gaps.
+- `TestWolfLungeActivePhaseUsesSkillRootMotionOwner` - stale: expects active lunge z unchanged, but the vertical motion model now arcs the lunge (z 98 -> 115).
+- `TestWolfMaulContactStopsBeforeOverlappingTargetUsingContractGeometry` - maul contact flags now passthrough:false stop:false.
+
+These need either fixture-data updates (turn rate + stamina) or test expectation updates
+(lunge vertical, maul contact). Left untouched to avoid masking a possible real regression.
+
+### Deferred (next AAA steps)
+
+- **Airborne root re-aim:** physical root direction is committed at root-start; the latch
+  captures that same direction so hitbox/presentation are consistent, but the 100ms
+  pre-commit alignment does not yet re-resolve the physical airborne path to the latched
+  yaw. Doing so risks reintroducing rubberband, so it needs care.
+- **Apply policy turn rates:** `commit_align_ms`, `focus_turn_rate_deg_s`,
+  `attack_turn_rate_deg_s` are loaded but only `body_turn_rate` is used in runtime.
+- **Player generalization (Slice 6):** the latch/orientation runtime only runs on the wolf
+  path today; players still don't consume the policies. Same model, plus prediction layer.

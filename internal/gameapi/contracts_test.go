@@ -1346,6 +1346,18 @@ func (fakeRuntimeContractSource) GetMovementReconciliationContract(context.Conte
 	return &dbv1.MovementReconciliationContractResponse{Found: false}, nil
 }
 
+func (fakeRuntimeContractSource) GetActionOrientationPolicy(context.Context, *dbv1.IdRequest, ...grpc.CallOption) (*dbv1.ActionOrientationPolicyResponse, error) {
+	return &dbv1.ActionOrientationPolicyResponse{Found: false}, nil
+}
+
+func (fakeRuntimeContractSource) GetActionEnvelopePolicy(context.Context, *dbv1.IdRequest, ...grpc.CallOption) (*dbv1.ActionEnvelopePolicyResponse, error) {
+	return &dbv1.ActionEnvelopePolicyResponse{Found: false}, nil
+}
+
+func (fakeRuntimeContractSource) GetSkillActionPolicyBinding(context.Context, *dbv1.IdRequest, ...grpc.CallOption) (*dbv1.SkillActionPolicyBindingResponse, error) {
+	return &dbv1.SkillActionPolicyBindingResponse{Found: false}, nil
+}
+
 func (fakeRuntimeContractSource) GetRuntimeMovementReconciliationProfile(_ context.Context, req *dbv1.IdRequest, _ ...grpc.CallOption) (*dbv1.RuntimeMovementReconciliationProfileResponse, error) {
 	if req.GetId() != runtimeMovementReconciliationProfileID {
 		return &dbv1.RuntimeMovementReconciliationProfileResponse{Found: false}, nil

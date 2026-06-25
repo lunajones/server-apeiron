@@ -60,6 +60,9 @@ func (r *Runtime) applyCreatureActionRuntimeLocked(creature *entityState, target
 	creature.skillState = string(phase)
 	creature.combatState = "committed"
 	rootMotionApplied := r.applyCreatureSkillRootMotionLocked(creature, target, decision, contract, instance, now)
+	// Refresh the attack-yaw latch before the hitbox is scheduled so a committed action
+	// damages along its latched line, not the moving target's live bearing.
+	r.updateCreatureActionOrientationLatchLocked(creature, target, contract, instance, now)
 	if target != nil {
 		r.enqueueCreatureSkillImpactLocked(creature, target, contract, now)
 	}
