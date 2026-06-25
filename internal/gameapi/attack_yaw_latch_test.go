@@ -154,3 +154,45 @@ func TestCreatureActionLatchResetsPerInstance(t *testing.T) {
 		t.Fatal("new instance inherited a latched attack yaw instead of resetting")
 	}
 }
+
+// TestCreatureOrientationFocusAndAttackEaseAtContractTurnRates locks that focus and
+// pre-latch attack yaw ease toward the target at their own policy turn rates (the head
+// leads faster than the strike winds up) instead of snapping.
+func TestCreatureOrientationFocusAndAttackEaseAtContractTurnRates(t *testing.T) {
+	runtime := NewRuntimeWithContracts(DevFixtureRuntimeContracts())
+	player := runtime.ensurePlayerLocked("local_player")
+	wolf := runtime.ensureWolfLocked(player)
+	wolf.position = vector{x: 0, y: 0, z: player.position.z}
+	player.position = vector{x: 0, y: 600, z: player.position.z} // due north
+
+	contract := runtime.contracts.skillContract("lunge")
+	contract.Orientation = &dbv1.ActionOrientationPolicy{
+		Id:                   "orientation_test_rates",
+		FocusTurnRateDegS:    300,
+		AttackTurnRateDegS:   150,
+		AttackYawLatchPolicy: "none", // keep attack tracking so its turn rate is observable
+	}
+
+	targetYaw := normalizeYaw(vectorYaw(vector{x: player.position.x - wolf.position.x, y: player.position.y - wolf.position.y}))
+	// Seed both yaws 90 deg away from the target so easing is visible (not a first-seen snap).
+	startYaw := normalizeYaw(targetYaw + 90)
+	wolf.orientationFocusYaw, wolf.orientationFocusYawKnown = startYaw, true
+	wolf.orientationAttackYaw, wolf.orientationAttackYawKnown = startYaw, true
+
+	orientation := resolveCreatureActionOrientation(wolf, player, creatureai.Decision{}, contract, creatureActionMovementEnvelope{}, time.Now())
+
+	focusMoved := math.Abs(normalizeYawDelta(orientation.FocusYawDeg - startYaw))
+	attackMoved := math.Abs(normalizeYawDelta(orientation.AttackYawDeg - startYaw))
+	if focusMoved <= 0 || focusMoved >= 90 {
+		t.Fatalf("focus did not ease toward target (moved %.1f of 90)", focusMoved)
+	}
+	if attackMoved <= 0 || attackMoved >= 90 {
+		t.Fatalf("attack did not ease toward target (moved %.1f of 90)", attackMoved)
+	}
+	if focusMoved <= attackMoved {
+		t.Fatalf("focus rate (300) should ease faster than attack rate (150): focus %.1f attack %.1f", focusMoved, attackMoved)
+	}
+	if math.Abs(normalizeYawDelta(orientation.FocusYawDeg-targetYaw)) >= 90 {
+		t.Fatal("focus eased away from the target instead of toward it")
+	}
+}

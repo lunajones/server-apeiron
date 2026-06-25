@@ -107,6 +107,10 @@ type entityState struct {
 	actionMotion                *actionMotionState
 	creatureActionTransition    *creatureActionTransitionState
 	actionOrientationLatch      *creatureActionOrientationLatch
+	orientationFocusYaw         float64
+	orientationFocusYawKnown    bool
+	orientationAttackYaw        float64
+	orientationAttackYawKnown   bool
 	actionHandoffUntil          time.Time
 	actionHandoffAction         string
 	combatMode                  *gamev1.CombatModeState

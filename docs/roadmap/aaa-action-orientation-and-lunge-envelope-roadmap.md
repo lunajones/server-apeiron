@@ -1156,6 +1156,15 @@ orientation/envelope data real gameplay authority. It covers roadmap orientation
 - Tests: `internal/gameapi/attack_yaw_latch_test.go` (latch-at-takeoff + hitbox follows
   latched line + focus/attack separation + per-instance reset). Both pass.
 
+### Done - 2026-06-25 (orientation turn rates)
+
+- `focus_turn_rate_deg_s` and `attack_turn_rate_deg_s` are now applied: focus (head/
+  attention) and pre-latch attack yaw ease toward the target at their own contract rates
+  instead of snapping. Persisted on `entityState` (`orientationFocusYaw`/`orientationAttackYaw`
+  + known flags), eased via `approachPersistedOrientationYaw`, snap on first observation.
+  Write-back in `applyCreatureOrientationState`. Latched attack still overrides (frozen).
+- Test `TestCreatureOrientationFocusAndAttackEaseAtContractTurnRates`.
+
 ### Pre-existing test debt found (NOT caused by this pass - for Codex to fix)
 
 `go build` was green but `go test ./internal/gameapi/` did not even compile at HEAD `e0b931a`:
@@ -1179,7 +1188,11 @@ These need either fixture-data updates (turn rate + stamina) or test expectation
   captures that same direction so hitbox/presentation are consistent, but the 100ms
   pre-commit alignment does not yet re-resolve the physical airborne path to the latched
   yaw. Doing so risks reintroducing rubberband, so it needs care.
-- **Apply policy turn rates:** `commit_align_ms`, `focus_turn_rate_deg_s`,
-  `attack_turn_rate_deg_s` are loaded but only `body_turn_rate` is used in runtime.
+- **`commit_align_ms`:** still unused (defines the body alignment-blend window during
+  pre-commit; body currently rate-limits via `body_turn_rate` which is close enough until
+  PIE tuning). `focus_turn_rate_deg_s`/`attack_turn_rate_deg_s` are now applied.
+- **Honor the `_source` fields:** `body_yaw_source`/`focus_yaw_source`/`attack_yaw_source`
+  are not yet read to pick the source; the runtime hardcodes sources that happen to match
+  the seeds. Read them to stay fully data-driven.
 - **Player generalization (Slice 6):** the latch/orientation runtime only runs on the wolf
   path today; players still don't consume the policies. Same model, plus prediction layer.

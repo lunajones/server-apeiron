@@ -73,8 +73,15 @@ func resolveCreatureActionOrientation(creature *entityState, target *entityState
 			targetYaw = vectorYaw(toTarget)
 		}
 	}
-	state.FocusYawDeg = targetYaw
-	state.AttackYawDeg = targetYaw
+	// Focus (head/attention) and pre-latch attack yaw ease toward the target at their own
+	// contract turn rates instead of snapping, so the head leads and the strike winds up.
+	focusPrev, focusKnown, attackPrev, attackKnown := 0.0, false, 0.0, false
+	if creature != nil {
+		focusPrev, focusKnown = creature.orientationFocusYaw, creature.orientationFocusYawKnown
+		attackPrev, attackKnown = creature.orientationAttackYaw, creature.orientationAttackYawKnown
+	}
+	state.FocusYawDeg = approachPersistedOrientationYaw(focusKnown, focusPrev, targetYaw, orientationFocusTurnRate(contract, decision.TurnRateDegPerSec))
+	state.AttackYawDeg = approachPersistedOrientationYaw(attackKnown, attackPrev, targetYaw, orientationAttackTurnRate(contract, decision.TurnRateDegPerSec))
 	state.Phase = "tactical_setup"
 	if creatureActionTransitionActive(creature) {
 		state.Phase = "landing_inertia"
@@ -134,6 +141,24 @@ func applyCreatureOrientationState(creature *entityState, orientation actionOrie
 	if !math.IsNaN(orientation.BodyYawDeg) {
 		creature.yaw = normalizeYaw(orientation.BodyYawDeg)
 	}
+	if !math.IsNaN(orientation.FocusYawDeg) {
+		creature.orientationFocusYaw = normalizeYaw(orientation.FocusYawDeg)
+		creature.orientationFocusYawKnown = true
+	}
+	if !math.IsNaN(orientation.AttackYawDeg) {
+		creature.orientationAttackYaw = normalizeYaw(orientation.AttackYawDeg)
+		creature.orientationAttackYawKnown = true
+	}
+}
+
+// approachPersistedOrientationYaw eases a persisted yaw toward target at turnRate. On first
+// observation (not yet known) it snaps, so a freshly seen actor faces correctly without an
+// artificial opening sweep; turnRate <= 0 also snaps.
+func approachPersistedOrientationYaw(known bool, current, target, turnRate float64) float64 {
+	if !known || turnRate <= 0 {
+		return normalizeYaw(target)
+	}
+	return approachCreatureYaw(current, target, turnRate)
 }
 
 func entityYaw(entity *entityState) float64 {
@@ -155,6 +180,26 @@ func orientationBodyTurnRate(contract SkillRuntimeContract, fallback float64) fl
 		return fallback
 	}
 	return 360
+}
+
+func orientationFocusTurnRate(contract SkillRuntimeContract, fallback float64) float64 {
+	if contract.Orientation != nil && contract.Orientation.GetFocusTurnRateDegS() > 0 {
+		return contract.Orientation.GetFocusTurnRateDegS()
+	}
+	if fallback > 0 {
+		return fallback
+	}
+	return 720
+}
+
+func orientationAttackTurnRate(contract SkillRuntimeContract, fallback float64) float64 {
+	if contract.Orientation != nil && contract.Orientation.GetAttackTurnRateDegS() > 0 {
+		return contract.Orientation.GetAttackTurnRateDegS()
+	}
+	if fallback > 0 {
+		return fallback
+	}
+	return 540
 }
 
 func orientationPolicyHasLungeCommit(contract SkillRuntimeContract) bool {
