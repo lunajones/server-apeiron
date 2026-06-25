@@ -4042,6 +4042,17 @@ type CreatureAIState struct {
 	SkillMovementDesiredLandingDistanceCm float64                `protobuf:"fixed64,47,opt,name=skill_movement_desired_landing_distance_cm,json=skillMovementDesiredLandingDistanceCm,proto3" json:"skill_movement_desired_landing_distance_cm,omitempty"`
 	SkillMovementMinLandingDistanceCm     float64                `protobuf:"fixed64,48,opt,name=skill_movement_min_landing_distance_cm,json=skillMovementMinLandingDistanceCm,proto3" json:"skill_movement_min_landing_distance_cm,omitempty"`
 	SkillMovementStopAtContactRatio       float64                `protobuf:"fixed64,49,opt,name=skill_movement_stop_at_contact_ratio,json=skillMovementStopAtContactRatio,proto3" json:"skill_movement_stop_at_contact_ratio,omitempty"`
+	OrientationPhase                      string                 `protobuf:"bytes,50,opt,name=orientation_phase,json=orientationPhase,proto3" json:"orientation_phase,omitempty"`
+	OrientationPolicyId                   string                 `protobuf:"bytes,51,opt,name=orientation_policy_id,json=orientationPolicyId,proto3" json:"orientation_policy_id,omitempty"`
+	EnvelopePolicyId                      string                 `protobuf:"bytes,52,opt,name=envelope_policy_id,json=envelopePolicyId,proto3" json:"envelope_policy_id,omitempty"`
+	BodyYawDeg                            float64                `protobuf:"fixed64,53,opt,name=body_yaw_deg,json=bodyYawDeg,proto3" json:"body_yaw_deg,omitempty"`
+	FocusYawDeg                           float64                `protobuf:"fixed64,54,opt,name=focus_yaw_deg,json=focusYawDeg,proto3" json:"focus_yaw_deg,omitempty"`
+	AttackYawDeg                          float64                `protobuf:"fixed64,55,opt,name=attack_yaw_deg,json=attackYawDeg,proto3" json:"attack_yaw_deg,omitempty"`
+	MovementYawDeg                        float64                `protobuf:"fixed64,56,opt,name=movement_yaw_deg,json=movementYawDeg,proto3" json:"movement_yaw_deg,omitempty"`
+	PreCommitMs                           int32                  `protobuf:"varint,57,opt,name=pre_commit_ms,json=preCommitMs,proto3" json:"pre_commit_ms,omitempty"`
+	AirborneMs                            int32                  `protobuf:"varint,58,opt,name=airborne_ms,json=airborneMs,proto3" json:"airborne_ms,omitempty"`
+	LandingInertiaMs                      int32                  `protobuf:"varint,59,opt,name=landing_inertia_ms,json=landingInertiaMs,proto3" json:"landing_inertia_ms,omitempty"`
+	AttackYawLatchPolicy                  string                 `protobuf:"bytes,60,opt,name=attack_yaw_latch_policy,json=attackYawLatchPolicy,proto3" json:"attack_yaw_latch_policy,omitempty"`
 	unknownFields                         protoimpl.UnknownFields
 	sizeCache                             protoimpl.SizeCache
 }
@@ -4417,6 +4428,83 @@ func (x *CreatureAIState) GetSkillMovementStopAtContactRatio() float64 {
 		return x.SkillMovementStopAtContactRatio
 	}
 	return 0
+}
+
+func (x *CreatureAIState) GetOrientationPhase() string {
+	if x != nil {
+		return x.OrientationPhase
+	}
+	return ""
+}
+
+func (x *CreatureAIState) GetOrientationPolicyId() string {
+	if x != nil {
+		return x.OrientationPolicyId
+	}
+	return ""
+}
+
+func (x *CreatureAIState) GetEnvelopePolicyId() string {
+	if x != nil {
+		return x.EnvelopePolicyId
+	}
+	return ""
+}
+
+func (x *CreatureAIState) GetBodyYawDeg() float64 {
+	if x != nil {
+		return x.BodyYawDeg
+	}
+	return 0
+}
+
+func (x *CreatureAIState) GetFocusYawDeg() float64 {
+	if x != nil {
+		return x.FocusYawDeg
+	}
+	return 0
+}
+
+func (x *CreatureAIState) GetAttackYawDeg() float64 {
+	if x != nil {
+		return x.AttackYawDeg
+	}
+	return 0
+}
+
+func (x *CreatureAIState) GetMovementYawDeg() float64 {
+	if x != nil {
+		return x.MovementYawDeg
+	}
+	return 0
+}
+
+func (x *CreatureAIState) GetPreCommitMs() int32 {
+	if x != nil {
+		return x.PreCommitMs
+	}
+	return 0
+}
+
+func (x *CreatureAIState) GetAirborneMs() int32 {
+	if x != nil {
+		return x.AirborneMs
+	}
+	return 0
+}
+
+func (x *CreatureAIState) GetLandingInertiaMs() int32 {
+	if x != nil {
+		return x.LandingInertiaMs
+	}
+	return 0
+}
+
+func (x *CreatureAIState) GetAttackYawLatchPolicy() string {
+	if x != nil {
+		return x.AttackYawLatchPolicy
+	}
+	return ""
 }
 
 type HealthResponse struct {
@@ -5066,7 +5154,7 @@ const file_proto_apeiron_game_v1_game_proto_rawDesc = "" +
 	"\x12action_instance_id\x18\a \x01(\tR\x10actionInstanceId\x12>\n" +
 	"\n" +
 	"mode_slots\x18\b \x03(\v2\x1f.apeiron.game.v1.CombatModeSlotR\tmodeSlots\x120\n" +
-	"\x14combat_mode_enforced\x18\t \x01(\bR\x12combatModeEnforced\"\xa5\x11\n" +
+	"\x14combat_mode_enforced\x18\t \x01(\bR\x12combatModeEnforced\"\xf4\x14\n" +
 	"\x0fCreatureAIState\x12'\n" +
 	"\x0fmovement_tactic\x18\x01 \x01(\tR\x0emovementTactic\x12#\n" +
 	"\rcombat_tactic\x18\x02 \x01(\tR\fcombatTactic\x12\x1e\n" +
@@ -5129,7 +5217,20 @@ const file_proto_apeiron_game_v1_game_proto_rawDesc = "" +
 	"\x1askill_movement_distance_cm\x18. \x01(\x01R\x17skillMovementDistanceCm\x12Y\n" +
 	"*skill_movement_desired_landing_distance_cm\x18/ \x01(\x01R%skillMovementDesiredLandingDistanceCm\x12Q\n" +
 	"&skill_movement_min_landing_distance_cm\x180 \x01(\x01R!skillMovementMinLandingDistanceCm\x12M\n" +
-	"$skill_movement_stop_at_contact_ratio\x181 \x01(\x01R\x1fskillMovementStopAtContactRatio\"B\n" +
+	"$skill_movement_stop_at_contact_ratio\x181 \x01(\x01R\x1fskillMovementStopAtContactRatio\x12+\n" +
+	"\x11orientation_phase\x182 \x01(\tR\x10orientationPhase\x122\n" +
+	"\x15orientation_policy_id\x183 \x01(\tR\x13orientationPolicyId\x12,\n" +
+	"\x12envelope_policy_id\x184 \x01(\tR\x10envelopePolicyId\x12 \n" +
+	"\fbody_yaw_deg\x185 \x01(\x01R\n" +
+	"bodyYawDeg\x12\"\n" +
+	"\rfocus_yaw_deg\x186 \x01(\x01R\vfocusYawDeg\x12$\n" +
+	"\x0eattack_yaw_deg\x187 \x01(\x01R\fattackYawDeg\x12(\n" +
+	"\x10movement_yaw_deg\x188 \x01(\x01R\x0emovementYawDeg\x12\"\n" +
+	"\rpre_commit_ms\x189 \x01(\x05R\vpreCommitMs\x12\x1f\n" +
+	"\vairborne_ms\x18: \x01(\x05R\n" +
+	"airborneMs\x12,\n" +
+	"\x12landing_inertia_ms\x18; \x01(\x05R\x10landingInertiaMs\x125\n" +
+	"\x17attack_yaw_latch_policy\x18< \x01(\tR\x14attackYawLatchPolicy\"B\n" +
 	"\x0eHealthResponse\x12\x18\n" +
 	"\ahealthy\x18\x01 \x01(\bR\ahealthy\x12\x16\n" +
 	"\x06status\x18\x02 \x01(\tR\x06status\"E\n" +

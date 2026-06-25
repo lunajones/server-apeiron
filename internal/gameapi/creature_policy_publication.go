@@ -2,6 +2,7 @@ package gameapi
 
 import (
 	"math"
+	"strings"
 	"time"
 
 	gamev1 "server-apeiron/gen/apeiron/game/v1"
@@ -71,6 +72,11 @@ func applyCreatureDecisionMotion(creature *entityState, target *entityState, dec
 	creature.velocity = fromDomainVector(resolved.Motion.Velocity)
 	if target != nil {
 		targetYaw := vectorYaw(normalize(vector{x: target.position.x - creature.position.x, y: target.position.y - creature.position.y}))
+		if creatureDecisionUsesSideOnBody(decision) {
+			if moveDir := fromDomainVector(flattenDomainDirection(decision.Direction)); moveDir != (vector{}) {
+				targetYaw = vectorYaw(moveDir)
+			}
+		}
 		creature.yaw = approachCreatureYaw(creature.yaw, targetYaw, decision.TurnRateDegPerSec)
 	}
 	creature.movementState = decision.Action
@@ -79,6 +85,17 @@ func applyCreatureDecisionMotion(creature *entityState, target *entityState, dec
 	} else {
 		creature.skillState = "idle"
 	}
+}
+
+func creatureDecisionUsesSideOnBody(decision creatureai.Decision) bool {
+	tactic := strings.ToLower(strings.TrimSpace(decision.MovementTactic))
+	if tactic == "" {
+		tactic = strings.ToLower(strings.TrimSpace(decision.Action))
+	}
+	return strings.Contains(tactic, "circle") ||
+		strings.Contains(tactic, "flank") ||
+		strings.Contains(tactic, "orbit") ||
+		strings.Contains(tactic, "setup")
 }
 
 func approachCreatureYaw(current, target, turnRateDegPerSec float64) float64 {
@@ -145,11 +162,13 @@ func (r *Runtime) publishWolfLocomotionLocked(wolf *entityState, decision creatu
 	}
 }
 
-func (r *Runtime) publishWolfAIStateLocked(wolf *entityState, decision creatureai.Decision, policy WolfRuntimePolicy, contract SkillRuntimeContract, actionUpdate creatureActionRuntimeUpdate, rangeCM float64, lungeMinRangeCM float64, lungeMaxRangeCM float64) {
+func (r *Runtime) publishWolfAIStateLocked(wolf *entityState, target *entityState, decision creatureai.Decision, policy WolfRuntimePolicy, contract SkillRuntimeContract, actionUpdate creatureActionRuntimeUpdate, rangeCM float64, lungeMinRangeCM float64, lungeMaxRangeCM float64, now time.Time) {
 	if wolf == nil {
 		return
 	}
 	if transition := wolf.creatureActionTransition; transition != nil {
+		orientation := resolveCreatureActionOrientation(wolf, target, decision, contract, creatureActionMovementEnvelope{}, now)
+		applyCreatureOrientationState(wolf, orientation)
 		wolf.creatureAI = &gamev1.CreatureAIState{
 			MovementTactic:          transition.Kind,
 			CombatTactic:            "action_transition",
@@ -170,15 +189,32 @@ func (r *Runtime) publishWolfAIStateLocked(wolf *entityState, decision creaturea
 			SkillActionLockMs:       int32(transition.EndsAt.Sub(transition.StartedAt).Milliseconds()),
 			SkillMovementType:       transition.ActionType,
 			SkillMovementDistanceCm: transition.DistanceAtHandoffCM,
+			OrientationPhase:        orientation.Phase,
+			OrientationPolicyId:     orientation.OrientationPolicyID,
+			EnvelopePolicyId:        orientation.EnvelopePolicyID,
+			BodyYawDeg:              orientation.BodyYawDeg,
+			FocusYawDeg:             orientation.FocusYawDeg,
+			AttackYawDeg:            orientation.AttackYawDeg,
+			MovementYawDeg:          orientation.MovementYawDeg,
+			PreCommitMs:             orientation.PreCommitMS,
+			AirborneMs:              orientation.AirborneMS,
+			LandingInertiaMs:        orientation.LandingInertiaMS,
+			AttackYawLatchPolicy:    orientation.AttackYawLatchPolicy,
 		}
 		return
 	}
 	movementPresentation := creatureSkillMovementPresentation{}
 	skillMovementType := ""
+	envelope := creatureActionMovementEnvelope{}
 	if actionUpdate.RootMotionApplied && contract.MovementAction.ID != "" {
+		if wolf.actionInstance != nil {
+			envelope = creatureActionMovementEnvelopeAt(*wolf.actionInstance, contract, now)
+		}
 		movementPresentation = creatureSkillMovementPresentationFromContract(contract)
 		skillMovementType = contract.MovementAction.ActionType
 	}
+	orientation := resolveCreatureActionOrientation(wolf, target, decision, contract, envelope, now)
+	applyCreatureOrientationState(wolf, orientation)
 	wolf.creatureAI = &gamev1.CreatureAIState{
 		MovementTactic:                        decision.MovementTactic,
 		CombatTactic:                          decision.CombatTactic,
@@ -214,6 +250,17 @@ func (r *Runtime) publishWolfAIStateLocked(wolf *entityState, decision creaturea
 		SkillMovementDesiredLandingDistanceCm: lungeMaxRangeCM,
 		SkillMovementMinLandingDistanceCm:     lungeMinRangeCM,
 		SkillMovementStopAtContactRatio:       movementPresentation.StopAtContactRate,
+		OrientationPhase:                      orientation.Phase,
+		OrientationPolicyId:                   orientation.OrientationPolicyID,
+		EnvelopePolicyId:                      orientation.EnvelopePolicyID,
+		BodyYawDeg:                            orientation.BodyYawDeg,
+		FocusYawDeg:                           orientation.FocusYawDeg,
+		AttackYawDeg:                          orientation.AttackYawDeg,
+		MovementYawDeg:                        orientation.MovementYawDeg,
+		PreCommitMs:                           orientation.PreCommitMS,
+		AirborneMs:                            orientation.AirborneMS,
+		LandingInertiaMs:                      orientation.LandingInertiaMS,
+		AttackYawLatchPolicy:                  orientation.AttackYawLatchPolicy,
 	}
 }
 

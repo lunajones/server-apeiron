@@ -510,6 +510,17 @@ message CreatureAIState {
   double skill_movement_desired_landing_distance_cm = 47;
   double skill_movement_min_landing_distance_cm = 48;
   double skill_movement_stop_at_contact_ratio = 49;
+  string orientation_phase = 50;
+  string orientation_policy_id = 51;
+  string envelope_policy_id = 52;
+  double body_yaw_deg = 53;
+  double focus_yaw_deg = 54;
+  double attack_yaw_deg = 55;
+  double movement_yaw_deg = 56;
+  int32 pre_commit_ms = 57;
+  int32 airborne_ms = 58;
+  int32 landing_inertia_ms = 59;
+  string attack_yaw_latch_policy = 60;
 }
 
 message HealthResponse {

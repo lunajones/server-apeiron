@@ -844,7 +844,7 @@ func (r *Runtime) updateWolfPolicyLocked(wolf *entityState, player *entityState)
 		resolvedMotion.Motion.SpeedCMPerSecond = length(wolf.velocity)
 	}
 	r.publishWolfLocomotionLocked(wolf, decision, selectedRuntime, actionUpdate, resolvedMotion, nowTime)
-	r.publishWolfAIStateLocked(wolf, decision, policy, selectedRuntime, actionUpdate, rangeCM, lungeMinRangeCM, lungeMaxRangeCM)
+	r.publishWolfAIStateLocked(wolf, player, decision, policy, selectedRuntime, actionUpdate, rangeCM, lungeMinRangeCM, lungeMaxRangeCM, nowTime)
 	if actionUpdate.Active && wolf.locomotion != nil {
 		wolf.locomotion.Phase = string(actionUpdate.Phase)
 		applyActionInstanceLocomotionTiming(wolf.locomotion, wolf.actionInstance, nowTime)

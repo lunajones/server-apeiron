@@ -28,6 +28,9 @@ type ProfileContractSource interface {
 	GetCombatCoreProfile(context.Context, *dbv1.IdRequest, ...grpc.CallOption) (*dbv1.CombatCoreProfileResponse, error)
 	GetCombatDefenseContract(context.Context, *dbv1.IdRequest, ...grpc.CallOption) (*dbv1.CombatDefenseContractResponse, error)
 	GetMovementActionContract(context.Context, *dbv1.IdRequest, ...grpc.CallOption) (*dbv1.MovementActionContractResponse, error)
+	GetActionOrientationPolicy(context.Context, *dbv1.IdRequest, ...grpc.CallOption) (*dbv1.ActionOrientationPolicyResponse, error)
+	GetActionEnvelopePolicy(context.Context, *dbv1.IdRequest, ...grpc.CallOption) (*dbv1.ActionEnvelopePolicyResponse, error)
+	GetSkillActionPolicyBinding(context.Context, *dbv1.IdRequest, ...grpc.CallOption) (*dbv1.SkillActionPolicyBindingResponse, error)
 	GetMovementReconciliationContract(context.Context, *dbv1.IdRequest, ...grpc.CallOption) (*dbv1.MovementReconciliationContractResponse, error)
 	GetRuntimeMovementReconciliationProfile(context.Context, *dbv1.IdRequest, ...grpc.CallOption) (*dbv1.RuntimeMovementReconciliationProfileResponse, error)
 	GetCreatureBehaviorRuntimeContract(context.Context, *dbv1.IdRequest, ...grpc.CallOption) (*dbv1.CreatureBehaviorRuntimeContractResponse, error)
@@ -115,6 +118,9 @@ type SkillRuntimeContract struct {
 	Impact         *dbv1.SkillImpactProfile
 	ControlEffects []*dbv1.SkillControlEffect
 	Hitboxes       []*dbv1.SkillHitboxProfile
+	Orientation    *dbv1.ActionOrientationPolicy
+	Envelope       *dbv1.ActionEnvelopePolicy
+	ActionPolicy   *dbv1.SkillActionPolicyBinding
 	Enabled        bool
 }
 
@@ -282,6 +288,10 @@ type movementActionContractMetadata struct {
 	AllowsAirControl       bool    `json:"allows_air_control"`
 	AirControlModifier     float64 `json:"air_control_modifier"`
 	YawRateDegPerSec       float64 `json:"yaw_rate_deg_per_sec"`
+	OrientationPolicyID    string  `json:"orientation_policy_id"`
+	EnvelopePolicyID       string  `json:"envelope_policy_id"`
+	PreCommitMS            int32   `json:"pre_commit_ms"`
+	LandingInertiaMS       int32   `json:"landing_inertia_ms"`
 }
 
 const runtimeContractSourceDB = "db_contracts"
@@ -345,7 +355,7 @@ func LoadRuntimeContractsFromDB(ctx context.Context, skills ContractSource, prof
 	}
 
 	for _, skillID := range requiredRuntimeSkillIDs() {
-		loaded, ok := loadSkillRuntimeContract(ctx, skills, skillID)
+		loaded, ok := loadSkillRuntimeContract(ctx, skills, profiles, skillID)
 		if !ok {
 			contracts.LoadIssues = append(contracts.LoadIssues, "missing skill runtime "+skillID)
 			continue
@@ -1192,7 +1202,7 @@ func validateRuntimeMovementReconciliationProfile(profile *gamev1.MovementReconc
 	return missing
 }
 
-func loadSkillRuntimeContract(ctx context.Context, skills ContractSource, skillID string) (SkillRuntimeContract, bool) {
+func loadSkillRuntimeContract(ctx context.Context, skills ContractSource, profiles ProfileContractSource, skillID string) (SkillRuntimeContract, bool) {
 	timingResp, timingErr := skills.GetSkillActionTiming(ctx, &dbv1.IdRequest{Id: skillID})
 	bindingResp, bindingErr := skills.GetSkillMovementActionBinding(ctx, &dbv1.IdRequest{Id: skillID})
 	if timingErr != nil || bindingErr != nil || !timingResp.GetFound() || !bindingResp.GetFound() {
@@ -1245,6 +1255,15 @@ func loadSkillRuntimeContract(ctx context.Context, skills ContractSource, skillI
 	}
 	if hitboxResp, err := skills.GetSkillHitboxProfiles(ctx, &dbv1.IdRequest{Id: skillID}); err == nil && hitboxResp.GetFound() {
 		contract.Hitboxes = hitboxResp.GetProfiles()
+	}
+	if profiles != nil {
+		if policyResp, err := profiles.GetSkillActionPolicyBinding(ctx, &dbv1.IdRequest{Id: skillID}); err == nil && policyResp.GetFound() {
+			contract.ActionPolicy = policyResp.GetBinding()
+			if contract.ActionPolicy != nil {
+				contract.Orientation = contract.ActionPolicy.GetActionOrientationPolicy()
+				contract.Envelope = contract.ActionPolicy.GetActionEnvelopePolicy()
+			}
+		}
 	}
 	return contract, true
 }

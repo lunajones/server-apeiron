@@ -22,6 +22,7 @@ type creatureActionMovementEnvelope struct {
 	AirborneActive       bool
 	LandingInertiaActive bool
 	Complete             bool
+	PreCommitActive      bool
 	AllowsPassthrough    bool
 	StopsAtContact       bool
 }
@@ -40,10 +41,15 @@ func creatureActionMovementEnvelopeAt(instance actionruntime.Instance, contract 
 	movementDuration := movement.ActionDuration(contract.MovementAction)
 	rootStart := instance.StartedAt.Add(rootStartOffset)
 	rootEnd := rootStart.Add(movementDuration)
+	preCommitDuration := creatureSkillPreCommitDuration(contract)
 	airborneDuration := creatureSkillAirborneDuration(contract)
-	airborneEnd := rootStart.Add(airborneDuration)
+	airborneStart := rootStart.Add(preCommitDuration)
+	if airborneStart.After(rootEnd) {
+		airborneStart = rootEnd
+	}
+	airborneEnd := airborneStart.Add(airborneDuration)
 	if airborneDuration <= 0 || airborneEnd.After(rootEnd) {
-		airborneEnd = rootStart
+		airborneEnd = airborneStart
 	}
 	handoff := rootEnd
 	if actionEnd := instance.StartedAt.Add(instance.Timing.Windup + instance.Timing.Active + instance.Timing.Recovery); actionEnd.After(handoff) {
@@ -55,7 +61,7 @@ func creatureActionMovementEnvelopeAt(instance actionruntime.Instance, contract 
 		ContactPolicy:     contact.Policy,
 		MovementStartsAt:  rootStart,
 		MovementEndsAt:    rootEnd,
-		AirborneStartsAt:  rootStart,
+		AirborneStartsAt:  airborneStart,
 		AirborneEndsAt:    airborneEnd,
 		LandingStartsAt:   airborneEnd,
 		LandingEndsAt:     rootEnd,
@@ -69,6 +75,7 @@ func creatureActionMovementEnvelopeAt(instance actionruntime.Instance, contract 
 		envelope.HandoffAt = instance.StartedAt.Add(instance.Timing.Windup + instance.Timing.Active + instance.Timing.Recovery)
 	}
 	envelope.RootMotionActive = !now.Before(envelope.MovementStartsAt) && now.Before(envelope.MovementEndsAt)
+	envelope.PreCommitActive = preCommitDuration > 0 && !now.Before(envelope.MovementStartsAt) && now.Before(envelope.AirborneStartsAt)
 	envelope.AirborneActive = airborneDuration > 0 && !now.Before(envelope.AirborneStartsAt) && now.Before(envelope.AirborneEndsAt)
 	envelope.LandingInertiaActive = envelope.LandingEndsAt.After(envelope.LandingStartsAt) && !now.Before(envelope.LandingStartsAt) && now.Before(envelope.LandingEndsAt)
 	envelope.Complete = !now.Before(envelope.HandoffAt)
@@ -79,14 +86,15 @@ func creatureSkillMovementPresentationFromContract(contract SkillRuntimeContract
 	timing := creatureActionTimingFromSkillContract(contract)
 	startOffset := creatureSkillMovementStartOffset(timing, contract)
 	duration := movement.ActionDuration(contract.MovementAction)
+	preCommit := creatureSkillPreCommitDuration(contract)
 	airborne := creatureSkillAirborneDuration(contract)
-	landing := duration - airborne
+	landing := duration - preCommit - airborne
 	if landing < 0 {
 		landing = 0
 	}
 	return creatureSkillMovementPresentation{
 		MovementStartMS:   durationMillis(startOffset),
-		TakeoffMS:         durationMillis(startOffset),
+		TakeoffMS:         durationMillis(startOffset + preCommit),
 		LandingLockMS:     durationMillis(landing),
 		MovementDuration:  durationMillis(duration),
 		MovementDistance:  movement.ActionDistance(contract.MovementAction, 0),
@@ -94,7 +102,17 @@ func creatureSkillMovementPresentationFromContract(contract SkillRuntimeContract
 	}
 }
 
+func creatureSkillPreCommitDuration(contract SkillRuntimeContract) time.Duration {
+	if contract.Envelope != nil && contract.Envelope.GetPreCommitMs() > 0 {
+		return time.Duration(contract.Envelope.GetPreCommitMs()) * time.Millisecond
+	}
+	return 0
+}
+
 func creatureSkillAirborneDuration(contract SkillRuntimeContract) time.Duration {
+	if contract.Envelope != nil && contract.Envelope.GetAirborneMs() > 0 {
+		return time.Duration(contract.Envelope.GetAirborneMs()) * time.Millisecond
+	}
 	if contract.MovementAction.AirborneDurationMS > 0 {
 		return time.Duration(contract.MovementAction.AirborneDurationMS) * time.Millisecond
 	}
