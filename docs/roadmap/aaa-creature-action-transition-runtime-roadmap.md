@@ -722,6 +722,54 @@ Implementation note 2026-06-24:
 - Existing `ApeironCreaturePlaceholder` debug label already prints `MovementTactic`, `CombatTactic`, `Commitment`, `SelectedSkillId`, range and path state.
 - No Unreal C++ change was needed in this pass.
 
+## Coupling With Action-Orientation Latch (added 2026-06-25)
+
+The AAA Action Orientation roadmap (`aaa-action-orientation-and-lunge-envelope-roadmap.md`)
+was implemented on top of THIS transition runtime. They do not conflict — orientation is the
+"which way" layer, transition is the "who owns root / when does it hand off" layer — but they
+share the same `creatureActionTransitionState` and the same completion hooks. Before changing
+the transition lifecycle, preserve these three contact points or the orientation latch breaks:
+
+1. **Latch lifecycle is wired into the transition completion hooks.** `creatureActionOrientationLatch`
+   (the per-action attack-yaw lock) is cleared in `completeCreatureActionTransitionLocked` and in
+   the idle branch of `completeCreatureActionRuntimeLocked`, and intentionally NOT cleared in the
+   transition branch of `completeCreatureActionRuntimeLocked` (it must survive into landing
+   inertia). If you restructure those functions (e.g. the Slice 2/4/5/6 "replace direct
+   completion" change), keep `actionOrientationLatch = nil` on the true idle/transition-complete
+   paths and keep it alive across the action->transition handoff. Otherwise the latch leaks into
+   the next action or drops mid-inertia.
+
+2. **Orientation reads `creatureActionTransitionState` fields.** `resolveActionOrientation`
+   (action_orientation.go) has a `landing_inertia` branch that reads `transition.ExitDirection`
+   and uses the latch to keep the strike direction stable through the inertia tail. Keep
+   `ExitDirection` and `Endpoint` present and meaning the same. If you add fields (carry curve,
+   next-tactic policy), that is fine; just don't rename/repurpose those two.
+
+3. **The re-aimed endpoint feeds the transition.** `reaimCreatureLungeAtTakeoffLocked`
+   (creature_action_runtime.go) rewrites `actionMotion.ProjectedPosition` at takeoff. That
+   projected position becomes the transition `Endpoint` at handoff (via
+   `beginCreatureActionTransitionLocked` / `e0b931a` endpoint anchoring). Keep the handoff taking
+   its endpoint from the (re-aimed) action motion, not from a stale pre-commit endpoint.
+
+Shared/landed already this work: commit `e0b931a` (transition endpoint anchoring — fixes the
+exact snap this roadmap targets) and the latch surviving into `landing_inertia`.
+
+## Status Audit (added 2026-06-25)
+
+Cross-checked the per-slice "Implementation note 2026-06-24" claims against current code. The
+server side of this roadmap is **largely implemented already** (the `creatureActionTransitionState`
+runtime exists with begin/refresh/complete; dodge/lunge/maul all route through it). What remains:
+
+- **PIE validation of feel** for every slice (the doc itself defers this: "tests come after the
+  user confirms the feel"). This is the real gate, and it needs a creature mesh + PIE.
+- **Unit tests** — deliberately not written yet per the roadmap's own rule. Two existing tests
+  actually encode the OLD pre-transition behavior and now fail *because this roadmap's changes are
+  correct*: `TestWolfLungeActivePhaseUsesSkillRootMotionOwner` (asserts lunge z unchanged, but
+  Slice 5 made the lunge a vertical leap) and `TestWolfMaulContactStopsBeforeOverlappingTarget...`
+  (asserts maul stops at contact, but Slice 6 made `lateral_counter_contact` a target-carry, not a
+  source-stop). These should be updated to the new intended behavior once feel is confirmed in PIE.
+- **Slice 1 audit table** below is still placeholder ("audit"); fill with the real ownership map.
+
 ## Runtime Validation First
 
 Do not implement unit tests in this slice.
