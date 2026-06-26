@@ -811,6 +811,7 @@ func (r *Runtime) updateWolfPolicyLocked(wolf *entityState, player *entityState)
 
 	policy := r.contracts.WolfPolicy
 	r.regenerateCreatureStaminaLocked(wolf, policy)
+	r.accrueProximityThreatLocked(wolf, 1.0/tickRate)
 	r.decayCreatureThreatLocked(wolf, 1.0/tickRate)
 	lungeMinRangeCM := positiveOr(policy.LungeMinRangeCM, policy.LungeRangeCM)
 	lungeMaxRangeCM := positiveOr(policy.LungeMaxRangeCM, policy.ChaseRangeCM)

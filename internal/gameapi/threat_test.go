@@ -40,20 +40,48 @@ func TestThreatDecaysAndPrunes(t *testing.T) {
 	wolf := runtime.ensureWolfLocked(player)
 	prof := runtime.contracts.WolfPolicy.Threat
 
+	// Disengaged: player well outside proximity range so threat decays (faster, out-of-range).
+	wolf.position = vector{x: 0, y: 0, z: 0}
+	player.position = vector{x: prof.ProximityRangeCM * 10, y: 0, z: 0}
+	decayRate := prof.DecayPerSec * prof.OutOfRangeDecayMultiplier
+
 	runtime.creditThreatLocked(wolf, player, 5, 0)
 	start := wolf.threat.Entries[player.id]
-	if start <= prof.DecayPerSec {
-		t.Fatalf("test setup: starting threat %.2f must exceed one second of decay %.2f", start, prof.DecayPerSec)
+	if start <= decayRate {
+		t.Fatalf("test setup: starting threat %.2f must exceed one second of decay %.2f", start, decayRate)
 	}
 
 	runtime.decayCreatureThreatLocked(wolf, 1.0)
-	if got := wolf.threat.Entries[player.id]; math.Abs(got-(start-prof.DecayPerSec)) > 0.01 {
-		t.Fatalf("threat after 1s decay = %.2f, want %.2f", got, start-prof.DecayPerSec)
+	if got := wolf.threat.Entries[player.id]; math.Abs(got-(start-decayRate)) > 0.01 {
+		t.Fatalf("threat after 1s out-of-range decay = %.2f, want %.2f", got, start-decayRate)
 	}
 
 	runtime.decayCreatureThreatLocked(wolf, 100)
 	if _, ok := wolf.threat.Entries[player.id]; ok {
 		t.Fatalf("threat entry not pruned after heavy decay: %#v", wolf.threat.Entries)
+	}
+}
+
+// TestThreatProximityEngagesLoiterer locks Slice 3: a target standing in the creature's face
+// accrues threat from proximity and, while engaged (in range), does not decay away.
+func TestThreatProximityEngagesLoiterer(t *testing.T) {
+	runtime := NewRuntimeWithContracts(DevFixtureRuntimeContracts())
+	player := runtime.ensurePlayerLocked("local_player")
+	wolf := runtime.ensureWolfLocked(player)
+	prof := runtime.contracts.WolfPolicy.Threat
+
+	wolf.position = vector{x: 0, y: 0, z: 0}
+	player.position = vector{x: prof.ProximityRangeCM * 0.5, y: 0, z: 0}
+
+	runtime.accrueProximityThreatLocked(wolf, 1.0)
+	if wolf.threat == nil || wolf.threat.Entries[player.id] <= 0 {
+		t.Fatal("proximity did not accrue threat for an in-range loiterer")
+	}
+
+	before := wolf.threat.Entries[player.id]
+	runtime.decayCreatureThreatLocked(wolf, 1.0)
+	if got := wolf.threat.Entries[player.id]; got < before {
+		t.Fatalf("in-range (engaged) threat decayed %.2f -> %.2f; should hold", before, got)
 	}
 }
 

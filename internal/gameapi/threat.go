@@ -45,17 +45,51 @@ func (r *Runtime) creditThreatLocked(creature *entityState, attacker *entityStat
 	table.Entries[attacker.id] += gain
 }
 
-// decayCreatureThreatLocked decays and prunes a creature's threat table by one tick. Entries that
-// fall to zero are removed so the table cannot grow unbounded across a long fight.
+// accrueProximityThreatLocked adds slow threat for targets standing within proximity range, so a
+// creature engages something in its face even if it never attacks (Threat Slice 3). No puller
+// bonus here — that is reserved for the first attacker.
+func (r *Runtime) accrueProximityThreatLocked(creature *entityState, dt float64) {
+	if r == nil || creature == nil || creature.entityType != "creature" || dt <= 0 {
+		return
+	}
+	profile := r.creatureThreatProfile(creature)
+	if profile.ProximityThreatPerSec <= 0 || profile.ProximityRangeCM <= 0 {
+		return
+	}
+	gain := profile.ProximityThreatPerSec * dt
+	for _, p := range r.players {
+		if p == nil || p.health <= 0 || p.id == creature.id {
+			continue
+		}
+		if distance(creature.position, p.position) <= profile.ProximityRangeCM {
+			creature.ensureThreatTable().Entries[p.id] += gain
+		}
+	}
+}
+
+// decayCreatureThreatLocked decays and prunes a creature's threat table by one tick (Threat
+// Slices 1 + 3). A target still inside proximity range is "engaged" and does not decay (proximity
+// keeps it relevant); a disengaged or gone target decays faster (out_of_range_decay_multiplier).
+// Entries that reach zero are pruned so the table cannot grow unbounded.
 func (r *Runtime) decayCreatureThreatLocked(creature *entityState, dt float64) {
 	if creature == nil || creature.threat == nil || len(creature.threat.Entries) == 0 || dt <= 0 {
 		return
 	}
-	decay := r.creatureThreatProfile(creature).DecayPerSec * dt
-	if decay <= 0 {
+	profile := r.creatureThreatProfile(creature)
+	if profile.DecayPerSec <= 0 {
 		return
 	}
+	outMult := profile.OutOfRangeDecayMultiplier
+	if outMult <= 0 {
+		outMult = 1
+	}
 	for id, value := range creature.threat.Entries {
+		target := r.playerByIDLocked(id)
+		if target != nil && target.health > 0 && profile.ProximityRangeCM > 0 &&
+			distance(creature.position, target.position) <= profile.ProximityRangeCM {
+			continue // engaged: in proximity range, no decay
+		}
+		decay := profile.DecayPerSec * outMult * dt
 		if value-decay <= 0 {
 			delete(creature.threat.Entries, id)
 			if creature.threat.CurrentTarget == id {
@@ -65,6 +99,15 @@ func (r *Runtime) decayCreatureThreatLocked(creature *entityState, dt float64) {
 		}
 		creature.threat.Entries[id] = value - decay
 	}
+}
+
+func (r *Runtime) playerByIDLocked(id uint64) *entityState {
+	for _, p := range r.players {
+		if p != nil && p.id == id {
+			return p
+		}
+	}
+	return nil
 }
 
 // creatureThreatProfile resolves the threat tuning for a creature. Today only the wolf policy
