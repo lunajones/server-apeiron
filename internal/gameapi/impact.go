@@ -96,6 +96,7 @@ func (r *Runtime) applySkillImpactAt(source *entityState, skill SkillRuntimeCont
 		}
 		target.health = clampMin(target.health-impact.DamageApplied, 0)
 		target.posture = clampMin(target.posture-impact.PostureApplied, 0)
+		r.creditThreatLocked(target, source, impact.DamageApplied, impact.PostureApplied)
 		r.respawnPlayerAfterFatalDamageLocked(target)
 		impacts = append(impacts, impact)
 	}

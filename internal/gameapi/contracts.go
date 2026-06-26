@@ -207,6 +207,25 @@ type WolfRuntimePolicy struct {
 	MaxStamina                     float64
 	SkillBehaviorBindings          []CreatureSkillBehaviorRuntimeBinding
 	SkillSetupPolicies             []CreatureSkillSetupRuntimePolicy
+	Threat                         ThreatRuntimeProfile
+}
+
+// ThreatRuntimeProfile is the creature's data-driven threat/aggro tuning, loaded from the
+// creature behavior contract metadata ("threat" object). See
+// docs/roadmap/aaa-threat-aggro-runtime-roadmap.md. Slice 1 uses the damage/posture/decay
+// fields; selection/proximity/leash fields land in later slices.
+type ThreatRuntimeProfile struct {
+	DamageThreatPerPoint      float64
+	PostureThreatPerPoint     float64
+	ProximityThreatPerSec     float64
+	ProximityRangeCM          float64
+	FirstAggroBonus           float64
+	DecayPerSec               float64
+	LOSBreakDecayMultiplier   float64
+	OutOfRangeDecayMultiplier float64
+	SwitchThresholdRatio      float64
+	SwitchCooldownMS          int32
+	LeashDistanceCM           float64
 }
 
 type CreatureSkillBehaviorRuntimeBinding struct {
@@ -272,6 +291,24 @@ type creatureStaminaPolicyJSON struct {
 	Max                 float64 `json:"max"`
 	DodgeCostMultiplier float64 `json:"dodgeCostMultiplier"`
 	RegenPerSecond      float64 `json:"regenPerSecond"`
+}
+
+type creatureBehaviorMetadataJSON struct {
+	Threat creatureThreatPolicyJSON `json:"threat"`
+}
+
+type creatureThreatPolicyJSON struct {
+	DamageThreatPerPoint      float64 `json:"damageThreatPerPoint"`
+	PostureThreatPerPoint     float64 `json:"postureThreatPerPoint"`
+	ProximityThreatPerSec     float64 `json:"proximityThreatPerSec"`
+	ProximityRangeCm          float64 `json:"proximityRangeCm"`
+	FirstAggroBonus           float64 `json:"firstAggroBonus"`
+	DecayPerSec               float64 `json:"decayPerSec"`
+	LosBreakDecayMultiplier   float64 `json:"losBreakDecayMultiplier"`
+	OutOfRangeDecayMultiplier float64 `json:"outOfRangeDecayMultiplier"`
+	SwitchThresholdRatio      float64 `json:"switchThresholdRatio"`
+	SwitchCooldownMs          int32   `json:"switchCooldownMs"`
+	LeashDistanceCm           float64 `json:"leashDistanceCm"`
 }
 
 type movementActionContractMetadata struct {
@@ -613,6 +650,25 @@ func applyWolfBehaviorPolicyJSON(policy *WolfRuntimePolicy, behavior *dbv1.Creat
 			policy.VulnerableBiteMultiplier = pressurePolicy.VulnerableBiteMultiplier
 			policy.VulnerableMaulMultiplier = pressurePolicy.VulnerableMaulMultiplier
 			policy.TacticalDestinationDistanceCM = pressurePolicy.TacticalDestinationDistanceCM
+		}
+	}
+	if metaJSON := strings.TrimSpace(behavior.GetMetadataJson()); metaJSON != "" {
+		var meta creatureBehaviorMetadataJSON
+		if err := json.Unmarshal([]byte(metaJSON), &meta); err == nil {
+			t := meta.Threat
+			policy.Threat = ThreatRuntimeProfile{
+				DamageThreatPerPoint:      t.DamageThreatPerPoint,
+				PostureThreatPerPoint:     t.PostureThreatPerPoint,
+				ProximityThreatPerSec:     t.ProximityThreatPerSec,
+				ProximityRangeCM:          t.ProximityRangeCm,
+				FirstAggroBonus:           t.FirstAggroBonus,
+				DecayPerSec:               t.DecayPerSec,
+				LOSBreakDecayMultiplier:   t.LosBreakDecayMultiplier,
+				OutOfRangeDecayMultiplier: t.OutOfRangeDecayMultiplier,
+				SwitchThresholdRatio:      t.SwitchThresholdRatio,
+				SwitchCooldownMS:          t.SwitchCooldownMs,
+				LeashDistanceCM:           t.LeashDistanceCm,
+			}
 		}
 	}
 }
@@ -1434,6 +1490,19 @@ func DevFixtureRuntimeContracts() RuntimeContracts {
 				{ID: "wolf_lunge_flank_windup_v1", SkillID: "lunge", SetupType: "moving_windup", MinSetupMS: 3000, MaxSetupMS: 4200, CommitDistanceCM: 760, PreferredMinRangeCM: 180, PreferredMaxRangeCM: 980, MovementTactic: "circle_then_curve_to_target", LockSideDuringSetup: true, Enabled: true},
 				{ID: "wolf_lunge_chase_windup_v1", SkillID: "lunge", SetupType: "chase_windup", MinSetupMS: 1200, MaxSetupMS: 2600, CommitDistanceCM: 900, PreferredMinRangeCM: 520, PreferredMaxRangeCM: 1400, MovementTactic: "run_chase_then_jump", LockSideDuringSetup: false, Enabled: true},
 				{ID: "wolf_maul_pressure_counter_v1", SkillID: "maul", SetupType: "pressure_counter", MinSetupMS: 160, MaxSetupMS: 420, CommitDistanceCM: 220, PreferredMinRangeCM: 0, PreferredMaxRangeCM: 260, MovementTactic: "lateral_counter_dash", LockSideDuringSetup: true, Enabled: true},
+			},
+			Threat: ThreatRuntimeProfile{
+				DamageThreatPerPoint:      1.0,
+				PostureThreatPerPoint:     0.8,
+				ProximityThreatPerSec:     2.0,
+				ProximityRangeCM:          400,
+				FirstAggroBonus:           25,
+				DecayPerSec:               6.0,
+				LOSBreakDecayMultiplier:   3.0,
+				OutOfRangeDecayMultiplier: 2.0,
+				SwitchThresholdRatio:      1.25,
+				SwitchCooldownMS:          1500,
+				LeashDistanceCM:           3500,
 			},
 		},
 		CombatModes: fixtureCombatModeSlots(),
