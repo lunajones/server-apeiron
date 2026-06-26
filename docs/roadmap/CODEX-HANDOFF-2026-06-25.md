@@ -18,21 +18,21 @@ Index of the AAA roadmaps worked this session, their status, and the build order
 `temp-reconciliation-contract-migration-roadmap.md` — these are binary garbage. Their topics are
 already covered by existing code/tables; do not try to read them.
 
-## Build order (in progress)
+## Build order — DONE (server) except PIE tuning
 
 ```
-Threat S1-S4  (table, selection, proximity/leash)   <- foundation, solo-testable  [STARTED]
+Threat S1-S5  (table, selection, proximity/leash, focus aggregate)   [DONE, tested]
+Pack   S1-S5  (formation, slotting, commit budget, rotation, focus)  [DONE, tested]
    v
-Pack S1-S4    (formation, slotting, commit budget, rotation)
-   v
-Threat S5 + Pack S5  (multi-target focus together)
-   v
-Tuning in PIE (cadence, spacing, decay)
+Tuning in PIE (cadence, spacing, decay)   [REMAINING - yours/Codex, needs the game running]
 ```
 
-Threat goes first: it owns "which target", which the pack consumes (pack Slice 5 depends on threat
-Slice 5), it is lower-risk with a single-player no-regression guarantee, and it improves the solo
-creature (leash/reset) testably now.
+All slices implemented server-side in `threat.go` / `pack.go`, data-driven from the wolf behavior
+contract metadata (`ThreatRuntimeProfile`, `PackRuntimeProfile`), 17 unit tests green, single-player
+and pack-of-one no-regression guarantees tested. What remains is PIE feel tuning: commit cadence
+(`commitTokenCooldownMs`), surround spacing, threat decay/switch — tune in `bootstrap/016_wolf_behavior_contract_seed.sql`
+metadata and restart, no code needed. Suggested PIE check: spawn 3 wolves, confirm they surround,
+only one commits at a time, turns rotate, and pulling far resets them.
 
 ## Known test state
 
