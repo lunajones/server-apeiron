@@ -59,14 +59,21 @@ behavior, not movement authority.
 
 ### Threat sources (data-driven weights)
 
-| Source | Generates threat because |
-| --- | --- |
-| Damage dealt to the creature/pack | classic; the thing hurting me |
-| Posture/stagger damage | aggressive pressure even without HP loss |
-| Heal/support done to my current targets | the enabler behind the damage (group play) |
-| Proximity + time-in-range | action games: the thing in my face is a threat |
-| Taunt / peel ability | explicit threat override (future tank tools) |
-| First-aggro / puller bonus | the one who woke me starts with a lead |
+Split into **core** (ship the system with these) and **future** (only meaningful once the
+matching player kit exists — do not build dead inputs now). The schema keeps the future weights so
+no migration is needed later; they just stay zero until support/tank kits exist.
+
+| Source | Tier | Generates threat because |
+| --- | --- | --- |
+| Damage dealt to the creature | core | classic; the thing hurting me |
+| Posture/stagger damage | core | aggressive pressure even without HP loss |
+| Proximity + time-in-range | core | action games: the thing in my face is a threat |
+| First-aggro / puller bonus | core | the one who woke me starts with a lead (cheap, one-shot) |
+| Heal/support done to my current target | future | needs healing to exist; the enabler behind the damage |
+| Taunt / peel ability | future | needs explicit tank threat tools to exist |
+
+Build Slices 1-4 on the core tier only. Heal/taunt are wired in Slice 6 **if and when** those
+kits exist; until then their weights are 0 and they cost nothing.
 
 ### Threat decay and loss
 
@@ -143,28 +150,102 @@ type threatTable struct {
 
 On `entityState` (per creature) and aggregated read-only on `packRuntime`.
 
-### Integration points
+### Exact integration mechanism
 
-- **Damage pipeline emits threat.** Where impacts resolve and damage/posture events are produced,
-  add the attacker's threat to the victim creature's table (and to its pack). This is the single
-  feed that makes "the thing hurting me" become the target.
-- **Proximity/time tick** adds slow threat for in-range targets so a creature engages something
-  that never attacks (a player just standing in its face).
-- **Target selection replaces the hardcoded `player` target.** The creature brain reads
-  `threatTable.CurrentTarget` instead of assuming the one player. Degenerate single-player case
-  resolves to that player, so today's behavior is preserved.
-- **Leash check** runs each tick against `AnchorPos`; on breach, disengage + wipe + return.
+Two precise hooks, both grounded in code that already exists. Keep them surgical.
+
+**(1) Emit threat where damage is APPLIED to the creature, not where the attack is scheduled.**
+Threat is "who is hurting me", so it is credited on the victim. The single place to hook is the
+impact *application* path — the same code that reduces a victim's `health`/`posture` and produces
+the damage `SnapshotEvent` (the player-skill-vs-creature resolution, e.g. `resolveRuntimeSkillImpact`
+applying to the wolf, and the impact/control application in `impact.go`). At that point:
+
+```text
+on apply damage/posture D from attacker A to creature C:
+    C.threat.Entries[A] += D * weight   // damage_threat_per_point / posture_threat_per_point
+    propagate to C.pack threat view (if any)
+```
+
+Do NOT emit from `enqueueCreatureSkillImpactLocked` (that is creature->player, the wrong
+direction). Threat is fed by the victim taking the hit.
+
+**(2) Target selection replaces the hardcoded single-player target at one call site.** Today the
+wolf loop is driven with the one player (`updateWolfPolicyLocked(wolf, player)` /
+`ensureWolfLocked(player)`). Introduce one resolver:
+
+```text
+target := resolveCreatureTargetLocked(wolf, now)   // reads threatTable.CurrentTarget
+updateWolfPolicyLocked(wolf, target)
+```
+
+`resolveCreatureTargetLocked` returns the threat-selected entity (with hysteresis), or the lone
+player when that is the only candidate. **This is the single-player no-regression guarantee:** with
+one attacker in range, `CurrentTarget` resolves to exactly that player, so the existing pipeline is
+byte-for-byte unchanged. Multi-target behavior only emerges when there is more than one candidate.
+
+**Proximity/leash run on the same creature tick** that already updates the wolf, so no new loop:
+proximity adds slow threat for in-range candidates; the leash check tests `AnchorPos` distance and
+disengages on breach.
 
 ## Snapshot / Presentation
 
 Publish for debug: `current_target_id`, `threat_on_me` (top threat), `aggro_state`
 (`engaged`/`leashing`/`returning`), so PIE can show who each creature is locked onto and why.
 
+## Edge Cases and Failure Modes
+
+- **Current target dies or leaves the region mid-fight.** Drop its entry, then re-select from the
+  table next tick (respecting hysteresis against the *remaining* candidates). Never keep a dead
+  `CurrentTarget`; never address a despawned id.
+- **Target goes invalid** (disconnect, phase change, became untargetable): treat as death for the
+  table — remove and re-select. Selection must skip non-targetable candidates, not just dead ones.
+- **Stale entries grow unbounded.** Entries decay to ~0 and are then pruned, so the map cannot grow
+  across a long fight against many transient targets. Prune on decay tick.
+- **AoE / multi-hit from one attacker.** Threat is per applied damage event, so a multi-hit or AoE
+  naturally credits the attacker once per hit. Do not special-case AoE; it is just more events.
+- **Zero-damage / whiffed hits.** No damage applied => no threat from that source (proximity still
+  ticks). A blocked/parried hit credits posture threat if posture damage applied, nothing if fully
+  negated — which is correct (a fully blocked attacker is less threatening).
+- **Two creatures share a victim's attacker.** Each creature owns its own table; the same player
+  can be top-threat for several creatures independently. The pack view aggregates, but per-creature
+  tables stay independent so a non-pack creature is unaffected.
+- **Summons / pets / second creature as attacker (future).** The table is keyed by any entity id,
+  so a future pet that damages a creature generates threat like a player. No schema change needed.
+- **Leash thrash at the boundary.** Add a small hysteresis band on `leash_distance_cm` (or require
+  N ticks beyond it) so a creature kited right at the leash edge does not engage/disengage every
+  tick.
+- **Pack vs solo ownership.** Per-creature tables are authoritative; the pack view is a read-only
+  aggregate. If a creature leaves a pack, it keeps its own table and continues — no reset.
+
+## Tuning Philosophy and Starting Values
+
+The feel goal is **fair stickiness**: a creature commits to whoever is actually pressuring it and
+does not comically flip targets, but a coordinated group can peel it off with enough pressure. It
+should read like the creature has intent, not like a damage spreadsheet.
+
+Starting values for the steppe wolf (tune in PIE):
+
+- `damage_threat_per_point` 1.0, `posture_threat_per_point` ~0.8 — posture pressure matters but a
+  little less than HP.
+- `proximity_threat_per_sec` low (~2) vs `proximity_range_cm` ~400 — proximity should *engage an
+  idle loiterer*, never out-rank someone actively hitting the creature.
+- `decay_per_sec` ~6 — a target you stop pressuring fades over a few seconds, not instantly.
+- `switch_threshold_ratio` ~1.25 + `switch_cooldown_ms` ~1500 — a challenger needs to clearly
+  out-threaten the current target AND wait out the cooldown to steal aggro. This is the single
+  anti-flip-flop lever; tune it first.
+- `leash_distance_cm` generous (~3500) — leash is an anti-abuse backstop, not a combat leash; it
+  should almost never trigger in a real fight, only on deliberate train-pulling.
+
+Anti-goals: do not make proximity out-weigh damage (turns it into a "nearest target" toy), do not
+set decay so fast that brief repositioning drops aggro, do not shrink the switch cooldown to make
+fights "dynamic" — that reads as the creature being confused.
+
 ## Implementation Slices
 
 ### Slice 1 - Threat table + decay
-Add the table and per-second decay; emit threat from the damage pipeline. Done when hitting a
-creature raises your threat entry and it decays when you stop.
+Add the table and per-second decay; emit threat from the damage *application* path. Prune entries
+that decay to zero. Done when hitting a creature raises your threat entry and it decays when you
+stop. Single creature vs single player must be unchanged.
 
 ### Slice 2 - Target selection with hysteresis
 Replace the hardcoded single-player target with highest-threat selection + switch threshold/cooldown.
