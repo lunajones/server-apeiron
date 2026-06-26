@@ -110,6 +110,71 @@ func (r *Runtime) playerByIDLocked(id uint64) *entityState {
 	return nil
 }
 
+const creatureLeashReturnRadiusCM = 120.0
+
+// updateCreatureLeashLocked enforces the souls-like leash/reset (Threat Slice 4). The creature
+// anchors at its spawn position; if pulled beyond leash_distance_cm it disengages (wipes threat),
+// then walks home regenerating, and resumes normal behavior once home. Returns true while the
+// creature is leashing so the caller skips combat for this tick. Leash overrides target selection
+// on purpose — this is the new reset behavior, not the steady-state combat path.
+func (r *Runtime) updateCreatureLeashLocked(creature *entityState, now time.Time) bool {
+	if r == nil || creature == nil || creature.entityType != "creature" {
+		return false
+	}
+	profile := r.creatureThreatProfile(creature)
+	if profile.LeashDistanceCM <= 0 {
+		return false
+	}
+	table := creature.ensureThreatTable()
+	if !table.AnchorKnown {
+		table.AnchorPos = creature.position
+		table.AnchorKnown = true
+	}
+	distHome := distance(creature.position, table.AnchorPos)
+
+	if !creature.creatureLeashed {
+		if distHome <= profile.LeashDistanceCM {
+			return false
+		}
+		// Breach: disengage and wipe threat.
+		creature.creatureLeashed = true
+		table.Entries = map[uint64]float64{}
+		table.CurrentTarget = 0
+	}
+
+	if distHome <= creatureLeashReturnRadiusCM {
+		creature.creatureLeashed = false
+		if creature.maxHealth > 0 {
+			creature.health = creature.maxHealth
+		}
+		if creature.maxStamina > 0 {
+			creature.stamina = creature.maxStamina
+		}
+		creature.velocity = vector{}
+		creature.movementState = "grounded"
+		creature.skillState = "idle"
+		creature.combatState = "ready"
+		return false
+	}
+
+	// Walk home, regenerating on the way.
+	dir := normalize(vector{x: table.AnchorPos.x - creature.position.x, y: table.AnchorPos.y - creature.position.y})
+	speed := positiveOr(r.contracts.WolfPolicy.ChaseSpeedCMS, 300)
+	step := speed / tickRate
+	if step > distHome {
+		step = distHome
+	}
+	creature.position = add(creature.position, scale(dir, step))
+	creature.position.z = creature.position.z
+	creature.velocity = scale(dir, speed)
+	creature.velocity.z = 0
+	creature.movementState = "returning_home"
+	creature.skillState = "idle"
+	creature.combatState = "ready"
+	r.regenerateCreatureStaminaLocked(creature, r.contracts.WolfPolicy)
+	return true
+}
+
 // creatureThreatProfile resolves the threat tuning for a creature. Today only the wolf policy
 // carries one; this is the seam where per-template threat profiles bind later.
 func (r *Runtime) creatureThreatProfile(_ *entityState) ThreatRuntimeProfile {

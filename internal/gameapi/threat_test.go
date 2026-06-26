@@ -138,3 +138,48 @@ func TestThreatTargetSelectionPicksHigherThreatWithHysteresis(t *testing.T) {
 		t.Fatalf("did not switch to p2 after clear threat + cooldown; got %v", got)
 	}
 }
+
+// TestThreatLeashResetsWhenPulledTooFar locks Slice 4: pulled beyond leash distance the creature
+// wipes threat, walks home, and resets (health restored) once it arrives.
+func TestThreatLeashResetsWhenPulledTooFar(t *testing.T) {
+	runtime := NewRuntimeWithContracts(DevFixtureRuntimeContracts())
+	player := runtime.ensurePlayerLocked("local_player")
+	wolf := runtime.ensureWolfLocked(player)
+	prof := runtime.contracts.WolfPolicy.Threat
+	now := time.Now()
+
+	// Anchor the wolf at origin (first call sets the anchor), give it threat + damage.
+	wolf.position = vector{x: 0, y: 0, z: 0}
+	if runtime.updateCreatureLeashLocked(wolf, now) {
+		t.Fatal("wolf leashed at its own anchor")
+	}
+	runtime.creditThreatLocked(wolf, player, 100, 0)
+	wolf.health = 10
+
+	// Yank it well past the leash distance -> disengage + wipe + start returning.
+	wolf.position = vector{x: prof.LeashDistanceCM + 600, y: 0, z: 0}
+	if !runtime.updateCreatureLeashLocked(wolf, now) {
+		t.Fatal("wolf did not leash when pulled beyond leash distance")
+	}
+	if !wolf.creatureLeashed {
+		t.Fatal("wolf not marked leashed")
+	}
+	if len(wolf.threat.Entries) != 0 || wolf.threat.CurrentTarget != 0 {
+		t.Fatalf("leash did not wipe threat: %#v", wolf.threat)
+	}
+	if wolf.position.x >= prof.LeashDistanceCM+600 {
+		t.Fatal("leashed wolf did not step toward home")
+	}
+
+	// Arrive home -> reset clears the leash and restores health.
+	wolf.position = vector{x: 0, y: 0, z: 0}
+	if runtime.updateCreatureLeashLocked(wolf, now) {
+		t.Fatal("wolf still leashing after reaching home")
+	}
+	if wolf.creatureLeashed {
+		t.Fatal("leashed flag not cleared at home")
+	}
+	if wolf.health != wolf.maxHealth {
+		t.Fatalf("leash reset did not restore health: %.1f/%.1f", wolf.health, wolf.maxHealth)
+	}
+}

@@ -112,6 +112,7 @@ type entityState struct {
 	orientationAttackYaw        float64
 	orientationAttackYawKnown   bool
 	threat                      *threatTable
+	creatureLeashed             bool
 	actionHandoffUntil          time.Time
 	actionHandoffAction         string
 	combatMode                  *gamev1.CombatModeState
@@ -793,6 +794,10 @@ func (r *Runtime) updateCreaturePoliciesLocked() {
 	now := time.Now()
 	for _, creature := range r.entities {
 		if creature.entityType != "creature" || creature.templateID != "steppe_wolf" {
+			continue
+		}
+		// Leash/reset: if pulled too far from home, disengage and walk back before any combat.
+		if r.updateCreatureLeashLocked(creature, now) {
 			continue
 		}
 		// Threat-driven target selection. Resolves to the single player unchanged when there is
