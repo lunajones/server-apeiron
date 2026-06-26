@@ -6,7 +6,12 @@ import (
 	"time"
 
 	creatureai "server-apeiron/internal/ai"
+	"server-apeiron/internal/movement"
 )
+
+// packCommitMinDistanceCM is the root-displacement threshold above which a skill counts as a
+// committed action for the pack commit budget (lunge/maul qualify; a bite does not).
+const packCommitMinDistanceCM = 200.0
 
 // packRuntime is the group-level coordinator that sits above the per-creature brains. It owns
 // group intent (membership now; roles/slots/commit budget/focus in later slices) and never moves
@@ -173,5 +178,80 @@ func (r *Runtime) applyPackSlotSteeringLocked(creature *entityState, target *ent
 		return decision
 	}
 	decision.Direction = toDomainVector(blended)
+	return decision
+}
+
+// isCommittingSkill reports whether a skill is a committed action the pack must budget — one that
+// carries a phase envelope or moves the creature root a meaningful distance (lunge, maul), as
+// opposed to a quick in-place attack (bite). Data-driven, not a wolf-count branch.
+func (r *Runtime) isCommittingSkill(skillID string) bool {
+	if skillID == "" {
+		return false
+	}
+	contract := r.contracts.skillContract(skillID)
+	if contract.Envelope != nil {
+		return true
+	}
+	return movement.ActionDistance(contract.MovementAction, 0) >= packCommitMinDistanceCM
+}
+
+// creatureIsCommittingLocked reports whether a creature is currently in (or exiting) a committed
+// action, so it is holding a commit token.
+func (r *Runtime) creatureIsCommittingLocked(creature *entityState) bool {
+	if creature == nil {
+		return false
+	}
+	if creature.actionInstance != nil && r.isCommittingSkill(creature.actionInstance.SkillID.String()) {
+		return true
+	}
+	if t := creature.creatureActionTransition; t != nil && r.isCommittingSkill(t.SkillID) {
+		return true
+	}
+	return false
+}
+
+// packMayCommitLocked enforces the commit budget (Pack Slice 3): at most max_committed_members of
+// a pack may be in a committed action at once. A member already committing keeps its token; a new
+// committer is allowed only while the pack is under budget. A solo creature (pack of one) is always
+// allowed — identity preserved.
+func (r *Runtime) packMayCommitLocked(creature *entityState) bool {
+	if creature == nil {
+		return false
+	}
+	if r.creatureIsCommittingLocked(creature) {
+		return true
+	}
+	if creature.packID == "" {
+		return true
+	}
+	pack := r.packs[creature.packID]
+	if pack == nil || len(pack.MemberIDs) <= 1 {
+		return true
+	}
+	maxCommit := int(r.creaturePackProfile(nil).MaxCommittedMembers)
+	if maxCommit <= 0 {
+		maxCommit = 1
+	}
+	committing := 0
+	for _, id := range pack.MemberIDs {
+		if id == creature.id {
+			continue
+		}
+		if m := r.entities[id]; m != nil && r.creatureIsCommittingLocked(m) {
+			committing++
+		}
+	}
+	return committing < maxCommit
+}
+
+// suppressCommitDecision converts a committing decision into the member's tactical movement, so a
+// member without a commit token harasses/repositions instead of attacking this turn.
+func suppressCommitDecision(decision creatureai.Decision) creatureai.Decision {
+	tactic := decision.MovementTactic
+	if tactic == "" {
+		tactic = "circle"
+	}
+	decision.Action = tactic
+	decision.SelectedSkill = ""
 	return decision
 }

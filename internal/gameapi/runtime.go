@@ -858,6 +858,14 @@ func (r *Runtime) updateWolfPolicyLocked(wolf *entityState, player *entityState)
 	action := decision.Action
 	selectedSkill := decision.SelectedSkill
 
+	// Pack commit budget: a member without a commit token cannot enter a committed action this
+	// turn; it falls back to tactical harass/reposition so only the budgeted number attack at once.
+	if creatureai.PublishesSkill(decision.Action) && r.isCommittingSkill(selectedSkill) && !r.packMayCommitLocked(wolf) {
+		decision = suppressCommitDecision(decision)
+		action = decision.Action
+		selectedSkill = decision.SelectedSkill
+	}
+
 	selectedRuntime := r.contracts.skillContract(selectedSkill)
 	actionUpdate := r.applyCreatureActionRuntimeLocked(wolf, player, decision, selectedRuntime, start, nowTime)
 	resolvedMotion := creatureDecisionMotion{Start: start}

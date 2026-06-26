@@ -4,6 +4,8 @@ import (
 	"math"
 	"testing"
 	"time"
+
+	creatureai "server-apeiron/internal/ai"
 )
 
 func newFixtureWolf(id uint64, pos vector) *entityState {
@@ -124,5 +126,56 @@ func TestPackSlotSteerPointsAtSlot(t *testing.T) {
 	want := normalize(vector{x: slotPoint.x - wolf.position.x, y: slotPoint.y - wolf.position.y})
 	if math.Abs(steer.x-want.x) > 0.01 || math.Abs(steer.y-want.y) > 0.01 {
 		t.Fatalf("steer %v does not point toward slot point dir %v", steer, want)
+	}
+}
+
+// TestPackCommitBudgetGatesSimultaneousCommits locks Pack Slice 3: with max_committed_members=1,
+// once one member is committing the other is denied a commit (and falls back to tactical), while
+// the committing member keeps its token.
+func TestPackCommitBudgetGatesSimultaneousCommits(t *testing.T) {
+	runtime := NewRuntimeWithContracts(DevFixtureRuntimeContracts())
+	player := runtime.ensurePlayerLocked("local_player")
+	player.position = vector{x: 0, y: 0, z: player.position.z}
+	w1 := newFixtureWolf(401, vector{x: 300, y: 0})
+	w2 := newFixtureWolf(402, vector{x: 320, y: 20})
+	runtime.entities[w1.id] = w1
+	runtime.entities[w2.id] = w2
+	runtime.formCreaturePacksLocked()
+	if w1.packID != w2.packID {
+		t.Fatal("wolves not grouped into one pack")
+	}
+
+	if !runtime.packMayCommitLocked(w1) || !runtime.packMayCommitLocked(w2) {
+		t.Fatal("commit denied while the budget is free")
+	}
+
+	lunge := runtime.contracts.skillContract("lunge")
+	inst := runtime.newCreatureActionInstance(w1, "lunge", lunge, w1.position, time.Now())
+	w1.actionInstance = &inst
+	if !runtime.isCommittingSkill("lunge") || !runtime.creatureIsCommittingLocked(w1) {
+		t.Fatal("lunge/committing not detected")
+	}
+	if !runtime.packMayCommitLocked(w1) {
+		t.Fatal("committing member denied its own commit")
+	}
+	if runtime.packMayCommitLocked(w2) {
+		t.Fatal("budget exceeded: 2nd member allowed to commit while one is committing")
+	}
+
+	out := suppressCommitDecision(creatureai.Decision{Action: "lunge", SelectedSkill: "lunge", MovementTactic: "circle"})
+	if creatureai.PublishesSkill(out.Action) || out.SelectedSkill != "" {
+		t.Fatalf("suppressed commit still publishes a skill: %#v", out)
+	}
+}
+
+// TestPackOfOneAlwaysMayCommit locks that a solo creature is never gated by the budget (identity).
+func TestPackOfOneAlwaysMayCommit(t *testing.T) {
+	runtime := NewRuntimeWithContracts(DevFixtureRuntimeContracts())
+	runtime.ensurePlayerLocked("local_player")
+	w := newFixtureWolf(501, vector{x: 0, y: 0})
+	runtime.entities[w.id] = w
+	runtime.formCreaturePacksLocked()
+	if !runtime.packMayCommitLocked(w) {
+		t.Fatal("pack-of-one wolf denied commit; identity broken")
 	}
 }
