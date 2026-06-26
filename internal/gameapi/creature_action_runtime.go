@@ -37,6 +37,9 @@ func (r *Runtime) applyCreatureActionRuntimeLocked(creature *entityState, target
 		creature.creatureActiveSetupPolicyID = decision.SetupPolicyID
 		instance = &next
 		started = true
+		if r.isCommittingSkill(skillID) {
+			creature.lastCommitAt = now
+		}
 		r.spendCreatureSkillStaminaLocked(creature, skillID, contract)
 		r.startCreatureSkillCooldownLocked(creature, skillID, contract, now)
 	}

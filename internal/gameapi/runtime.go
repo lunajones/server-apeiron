@@ -117,6 +117,8 @@ type entityState struct {
 	packID                      string
 	packRingSlotDeg             float64
 	packSlotKnown               bool
+	packRole                    string
+	lastCommitAt                time.Time
 	actionHandoffUntil          time.Time
 	actionHandoffAction         string
 	combatMode                  *gamev1.CombatModeState
@@ -799,6 +801,7 @@ func (r *Runtime) updateCreaturePoliciesLocked() {
 	// Group nearby creatures into packs, then slot members around their target so they surround.
 	r.formCreaturePacksLocked()
 	r.assignPackRingSlotsLocked(now)
+	r.assignPackRolesLocked()
 	for _, creature := range r.entities {
 		if creature.entityType != "creature" || creature.templateID != "steppe_wolf" {
 			continue

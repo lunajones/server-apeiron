@@ -241,7 +241,60 @@ func (r *Runtime) packMayCommitLocked(creature *entityState) bool {
 			committing++
 		}
 	}
-	return committing < maxCommit
+	if committing >= maxCommit {
+		return false
+	}
+	// Rotation (Slice 4): a member that just committed yields its next turn while another member
+	// is free to take it, so commits rotate around the pack instead of one wolf hogging the token.
+	cooldown := time.Duration(r.creaturePackProfile(nil).CommitTokenCooldownMS) * time.Millisecond
+	if cooldown > 0 && !creature.lastCommitAt.IsZero() && time.Since(creature.lastCommitAt) < cooldown {
+		if r.packHasOtherAvailableCommitterLocked(creature, pack, cooldown) {
+			return false
+		}
+	}
+	return true
+}
+
+// packHasOtherAvailableCommitterLocked reports whether another pack member is free to take the
+// commit turn (not committing and not itself on its post-commit cooldown).
+func (r *Runtime) packHasOtherAvailableCommitterLocked(creature *entityState, pack *packRuntime, cooldown time.Duration) bool {
+	for _, id := range pack.MemberIDs {
+		if id == creature.id {
+			continue
+		}
+		m := r.entities[id]
+		if m == nil || m.health <= 0 || r.creatureIsCommittingLocked(m) {
+			continue
+		}
+		if cooldown > 0 && !m.lastCommitAt.IsZero() && time.Since(m.lastCommitAt) < cooldown {
+			continue
+		}
+		return true
+	}
+	return false
+}
+
+// assignPackRolesLocked labels each member by its current commit state (Slice 4): the committing
+// member is the engager, a member inside its post-commit cooldown is recovering, everyone else
+// harasses. Roles are presentational (debug/snapshot) plus the rotation cooldown that drives them.
+func (r *Runtime) assignPackRolesLocked() {
+	cooldown := time.Duration(r.creaturePackProfile(nil).CommitTokenCooldownMS) * time.Millisecond
+	for _, pack := range r.packs {
+		for _, id := range pack.MemberIDs {
+			m := r.entities[id]
+			if m == nil {
+				continue
+			}
+			switch {
+			case r.creatureIsCommittingLocked(m):
+				m.packRole = "engager"
+			case cooldown > 0 && !m.lastCommitAt.IsZero() && time.Since(m.lastCommitAt) < cooldown:
+				m.packRole = "recoverer"
+			default:
+				m.packRole = "harasser"
+			}
+		}
+	}
 }
 
 // suppressCommitDecision converts a committing decision into the member's tactical movement, so a

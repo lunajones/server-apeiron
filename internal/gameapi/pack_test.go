@@ -179,3 +179,54 @@ func TestPackOfOneAlwaysMayCommit(t *testing.T) {
 		t.Fatal("pack-of-one wolf denied commit; identity broken")
 	}
 }
+
+// TestPackCommitRotationYieldsTurn locks Pack Slice 4 rotation: a member that just committed
+// yields its next turn while a fresh member is free, so commits rotate around the pack.
+func TestPackCommitRotationYieldsTurn(t *testing.T) {
+	runtime := NewRuntimeWithContracts(DevFixtureRuntimeContracts())
+	runtime.ensurePlayerLocked("local_player")
+	w1 := newFixtureWolf(601, vector{x: 300, y: 0})
+	w2 := newFixtureWolf(602, vector{x: 320, y: 20})
+	runtime.entities[w1.id] = w1
+	runtime.entities[w2.id] = w2
+	runtime.formCreaturePacksLocked()
+
+	// w1 just finished a commit (cooldown active); w2 is fresh. Neither is committing now.
+	w1.lastCommitAt = time.Now()
+	if runtime.packMayCommitLocked(w1) {
+		t.Fatal("w1 should yield its turn right after committing while w2 is free")
+	}
+	if !runtime.packMayCommitLocked(w2) {
+		t.Fatal("w2 (fresh) should be able to take the rotated turn")
+	}
+}
+
+// TestPackRolesReflectCommitState locks Slice 4 role labels: committing -> engager, recently
+// committed -> recoverer, otherwise harasser.
+func TestPackRolesReflectCommitState(t *testing.T) {
+	runtime := NewRuntimeWithContracts(DevFixtureRuntimeContracts())
+	runtime.ensurePlayerLocked("local_player")
+	engager := newFixtureWolf(701, vector{x: 300, y: 0})
+	recoverer := newFixtureWolf(702, vector{x: 320, y: 20})
+	harasser := newFixtureWolf(703, vector{x: 310, y: -20})
+	for _, w := range []*entityState{engager, recoverer, harasser} {
+		runtime.entities[w.id] = w
+	}
+	runtime.formCreaturePacksLocked()
+
+	lunge := runtime.contracts.skillContract("lunge")
+	inst := runtime.newCreatureActionInstance(engager, "lunge", lunge, engager.position, time.Now())
+	engager.actionInstance = &inst
+	recoverer.lastCommitAt = time.Now() // recently committed, now idle
+
+	runtime.assignPackRolesLocked()
+	if engager.packRole != "engager" {
+		t.Fatalf("committing member role = %q, want engager", engager.packRole)
+	}
+	if recoverer.packRole != "recoverer" {
+		t.Fatalf("recently-committed member role = %q, want recoverer", recoverer.packRole)
+	}
+	if harasser.packRole != "harasser" {
+		t.Fatalf("idle member role = %q, want harasser", harasser.packRole)
+	}
+}
