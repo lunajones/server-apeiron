@@ -72,3 +72,61 @@ func (r *Runtime) decayCreatureThreatLocked(creature *entityState, dt float64) {
 func (r *Runtime) creatureThreatProfile(_ *entityState) ThreatRuntimeProfile {
 	return r.contracts.WolfPolicy.Threat
 }
+
+// resolveCreatureTargetLocked picks which target a creature fights (Threat Slice 2). With a single
+// candidate it returns that one unchanged (the single-player no-regression guarantee). With more
+// than one it selects the highest-threat target, switching off the current target only when a
+// challenger exceeds it by switch_threshold_ratio AND switch_cooldown_ms has elapsed (hysteresis,
+// no per-tick flip-flop).
+func (r *Runtime) resolveCreatureTargetLocked(creature *entityState, now time.Time) *entityState {
+	if r == nil || creature == nil {
+		return nil
+	}
+	candidates := make([]*entityState, 0, len(r.players))
+	for _, p := range r.players {
+		if p != nil && p.health > 0 {
+			candidates = append(candidates, p)
+		}
+	}
+	if len(candidates) == 0 {
+		return nil
+	}
+	if len(candidates) == 1 {
+		return candidates[0]
+	}
+
+	table := creature.ensureThreatTable()
+	profile := r.creatureThreatProfile(creature)
+
+	var current, best *entityState
+	bestThreat := -1.0
+	for _, c := range candidates {
+		if c.id == table.CurrentTarget {
+			current = c
+		}
+		if th := table.Entries[c.id]; th > bestThreat {
+			bestThreat, best = th, c
+		}
+	}
+	if best == nil {
+		best = candidates[0]
+	}
+
+	// Stick to the current target unless a challenger clearly out-threatens it and the cooldown
+	// has elapsed.
+	if current != nil && best.id != current.id {
+		ratio := profile.SwitchThresholdRatio
+		if ratio < 1 {
+			ratio = 1
+		}
+		switchReady := now.Sub(table.LastSwitchAt) >= time.Duration(profile.SwitchCooldownMS)*time.Millisecond
+		if !switchReady || bestThreat < table.Entries[current.id]*ratio {
+			return current
+		}
+	}
+	if best.id != table.CurrentTarget {
+		table.CurrentTarget = best.id
+		table.LastSwitchAt = now
+	}
+	return best
+}

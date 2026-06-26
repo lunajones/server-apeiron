@@ -3,6 +3,7 @@ package gameapi
 import (
 	"math"
 	"testing"
+	"time"
 )
 
 // TestThreatCreditedOnHitWithPullerBonus locks Threat Slice 1 emission: a creature accrues threat
@@ -66,5 +67,46 @@ func TestThreatOnlyCreaturesAccumulate(t *testing.T) {
 	runtime.creditThreatLocked(player, wolf, 10, 5)
 	if player.threat != nil && len(player.threat.Entries) > 0 {
 		t.Fatalf("player accumulated a threat table: %#v", player.threat)
+	}
+}
+
+// TestThreatTargetSelectionSinglePlayerNoRegression locks the Slice 2 guarantee: with one
+// candidate, target selection returns exactly that player, so behavior is unchanged.
+func TestThreatTargetSelectionSinglePlayerNoRegression(t *testing.T) {
+	runtime := NewRuntimeWithContracts(DevFixtureRuntimeContracts())
+	player := runtime.ensurePlayerLocked("local_player")
+	wolf := runtime.ensureWolfLocked(player)
+	if got := runtime.resolveCreatureTargetLocked(wolf, time.Now()); got != player {
+		t.Fatalf("single-player target = %v, want the only player", got)
+	}
+}
+
+// TestThreatTargetSelectionPicksHigherThreatWithHysteresis locks Slice 2 multi-target selection:
+// the wolf targets the higher-threat player, does not flip-flop within the switch cooldown, and
+// switches once a challenger clearly out-threatens it and the cooldown has elapsed.
+func TestThreatTargetSelectionPicksHigherThreatWithHysteresis(t *testing.T) {
+	runtime := NewRuntimeWithContracts(DevFixtureRuntimeContracts())
+	p1 := runtime.ensurePlayerLocked("p1")
+	p2 := runtime.ensurePlayerLocked("p2")
+	wolf := runtime.ensureWolfLocked(p1)
+	prof := runtime.contracts.WolfPolicy.Threat
+	now := time.Now()
+	cooldownPast := now.Add(time.Duration(prof.SwitchCooldownMS+50) * time.Millisecond)
+
+	runtime.creditThreatLocked(wolf, p1, 100, 0)
+	runtime.creditThreatLocked(wolf, p2, 5, 0)
+	if got := runtime.resolveCreatureTargetLocked(wolf, now); got != p1 {
+		t.Fatalf("initial target = %v, want p1 (highest threat)", got)
+	}
+
+	// p2 surpasses p1 but the switch cooldown has not elapsed -> stick to p1.
+	runtime.creditThreatLocked(wolf, p2, 1000, 0)
+	if got := runtime.resolveCreatureTargetLocked(wolf, now); got != p1 {
+		t.Fatalf("flip-flopped to %v within switch cooldown; want stay p1", got)
+	}
+
+	// Cooldown elapsed and p2 clearly out-threatens p1 -> switch to p2.
+	if got := runtime.resolveCreatureTargetLocked(wolf, cooldownPast); got != p2 {
+		t.Fatalf("did not switch to p2 after clear threat + cooldown; got %v", got)
 	}
 }

@@ -790,11 +790,18 @@ func (r *Runtime) updateCreaturePoliciesLocked() {
 	if player == nil {
 		return
 	}
+	now := time.Now()
 	for _, creature := range r.entities {
 		if creature.entityType != "creature" || creature.templateID != "steppe_wolf" {
 			continue
 		}
-		r.updateWolfPolicyLocked(creature, player)
+		// Threat-driven target selection. Resolves to the single player unchanged when there is
+		// only one (no-regression); picks by threat with hysteresis when there are several.
+		target := r.resolveCreatureTargetLocked(creature, now)
+		if target == nil {
+			target = player
+		}
+		r.updateWolfPolicyLocked(creature, target)
 	}
 }
 
