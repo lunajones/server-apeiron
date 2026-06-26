@@ -208,6 +208,19 @@ type WolfRuntimePolicy struct {
 	SkillBehaviorBindings          []CreatureSkillBehaviorRuntimeBinding
 	SkillSetupPolicies             []CreatureSkillSetupRuntimePolicy
 	Threat                         ThreatRuntimeProfile
+	Pack                           PackRuntimeProfile
+}
+
+// PackRuntimeProfile is the creature's data-driven pack-coordination tuning, loaded from the
+// creature behavior contract metadata ("pack" object). See
+// docs/roadmap/aaa-pack-coordination-runtime-roadmap.md. Slice 1 uses MaxMembers + JoinRadiusCM
+// (membership); slotting/commit-budget/rotation fields land in later slices.
+type PackRuntimeProfile struct {
+	MaxMembers          int32
+	MaxCommittedMembers int32
+	JoinRadiusCM        float64
+	SurroundSpacingDeg  float64
+	CommitTokenCooldownMS int32
 }
 
 // ThreatRuntimeProfile is the creature's data-driven threat/aggro tuning, loaded from the
@@ -295,6 +308,15 @@ type creatureStaminaPolicyJSON struct {
 
 type creatureBehaviorMetadataJSON struct {
 	Threat creatureThreatPolicyJSON `json:"threat"`
+	Pack   creaturePackPolicyJSON   `json:"pack"`
+}
+
+type creaturePackPolicyJSON struct {
+	MaxMembers            int32   `json:"maxMembers"`
+	MaxCommittedMembers   int32   `json:"maxCommittedMembers"`
+	JoinRadiusCm          float64 `json:"joinRadiusCm"`
+	SurroundSpacingDeg    float64 `json:"surroundSpacingDeg"`
+	CommitTokenCooldownMs int32   `json:"commitTokenCooldownMs"`
 }
 
 type creatureThreatPolicyJSON struct {
@@ -668,6 +690,14 @@ func applyWolfBehaviorPolicyJSON(policy *WolfRuntimePolicy, behavior *dbv1.Creat
 				SwitchThresholdRatio:      t.SwitchThresholdRatio,
 				SwitchCooldownMS:          t.SwitchCooldownMs,
 				LeashDistanceCM:           t.LeashDistanceCm,
+			}
+			p := meta.Pack
+			policy.Pack = PackRuntimeProfile{
+				MaxMembers:            p.MaxMembers,
+				MaxCommittedMembers:   p.MaxCommittedMembers,
+				JoinRadiusCM:          p.JoinRadiusCm,
+				SurroundSpacingDeg:    p.SurroundSpacingDeg,
+				CommitTokenCooldownMS: p.CommitTokenCooldownMs,
 			}
 		}
 	}
@@ -1503,6 +1533,13 @@ func DevFixtureRuntimeContracts() RuntimeContracts {
 				SwitchThresholdRatio:      1.25,
 				SwitchCooldownMS:          1500,
 				LeashDistanceCM:           3500,
+			},
+			Pack: PackRuntimeProfile{
+				MaxMembers:            6,
+				MaxCommittedMembers:   1,
+				JoinRadiusCM:          1600,
+				SurroundSpacingDeg:    60,
+				CommitTokenCooldownMS: 1000,
 			},
 		},
 		CombatModes: fixtureCombatModeSlots(),

@@ -55,6 +55,7 @@ type Runtime struct {
 	nextID    uint64
 	contracts RuntimeContracts
 	options   RuntimeOptions
+	packs     map[string]*packRuntime
 	aiSystem  *creatureai.RegionBrainSystem
 	impact    *combatpipeline.ImpactResolutionPipeline
 	impacts   *damagegroup.Runtime[skillImpactSchedule]
@@ -113,6 +114,7 @@ type entityState struct {
 	orientationAttackYawKnown   bool
 	threat                      *threatTable
 	creatureLeashed             bool
+	packID                      string
 	actionHandoffUntil          time.Time
 	actionHandoffAction         string
 	combatMode                  *gamev1.CombatModeState
@@ -792,6 +794,8 @@ func (r *Runtime) updateCreaturePoliciesLocked() {
 		return
 	}
 	now := time.Now()
+	// Group nearby creatures into packs (membership only for now; nothing reads it yet).
+	r.formCreaturePacksLocked()
 	for _, creature := range r.entities {
 		if creature.entityType != "creature" || creature.templateID != "steppe_wolf" {
 			continue
