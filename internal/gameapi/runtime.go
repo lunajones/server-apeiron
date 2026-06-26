@@ -64,6 +64,7 @@ type Runtime struct {
 type RuntimeOptions struct {
 	MovementValidation bool
 	DisableCreatures   bool
+	CreaturePackSize   int
 }
 
 type sessionState struct {
@@ -275,7 +276,7 @@ func (r *Runtime) AttachPlayer(ctx context.Context, req *gamev1.AttachPlayerRequ
 	r.clearExpiredOwnedRootMotionForAttachLocked(player, time.Now())
 	resetPlayerCommandReplayState(player)
 	if r.creaturesEnabled() {
-		r.ensureWolfLocked(player)
+		r.ensureWolfPackLocked(player, r.options.CreaturePackSize)
 	}
 
 	return &gamev1.AttachPlayerResponse{
@@ -740,6 +741,38 @@ func (r *Runtime) ensureWolfLocked(player *entityState) *entityState {
 			return entity
 		}
 	}
+	return r.spawnSteppeWolfLocked(player, vector{x: player.position.x + 520, y: player.position.y + 120, z: player.position.z})
+}
+
+func (r *Runtime) countSteppeWolvesLocked() int {
+	n := 0
+	for _, e := range r.entities {
+		if e != nil && e.entityType == "creature" && e.templateID == "steppe_wolf" {
+			n++
+		}
+	}
+	return n
+}
+
+// ensureWolfPackLocked ensures `count` steppe wolves exist, clustered near the base spawn so they
+// form one pack. count 1 preserves the single-wolf behavior; higher (CREATURE_PACK_SIZE) lets pack
+// coordination be seen in PIE.
+func (r *Runtime) ensureWolfPackLocked(player *entityState, count int) {
+	if count < 1 {
+		count = 1
+	}
+	r.ensureWolfLocked(player)
+	for r.countSteppeWolvesLocked() < count {
+		i := r.countSteppeWolvesLocked()
+		r.spawnSteppeWolfLocked(player, vector{
+			x: player.position.x + 520 + float64(i)*260,
+			y: player.position.y + 120 + float64(i%2)*180,
+			z: player.position.z,
+		})
+	}
+}
+
+func (r *Runtime) spawnSteppeWolfLocked(player *entityState, position vector) *entityState {
 	wolf := &entityState{
 		id:                    r.nextRuntimeIDLocked(),
 		entityType:            "creature",
@@ -747,7 +780,7 @@ func (r *Runtime) ensureWolfLocked(player *entityState) *entityState {
 		templateID:            "steppe_wolf",
 		archetype:             "wolf",
 		visualID:              "steppe_wolf",
-		position:              vector{x: player.position.x + 520, y: player.position.y + 120, z: player.position.z},
+		position:              position,
 		groundRootZ:           player.position.z,
 		groundRootKnown:       true,
 		yaw:                   180,

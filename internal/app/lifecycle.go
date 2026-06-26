@@ -54,6 +54,7 @@ func Run(ctx context.Context, cfg *config.Config) error {
 	runtimeOptions := gameapi.RuntimeOptions{
 		MovementValidation: cfg.Validation.MovementValidation,
 		DisableCreatures:   !cfg.AI.CreatureRuntimeEnabled,
+		CreaturePackSize:   cfg.AI.CreaturePackSize,
 	}
 	log.Info().
 		Bool("movement_validation", runtimeOptions.MovementValidation).
