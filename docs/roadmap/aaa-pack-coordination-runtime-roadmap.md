@@ -106,9 +106,10 @@ staggered, member died, player repositioned).
    pack hands it to the next eligible member by `role_rotation_policy` (round-robin, threat-weighted,
    or flank-priority), respecting per-member cooldown and the repeat-skill penalty already in
    `creature_target_opportunity_policy`.
-4. **Shared focus / threat.** The pack maintains one threat view of the target(s). In MMO group
-   fights (multiple players) it decides focus-fire vs spread, so the pack does not all chase one
-   fleeing player while another revives behind them.
+4. **Shared focus.** The pack reads one aggregated threat view — owned by the Threat / Aggro
+   roadmap (`aaa-threat-aggro-runtime-roadmap.md`), not computed here — and applies its
+   `focus_policy` to distribute members across targets (focus-fire vs spread). The pack owns
+   *distribution*; the threat model owns *the per-target values*.
 5. **Morale / regroup.** Pack-level morale falls with member deaths / heavy losses and triggers a
    coordinated retreat+regroup instead of solo suicide charges; rises with successful hits.
 
@@ -226,12 +227,95 @@ Server stays authoritative; Unreal presents and debugs the pack:
   draw the assigned ring slot + commit-token holder, so the coordination is diagnosable in PIE
   even with sphere placeholders.
 
+## Exact Brain Integration Mechanism
+
+The pack must not become a second decision-maker that fights the existing brain. The precise
+contract is **pre-filter constraints in, score as usual, post-gate the commit**:
+
+1. **Pack tick runs first** (before any member brain that frame) and writes each member's
+   assignment onto its AI memory: `role`, `ringSlotDeg`, `focusTargetID`, `mayCommit` (token held).
+2. **The brain scores skills exactly as today** (`creature_skill_behavior_binding` weights,
+   `creature_target_opportunity_policy` ranges/angles, repeat-skill penalty). The pack does not
+   re-score.
+3. **Pre-filter (constraint, not veto-after):** before scoring, the brain drops from its candidate
+   set any committing skill (lunge/maul) when `mayCommit == false`. The wolf then naturally scores
+   its non-committing options (orbit, harass-bite, reposition) — it does not "want to lunge and get
+   blocked", it simply isn't offered the lunge this turn. This avoids a stutter where the brain
+   keeps selecting then failing a skill.
+4. **Movement intent is biased, not overridden:** the assigned `ringSlotDeg` becomes the orbit
+   target angle fed to `creature_orbit_policy`; the existing side-switch cooldown / prefer-long-side
+   logic still runs, but its *desired angle* is the pack slot, not a free per-wolf choice. This is
+   how slotting reconciles with the current orbit code: same mover, pack-chosen destination angle.
+5. **Commit consumes the token at `pre_commit` entry, frees it through the transition.** The token
+   is held from the moment the action enters `pre_commit` until `completeCreatureActionTransitionLocked`
+   (so landing inertia finishes before the next member commits), matching the action-transition
+   roadmap's coupling points.
+
+Net: one decision-maker (the brain), constrained by pack intent it reads from memory. The pack is
+an input, never a parallel controller.
+
+## Pack-of-One Identity, Edge Cases, and Failure Modes
+
+**Pack of one = identity (no regression).** A pack with a single member must behave *exactly* like
+today's solo wolf: `max_committed_members >= 1` means the lone wolf always holds the token, its
+ring slot is just "face the target", and morale/focus are no-ops. Forming a pack must never add
+overhead or change behavior for a single creature. This is a hard test, not a hope.
+
+**Token-holder is removed mid-commit** (staggered, killed, interrupted, parried during windup):
+the token frees immediately on action interruption/clear (hook the same lifecycle that clears
+`actionOrientationLatch`), so the pack is not stuck holding a dead token. Rotation then grants it
+to the next eligible member next tick.
+
+**Commit whiff / target dodged:** the token still frees through the normal action completion +
+transition; rotation hands the next turn to a positioned member (ideally the pre-staged flanker)
+rather than the same wolf immediately re-committing — the repeat-skill penalty already discourages
+that.
+
+**Pack merge / split:** two packs within `join_radius_cm` on overlapping targets may merge (cap at
+`max_members`; overflow spawns/keeps a second pack). A player splitting the group beyond range
+causes a split: members out of range leave the pack and re-form or go solo. Membership churn must
+be cheap (it runs every formation tick).
+
+**Terrain / blocked ring:** surround slotting assumes reachable angles. If a slot is unreachable
+(wall, cliff, chokepoint, no path), the member falls back to the nearest reachable slot; the pack
+must not freeze a wolf trying to stand inside geometry. (Pathing/navmesh validity is consumed here,
+not designed here.)
+
+**No valid target / all targets dead or leashed:** the pack dissolves and members return to their
+solo idle/return-home behavior (threat/leash owned by the Threat roadmap).
+
+**Degenerate over-commit guard:** if a bug ever lets committed members exceed
+`max_committed_members`, the surplus must be forced out of commit at the next safe phase rather
+than allowed "to look aggressive" — the commit budget is a hard invariant, not a target.
+
+## Tuning Philosophy and Starting Values
+
+The feel goal is **relentless but always readable**: the player should never face more than the
+budget of simultaneous commits, but should never get a free breather either — as one commit ends,
+the next is already telegraphing.
+
+Suggested starting values for the steppe wolf pack (tune in PIE):
+
+- `max_committed_members`: 1 at 2-3 wolves, 2 at 4+ (`pressure_curve` step).
+- `commit_token_cooldown_ms`: ~800-1200 — the beat between turns. Lower = more frantic; too low
+  and it reads as a swarm.
+- `surround_spacing_deg`: ~60 (so up to ~6 even slots); flankers bias toward the target's back arc.
+- `role_rotation_policy`: `threat_weighted_round_robin` — turns rotate, but a wolf the player just
+  punished waits longer.
+- Aim for the **next committer to be in flank position before the current commit resolves**, so
+  threat feels continuous. This is the cadence to tune against, not raw aggression numbers.
+
+Anti-goals: do not tune difficulty by shrinking the cooldown to a swarm, by raising
+`max_committed_members` past readability, or by inflating damage. Difficulty comes from coordinated
+angles and relentless-but-legible turns.
+
 ## Implementation Slices
 
 ### Slice 1 - Pack formation + membership
 
 Form/dissolve packs from spawn grouping + proximity + shared aggro. No behavior change yet; just
-the pack exists and lists members. Done when two aggroed wolves report the same `pack_id`.
+the pack exists and lists members. Done when two aggroed wolves report the same `pack_id`, and a
+single aggroed wolf forms a pack-of-one that is behaviorally identical to today.
 
 ### Slice 2 - Surround slotting
 
@@ -248,10 +332,12 @@ Gate skill commit (`pre_commit` entry) on holding a token; cap concurrent commit
 Rotate the token by `role_rotation_policy`; assign engager/flanker/harasser/recoverer roles. Done
 when wolves take turns committing and a flanker is pre-positioning for the next turn.
 
-### Slice 5 - Shared threat + morale/regroup
+### Slice 5 - Focus distribution + morale/regroup
 
-Shared threat (incl. multi-player MMO focus) and coordinated retreat/regroup on loss. Done when a
-losing pack regroups instead of feeding solo charges, and multi-player aggro is sane.
+Consume the aggregated threat view (Threat / Aggro roadmap) to distribute members across targets by
+`focus_policy`, and add coordinated retreat/regroup on loss. Requires Threat / Aggro Slice 5
+(group focus hook). Done when a losing pack regroups instead of feeding solo charges, and
+multi-player focus is coherent.
 
 ### Slice 6 - Presentation + PIE tuning
 
@@ -301,6 +387,9 @@ This roadmap is complete when:
   *who* commits and *where they stand*; orientation/latch decides *how that wolf faces and strikes*.
 - **Creature Action Transition** (server-implemented, PIE pending): commit tokens free through the
   transition completion, so a wolf finishes its landing inertia before the next member's turn.
-- This roadmap sits one level above both: it is the first **group** authority in the game and the
-  natural template for future multi-creature encounters (other beast packs, humanoid squads,
-  formation enemies).
+- **Threat / Aggro** (`aaa-threat-aggro-runtime-roadmap.md`): owns per-target threat values and
+  selection; this roadmap consumes the aggregated pack view for focus distribution only. Pack
+  Slice 5 depends on Threat Slice 5.
+- This roadmap sits one level above the per-wolf systems: it is the first **group** authority in
+  the game and the natural template for future multi-creature encounters (other beast packs,
+  humanoid squads, formation enemies).
