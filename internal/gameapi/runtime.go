@@ -118,6 +118,7 @@ type entityState struct {
 	packRingSlotDeg             float64
 	packSlotKnown               bool
 	packRole                    string
+	packFocusTargetID           uint64
 	lastCommitAt                time.Time
 	actionHandoffUntil          time.Time
 	actionHandoffAction         string
@@ -800,6 +801,7 @@ func (r *Runtime) updateCreaturePoliciesLocked() {
 	now := time.Now()
 	// Group nearby creatures into packs, then slot members around their target so they surround.
 	r.formCreaturePacksLocked()
+	r.assignPackFocusLocked()
 	r.assignPackRingSlotsLocked(now)
 	r.assignPackRolesLocked()
 	for _, creature := range r.entities {
@@ -810,9 +812,9 @@ func (r *Runtime) updateCreaturePoliciesLocked() {
 		if r.updateCreatureLeashLocked(creature, now) {
 			continue
 		}
-		// Threat-driven target selection. Resolves to the single player unchanged when there is
-		// only one (no-regression); picks by threat with hysteresis when there are several.
-		target := r.resolveCreatureTargetLocked(creature, now)
+		// Combat target: pack focus distribution when assigned, else the member's own threat
+		// selection. Resolves to the single player unchanged when there is only one (no-regression).
+		target := r.resolveCreatureCombatTargetLocked(creature, now)
 		if target == nil {
 			target = player
 		}

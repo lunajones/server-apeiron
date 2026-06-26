@@ -230,3 +230,74 @@ func TestPackRolesReflectCommitState(t *testing.T) {
 		t.Fatalf("idle member role = %q, want harasser", harasser.packRole)
 	}
 }
+
+// TestPackFocusDistributesByThreat locks Pack/Threat Slice 5: the pack aggregates member threat,
+// focuses most members on the top-threat target, and (soft_focus) peels one member to the
+// secondary; a focused member's combat target honors the assignment.
+func TestPackFocusDistributesByThreat(t *testing.T) {
+	runtime := NewRuntimeWithContracts(DevFixtureRuntimeContracts())
+	p1 := runtime.ensurePlayerLocked("p1")
+	p2 := runtime.ensurePlayerLocked("p2")
+	wolves := []*entityState{
+		newFixtureWolf(801, vector{x: 300, y: 0}),
+		newFixtureWolf(802, vector{x: 320, y: 20}),
+		newFixtureWolf(803, vector{x: 310, y: -20}),
+	}
+	for _, w := range wolves {
+		runtime.entities[w.id] = w
+	}
+	runtime.formCreaturePacksLocked()
+
+	for _, w := range wolves {
+		runtime.creditThreatLocked(w, p1, 100, 0) // p1 is the clear aggregate threat
+		runtime.creditThreatLocked(w, p2, 10, 0)  // p2 a weak secondary
+	}
+	runtime.assignPackFocusLocked()
+
+	p1Count, p2Count := 0, 0
+	for _, w := range wolves {
+		switch w.packFocusTargetID {
+		case p1.id:
+			p1Count++
+		case p2.id:
+			p2Count++
+		default:
+			t.Fatalf("wolf %d focus = %d, want p1 or p2", w.id, w.packFocusTargetID)
+		}
+	}
+	if p1Count < 1 {
+		t.Fatal("no member focused the aggregate top-threat target p1")
+	}
+	if p2Count != 1 {
+		t.Fatalf("soft_focus peel count = %d, want exactly 1 member on the secondary", p2Count)
+	}
+	for _, w := range wolves {
+		if w.packFocusTargetID == p1.id {
+			if runtime.resolveCreatureCombatTargetLocked(w, time.Now()) != p1 {
+				t.Fatal("combat target did not honor pack focus")
+			}
+			return
+		}
+	}
+}
+
+// TestPackFocusSinglePlayerNoRegression locks that pack focus does not change targeting when there
+// is one player: each member's combat target is that player.
+func TestPackFocusSinglePlayerNoRegression(t *testing.T) {
+	runtime := NewRuntimeWithContracts(DevFixtureRuntimeContracts())
+	player := runtime.ensurePlayerLocked("local_player")
+	wolves := []*entityState{
+		newFixtureWolf(901, vector{x: 300, y: 0}),
+		newFixtureWolf(902, vector{x: 320, y: 20}),
+	}
+	for _, w := range wolves {
+		runtime.entities[w.id] = w
+	}
+	runtime.formCreaturePacksLocked()
+	runtime.assignPackFocusLocked()
+	for _, w := range wolves {
+		if got := runtime.resolveCreatureCombatTargetLocked(w, time.Now()); got != player {
+			t.Fatalf("single-player combat target = %v, want the only player", got)
+		}
+	}
+}

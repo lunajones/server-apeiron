@@ -3,6 +3,7 @@ package gameapi
 import (
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	creatureai "server-apeiron/internal/ai"
@@ -272,6 +273,73 @@ func (r *Runtime) packHasOtherAvailableCommitterLocked(creature *entityState, pa
 		return true
 	}
 	return false
+}
+
+// assignPackFocusLocked distributes pack members across targets (Pack Slice 5) using the pack's
+// aggregated threat view (Threat Slice 5). hard_focus puts every member on the pack's top-threat
+// target; soft_focus keeps most on top but lets one member peel to a strong secondary; spread lets
+// each member pick its own. A pack of one (or a single target) gets no override — the member's own
+// threat selection stands, so the single-player path is unchanged.
+func (r *Runtime) assignPackFocusLocked() {
+	policy := strings.ToLower(strings.TrimSpace(r.creaturePackProfile(nil).FocusPolicy))
+	for _, pack := range r.packs {
+		members := r.packMembersLocked(pack)
+		if len(members) <= 1 {
+			for _, m := range members {
+				m.packFocusTargetID = 0
+			}
+			continue
+		}
+		agg := map[uint64]float64{}
+		for _, m := range members {
+			if m.threat == nil {
+				continue
+			}
+			for id, v := range m.threat.Entries {
+				agg[id] += v
+			}
+		}
+		top, second := topTwoThreatTargets(agg)
+		for i, m := range members {
+			switch policy {
+			case "spread":
+				m.packFocusTargetID = 0 // each member keeps its own threat selection
+			default: // soft_focus / hard_focus / unset
+				focus := top
+				if policy != "hard_focus" && second != 0 && i == len(members)-1 {
+					focus = second // one member peels to the secondary target
+				}
+				m.packFocusTargetID = focus
+			}
+		}
+	}
+}
+
+func topTwoThreatTargets(agg map[uint64]float64) (uint64, uint64) {
+	var top, second uint64
+	var topV, secondV float64
+	for id, v := range agg {
+		switch {
+		case v > topV:
+			second, secondV = top, topV
+			top, topV = id, v
+		case v > secondV:
+			second, secondV = id, v
+		}
+	}
+	return top, second
+}
+
+// resolveCreatureCombatTargetLocked is the creature's effective combat target: the pack focus when
+// one is assigned and valid, otherwise its own threat-based selection. This is the single seam
+// where pack focus overrides per-member target selection.
+func (r *Runtime) resolveCreatureCombatTargetLocked(creature *entityState, now time.Time) *entityState {
+	if creature != nil && creature.packFocusTargetID != 0 {
+		if t := r.playerByIDLocked(creature.packFocusTargetID); t != nil && t.health > 0 {
+			return t
+		}
+	}
+	return r.resolveCreatureTargetLocked(creature, now)
 }
 
 // assignPackRolesLocked labels each member by its current commit state (Slice 4): the committing

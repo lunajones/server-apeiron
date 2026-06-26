@@ -216,11 +216,12 @@ type WolfRuntimePolicy struct {
 // docs/roadmap/aaa-pack-coordination-runtime-roadmap.md. Slice 1 uses MaxMembers + JoinRadiusCM
 // (membership); slotting/commit-budget/rotation fields land in later slices.
 type PackRuntimeProfile struct {
-	MaxMembers          int32
-	MaxCommittedMembers int32
-	JoinRadiusCM        float64
-	SurroundSpacingDeg  float64
+	MaxMembers            int32
+	MaxCommittedMembers   int32
+	JoinRadiusCM          float64
+	SurroundSpacingDeg    float64
 	CommitTokenCooldownMS int32
+	FocusPolicy           string
 }
 
 // ThreatRuntimeProfile is the creature's data-driven threat/aggro tuning, loaded from the
@@ -317,6 +318,7 @@ type creaturePackPolicyJSON struct {
 	JoinRadiusCm          float64 `json:"joinRadiusCm"`
 	SurroundSpacingDeg    float64 `json:"surroundSpacingDeg"`
 	CommitTokenCooldownMs int32   `json:"commitTokenCooldownMs"`
+	FocusPolicy           string  `json:"focusPolicy"`
 }
 
 type creatureThreatPolicyJSON struct {
@@ -698,6 +700,7 @@ func applyWolfBehaviorPolicyJSON(policy *WolfRuntimePolicy, behavior *dbv1.Creat
 				JoinRadiusCM:          p.JoinRadiusCm,
 				SurroundSpacingDeg:    p.SurroundSpacingDeg,
 				CommitTokenCooldownMS: p.CommitTokenCooldownMs,
+				FocusPolicy:           p.FocusPolicy,
 			}
 		}
 	}
@@ -1540,6 +1543,7 @@ func DevFixtureRuntimeContracts() RuntimeContracts {
 				JoinRadiusCM:          1600,
 				SurroundSpacingDeg:    60,
 				CommitTokenCooldownMS: 1000,
+				FocusPolicy:           "soft_focus",
 			},
 		},
 		CombatModes: fixtureCombatModeSlots(),
