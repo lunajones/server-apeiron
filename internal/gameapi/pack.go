@@ -3,6 +3,9 @@ package gameapi
 import (
 	"fmt"
 	"sort"
+	"time"
+
+	creatureai "server-apeiron/internal/ai"
 )
 
 // packRuntime is the group-level coordinator that sits above the per-creature brains. It owns
@@ -77,4 +80,98 @@ func (r *Runtime) formCreaturePacksLocked() {
 		}
 		r.packs[packID] = &packRuntime{PackID: packID, ProfileID: r.contracts.WolfPolicy.ContractID, MemberIDs: members}
 	}
+}
+
+func (r *Runtime) packMembersLocked(pack *packRuntime) []*entityState {
+	members := make([]*entityState, 0, len(pack.MemberIDs))
+	for _, id := range pack.MemberIDs {
+		if e := r.entities[id]; e != nil && e.health > 0 {
+			members = append(members, e)
+		}
+	}
+	sort.Slice(members, func(i, j int) bool { return members[i].id < members[j].id })
+	return members
+}
+
+// assignPackRingSlotsLocked distributes pack members around their target's ring at distinct
+// bearings so they surround instead of clump (Pack Slice 2). Slots fan out, centered on the
+// bearing from the target to the pack's current centroid, spaced by surround_spacing_deg (capped
+// to 360/n so they never overlap). A pack of one is NOT slotted (packSlotKnown stays false), which
+// preserves the single-creature identity guarantee. The assigned bearing is later used to steer
+// tactical orbit movement; it never moves the creature directly.
+func (r *Runtime) assignPackRingSlotsLocked(now time.Time) {
+	profile := r.creaturePackProfile(nil)
+	for _, pack := range r.packs {
+		members := r.packMembersLocked(pack)
+		n := len(members)
+		if n <= 1 {
+			for _, m := range members {
+				m.packSlotKnown = false
+			}
+			continue
+		}
+		target := r.resolveCreatureTargetLocked(members[0], now)
+		if target == nil {
+			for _, m := range members {
+				m.packSlotKnown = false
+			}
+			continue
+		}
+		var cx, cy float64
+		for _, m := range members {
+			cx += m.position.x
+			cy += m.position.y
+		}
+		cx /= float64(n)
+		cy /= float64(n)
+		base := vectorYaw(vector{x: cx - target.position.x, y: cy - target.position.y})
+		step := profile.SurroundSpacingDeg
+		if step <= 0 || float64(n)*step > 360 {
+			step = 360.0 / float64(n)
+		}
+		for i, m := range members {
+			offset := (float64(i) - float64(n-1)/2.0) * step
+			m.packRingSlotDeg = normalizeYaw(base + offset)
+			m.packSlotKnown = true
+		}
+	}
+}
+
+// packSlotSteerDirection returns a unit direction that moves a slotted member toward its assigned
+// bearing on the target's ring, keeping its current radius (it slides around the ring to its slot).
+func packSlotSteerDirection(creature *entityState, target *entityState) vector {
+	if creature == nil || target == nil {
+		return vector{}
+	}
+	radius := distance(vector{x: creature.position.x, y: creature.position.y}, vector{x: target.position.x, y: target.position.y})
+	if radius <= 0 {
+		return vector{}
+	}
+	slotPoint := add(target.position, scale(yawVector(creature.packRingSlotDeg), radius))
+	return normalize(vector{x: slotPoint.x - creature.position.x, y: slotPoint.y - creature.position.y})
+}
+
+// applyPackSlotSteeringLocked biases a member's tactical orbit movement toward its pack ring slot,
+// so the pack surrounds the target. It only touches circling/orbit tactics (where slotting matters)
+// and leaves approach/retreat/commit to the brain. Returns the decision unchanged when the member
+// is not slotted (incl. packs of one) or is not orbiting.
+func (r *Runtime) applyPackSlotSteeringLocked(creature *entityState, target *entityState, decision creatureai.Decision) creatureai.Decision {
+	if creature == nil || target == nil || !creature.packSlotKnown {
+		return decision
+	}
+	if !creatureDecisionUsesSideOnBody(decision) {
+		return decision
+	}
+	steer := packSlotSteerDirection(creature, target)
+	if steer == (vector{}) {
+		return decision
+	}
+	brainDir := fromDomainVector(flattenDomainDirection(decision.Direction))
+	const slotWeight = 0.6
+	blended := normalize(add(scale(brainDir, 1-slotWeight), scale(steer, slotWeight)))
+	if blended == (vector{}) {
+		return decision
+	}
+	decision.Direction = toDomainVector(blended)
+	return decision
 }

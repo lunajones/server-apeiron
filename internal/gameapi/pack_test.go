@@ -1,6 +1,10 @@
 package gameapi
 
-import "testing"
+import (
+	"math"
+	"testing"
+	"time"
+)
 
 func newFixtureWolf(id uint64, pos vector) *entityState {
 	return &entityState{
@@ -66,5 +70,59 @@ func TestPackOfOneIsIdentity(t *testing.T) {
 	pack := runtime.packs[w.packID]
 	if pack == nil || len(pack.MemberIDs) != 1 || pack.MemberIDs[0] != w.id {
 		t.Fatalf("pack-of-one = %#v, want a single self-membership", pack)
+	}
+
+	// Pack of one is not slotted -> tactical movement is untouched (identity).
+	runtime.assignPackRingSlotsLocked(time.Now())
+	if w.packSlotKnown {
+		t.Fatal("pack-of-one wolf was slotted; should stay unslotted for identity")
+	}
+}
+
+// TestPackSlottingSpreadsMembersAroundTarget locks Pack Slice 2: a clustered pack is assigned
+// distinct ring bearings so members surround the target instead of stacking on one arc.
+func TestPackSlottingSpreadsMembersAroundTarget(t *testing.T) {
+	runtime := NewRuntimeWithContracts(DevFixtureRuntimeContracts())
+	player := runtime.ensurePlayerLocked("local_player")
+	player.position = vector{x: 0, y: 0, z: 0}
+
+	wolves := []*entityState{
+		newFixtureWolf(301, vector{x: 500, y: 0}),
+		newFixtureWolf(302, vector{x: 520, y: 30}),
+		newFixtureWolf(303, vector{x: 480, y: -20}),
+	}
+	for _, w := range wolves {
+		runtime.entities[w.id] = w
+	}
+
+	runtime.formCreaturePacksLocked()
+	runtime.assignPackRingSlotsLocked(time.Now())
+
+	seen := map[int]bool{}
+	for _, w := range wolves {
+		if !w.packSlotKnown {
+			t.Fatalf("wolf %d not slotted", w.id)
+		}
+		key := int(math.Round(w.packRingSlotDeg))
+		if seen[key] {
+			t.Fatalf("duplicate slot bearing ~%d deg (members clumped on one slot)", key)
+		}
+		seen[key] = true
+	}
+}
+
+// TestPackSlotSteerPointsAtSlot locks the steering math: a slotted member is steered toward the
+// point on the target's ring at its assigned bearing.
+func TestPackSlotSteerPointsAtSlot(t *testing.T) {
+	wolf := newFixtureWolf(1, vector{x: 500, y: 0})
+	wolf.packRingSlotDeg = 90
+	wolf.packSlotKnown = true
+	target := &entityState{id: 2, entityType: "player", position: vector{x: 0, y: 0}}
+
+	steer := packSlotSteerDirection(wolf, target)
+	slotPoint := add(target.position, scale(yawVector(wolf.packRingSlotDeg), 500))
+	want := normalize(vector{x: slotPoint.x - wolf.position.x, y: slotPoint.y - wolf.position.y})
+	if math.Abs(steer.x-want.x) > 0.01 || math.Abs(steer.y-want.y) > 0.01 {
+		t.Fatalf("steer %v does not point toward slot point dir %v", steer, want)
 	}
 }

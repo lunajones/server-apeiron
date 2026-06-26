@@ -115,6 +115,8 @@ type entityState struct {
 	threat                      *threatTable
 	creatureLeashed             bool
 	packID                      string
+	packRingSlotDeg             float64
+	packSlotKnown               bool
 	actionHandoffUntil          time.Time
 	actionHandoffAction         string
 	combatMode                  *gamev1.CombatModeState
@@ -794,8 +796,9 @@ func (r *Runtime) updateCreaturePoliciesLocked() {
 		return
 	}
 	now := time.Now()
-	// Group nearby creatures into packs (membership only for now; nothing reads it yet).
+	// Group nearby creatures into packs, then slot members around their target so they surround.
 	r.formCreaturePacksLocked()
+	r.assignPackRingSlotsLocked(now)
 	for _, creature := range r.entities {
 		if creature.entityType != "creature" || creature.templateID != "steppe_wolf" {
 			continue
@@ -859,6 +862,8 @@ func (r *Runtime) updateWolfPolicyLocked(wolf *entityState, player *entityState)
 	actionUpdate := r.applyCreatureActionRuntimeLocked(wolf, player, decision, selectedRuntime, start, nowTime)
 	resolvedMotion := creatureDecisionMotion{Start: start}
 	if !actionUpdate.RootMotionApplied {
+		// Bias tactical orbit toward this member's pack ring slot so the pack surrounds the target.
+		decision = r.applyPackSlotSteeringLocked(wolf, player, decision)
 		resolvedMotion = resolveGroundedCreatureDecisionMotion(wolf, player, decision)
 		applyCreatureDecisionMotion(wolf, player, decision, resolvedMotion)
 	} else {
