@@ -32,16 +32,23 @@ Doc: [aaa-damage-types-resistances-weapons-roadmap.md](aaa-damage-types-resistan
 
 ---
 
-## 2. Character Progression — XP, Level, Attributes (+ Weapon Mastery, in design)
+## 2. Character Progression — Combat-Mode Mastery + Character Level
 Doc: [aaa-character-progression-roadmap.md](aaa-character-progression-roadmap.md)
+**On Codex's worklist starting Monday 2026-06-29.**
 
-**Built:** nothing yet — **design only.** DB columns exist (`player.level/experience/attribute_points/
-strength/dexterity/intelligence`) but the **server never loads them**; creatures have **no death/kill/XP
-event**.
+**Built:** nothing yet — but **design is LOCKED and AAA-complete** (structure + v1 numbers; node content
+is the fill-in work). DB columns `player.level/experience/attribute_points/strength/dexterity/intelligence`
+exist but the **server never loads them**; creatures have **no death/kill/XP event** yet.
 
-**Status:** design being expanded (no classes → weapon mastery + free attributes + choice-based
-attribute passives + crossover passives). **Open design forks pending human decision** before build.
-This is the **next foundation Claude builds**; Codex later expands curves/passive pools/tuning.
+**Design (locked):** classless, two spines. Spine A = one level tree per combat mode per weapon (mode
+owns the tree; level 1 = free basic attack; +1 pt/level; node types skill/passive/modifier/crossover;
+cap 50 pts). Spine B = character XP → level (v1 cap 10, game 50) → +3 attr/level + universal milestone
+picks (1 of 3). Two XP pools: level XP = damage-on-kill only; weapon XP = damage/heal/support for the
+mode, capped per participant at the creature's weapon-XP value. Respec free <10, then copper→silver→gold.
+
+**Codex expands:** author node pools per combat mode (`combat_mode_tree_node` + `passive_definition` +
+`skill_modifier`), the universal milestone sets, tune the levers, wire crossover nodes that wake the
+dormant chemical/biological resistances. Full DB spec + balance levers + telemetry targets in the doc.
 
 ---
 
