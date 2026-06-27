@@ -59,35 +59,57 @@ Replace `physical_defense` + `magic_defense` with three resistances on every act
 | **Chemical** | fire, corrosive | treated cloth, alchemist coats, special leather | heavy metal armor |
 | **Biological** | poison, bleed, trauma | (per build/consumable) | — |
 
-### Resistance math: fraction (recommended) vs flat "souls-style"
+### Resistance math: RATING + diminishing-returns curve (the MMO gear-chase model)
 
-Two ways to mitigate. Pick one; the doc assumes the fraction model.
+Each resistance is a **rating** (a number that grows with gear/stats), converted to a % reduction
+through a diminishing-returns curve whose constant `K` scales with the attacker's tier/level:
 
-- **Fraction / absorption % (recommended):** resistance is `0..1`; `final = damage × (1 - resist)`.
-  A 0.3 physical resist always takes 70% of physical damage. Predictable, scales cleanly across a
-  wide damage range, trivial to balance with three knobs — which is the goal.
-- **Flat "souls-style":** the defender has a flat defense number subtracted (and/or a defense->
-  absorption curve like Dark Souls). `final = damage - defense` makes armor strong vs many small
-  hits but it either negates weak hits to chip damage or does nothing vs big hits, and needs a
-  tuned curve per actor. More authentic to Souls, but harder to balance in an MMO with a huge
-  damage spread. **Not recommended for the first pass.**
+```text
+effRating  = max(0, defenderResistanceRating - skill.armor_penetration_rating)
+K          = mitigationK(attackerTier)        // grows per content tier; constant for now
+reduction  = effRating / (effRating + K)       // 0..1, asymptotes below 1 (never immune)
+reduction  = min(reduction, resistance_cap)    // safety cap, e.g. 0.85
+mitigated  = baseDamage * (1 - reduction)
+FinalDamage = mitigated
+```
+
+Why this model (chosen for "do it right once", drives gear chase):
+
+- **A climbing number to chase.** Rating grows with every gear piece; seeing it rise feels good.
+- **The gear treadmill, healthily.** Higher-tier enemies raise `K`, so your old rating yields less %
+  against new content — a real reason to chase the new set, without flat power inflation.
+- **Specialization sells sets.** Stacking one resistance rating vs a damage-type-heavy boss spikes %
+  against it → "anti-chemical set", "anti-bleed set" become build goals.
+- **No trivial immunity.** The curve asymptotes below 100%; nothing is immune by stat alone, so
+  there is always more to chase. (`resistance_cap` is just a safety net.)
+- **Still only three knobs.** Three resistance ratings + one `K` curve scale the whole game; the
+  "easy to balance with 3 resistances" goal holds.
+
+Rejected alternatives (documented so we do not relitigate):
+- **Flat `damage - defense`:** negates weak hits to chip or does nothing vs big hits; does not scale
+  across an MMO damage range; weak gear-chase.
+- **Linear flat %:** caps out (no reason to chase past the cap) or allows stacking to immunity.
 
 Other rules:
-- `resistance_cap` (e.g. 0.85) keeps nothing fully immune by stat alone.
-- `skill.armor_penetration` (0..1) subtracts from the defender's effective resistance for that hit.
-- Only **three** resistances exist, by design, for balance simplicity. No "magic", no disease.
+- `armor_penetration` is a **rating** subtracted from the defender's effective rating (same units),
+  so penetration scales with the curve too.
+- `K` starts as a tunable constant; it becomes a function of attacker level/tier when the
+  progression doc lands (this is the seam for that).
+- Only **three** resistances exist, by design. No "magic", no disease.
 
 ## Damage Resolution Formula
 
-The single seam is `internal/combat/types.go` after `baseDamage` is computed. Insert resistance
-mitigation before `FinalDamage`:
+The single seam is `internal/combat/types.go` after `baseDamage` is computed. Insert the rating
+curve from "Resistance math" above before `FinalDamage`:
 
 ```text
-family        = familyOf(skill.damage_type)              // physical | chemical | biological
-resist        = targetResistance(targetCore, family)     // 0..1
-effectiveR    = clamp(resist - skill.armor_penetration, 0, resistance_cap)
-mitigated     = baseDamage * (1 - effectiveR)
-FinalDamage   = mitigated
+family       = familyOf(skill.damage_type)               // physical | chemical | biological
+rating       = targetResistanceRating(targetCore, family)
+effRating    = max(0, rating - skill.armor_penetration)
+reduction    = effRating / (effRating + mitigationK(attackerTier))
+reduction    = min(reduction, resistance_cap)
+mitigated    = baseDamage * (1 - reduction)
+FinalDamage  = mitigated
 ```
 
 Then (optionally) the secondary `elemental_type` is resolved as its own mitigated instance and
@@ -100,17 +122,26 @@ scaling or DoT ticks into this slice.
 
 ### Resistances on `combat_core_profile`
 
+Resistances are **ratings** (grow with gear/stats; 0 = none, tens/hundreds at gear tiers), plus the
+mitigation curve constant and safety cap:
+
 ```sql
 ALTER TABLE apeiron.combat_core_profile
-    ADD COLUMN physical_resistance   FLOAT NOT NULL DEFAULT 0.0,
-    ADD COLUMN chemical_resistance   FLOAT NOT NULL DEFAULT 0.0,
-    ADD COLUMN biological_resistance FLOAT NOT NULL DEFAULT 0.0,
-    ADD COLUMN resistance_cap        FLOAT NOT NULL DEFAULT 0.85;
+    ADD COLUMN physical_resistance_rating   FLOAT NOT NULL DEFAULT 0.0,
+    ADD COLUMN chemical_resistance_rating   FLOAT NOT NULL DEFAULT 0.0,
+    ADD COLUMN biological_resistance_rating FLOAT NOT NULL DEFAULT 0.0,
+    ADD COLUMN resistance_cap               FLOAT NOT NULL DEFAULT 0.85;
 ```
 
-`physical_defense`/`magic_defense` are deprecated (keep the columns until callers are migrated,
-then drop). Seed real values for the player profile and every creature profile (steppe wolf, etc.)
-so resistance is data-driven for ALL actors — not just the player.
+The curve constant `K` is the gear-treadmill knob. Start it as one tunable global value (a combat
+config row / env, e.g. `MITIGATION_K = 100`); the implementation reads it as
+`mitigationK(attackerTier)` returning that constant for now, so the seam exists for per-tier scaling
+when the progression doc lands. Do not bury `K` per-actor.
+
+`physical_defense`/`magic_defense` are deprecated (keep the columns until callers are migrated, then
+drop). Seed resistance ratings for the player profile and every creature profile (steppe wolf, etc.)
+so mitigation is data-driven for ALL actors — not just the player. Example feel: at `K=100`, a 100
+physical rating = 50% reduction; 300 rating = 75%; the curve never reaches 100%.
 
 ### Damage type taxonomy on `skill`
 
@@ -153,10 +184,12 @@ not a mage.
 ## Server Runtime Work
 
 - Add a `damageFamilyOf(damageType)` map (physical/chemical/biological) in the combat package.
-- In `types.go` damage resolution, after `baseDamage`, apply the resistance formula above using the
-  target's `combat_core_profile` resistance for the family, minus `armor_penetration`.
-- Load the new resistance fields into the runtime combat-core contracts (mirrors how stamina/defense
-  already load), for both player and creature profiles.
+- In `types.go` damage resolution, after `baseDamage`, apply the rating curve above using the
+  target's family resistance rating, minus `armor_penetration`, over `K`.
+- Load the resistance ratings + `resistance_cap` into the runtime combat-core contracts (mirrors how
+  stamina/defense already load), for both player and creature profiles.
+- Add `mitigationK` (one tunable constant for now) read from config/seed; structure it as
+  `mitigationK(attackerTier)` so per-tier scaling drops in later.
 - Load the weapon-kit `role` into the runtime (the kit already loads via
   `GetWeaponCombatModeSlots`); damage type comes from each skill, not the kit.
 - Snapshot: optionally publish the dealt damage type and mitigated amount so the client can show
@@ -164,10 +197,11 @@ not a mage.
 
 ## Implementation Slices
 
-### Slice 1 - Resistances + resolution
-Add the 3 resistance columns + `resistance_cap`, seed player + creature profiles, derive damage
-family in code, apply mitigation in `types.go`. Done when a `blunt` hit on a high-physical-resist
-target is reduced and a `fire` hit on the same target is not (chemical resist governs it).
+### Slice 1 - Resistance ratings + curve resolution
+Add the 3 resistance-rating columns + `resistance_cap` + the `K` constant, seed player + creature
+profiles, derive damage family in code, apply the rating curve in `types.go`. Done when a `blunt`
+hit on a high-physical-rating target is reduced per the curve and a `fire` hit on the same target is
+not (its chemical rating, not physical, governs it).
 
 ### Slice 2 - Damage type taxonomy + armor penetration
 Constrain/seed `skill.damage_type` to the taxonomy, wire `armor_penetration` into the formula. Done
@@ -211,7 +245,8 @@ when the client can tell physical vs chemical vs biological damage.
 
 - Every damage instance has a type that maps to one of three families and is mitigated by the
   matching per-actor resistance, with armor penetration reducing it.
-- Physical/Chemical/Biological resistances exist on player and creature profiles, seeded and loaded.
+- Physical/Chemical/Biological resistance ratings exist on player and creature profiles, seeded and
+  loaded, mitigating via the diminishing-returns curve (rating/(rating+K), capped).
 - The six initial weapon kits exist as data with correct role/theme (damage types come from each
   kit's skills, not the kit; skills optional for the new five).
 - Flat damage is gone: a hammer (blunt) vs a sword (slashing) vs a siphon (corrosive) resolve
