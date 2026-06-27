@@ -27,6 +27,8 @@ type runtimeSkillImpact struct {
 	ControlSpeedCMS        float64
 	ControlDirectionPolicy string
 	DamageApplied          float64
+	DamageType             string
+	DamageFamily           string
 	PostureApplied         float64
 	Blocked                bool
 	Parried                bool

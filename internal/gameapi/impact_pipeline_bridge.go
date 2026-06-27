@@ -193,6 +193,8 @@ func (r *Runtime) resolveRuntimeSkillImpact(source *entityState, target *entityS
 		ControlSpeedCMS:        controlSpeed,
 		ControlDirectionPolicy: controlDirection,
 		DamageApplied:          result.FinalDamage,
+		DamageType:             result.DamageType,
+		DamageFamily:           result.DamageFamily,
 		PostureApplied:         result.PostureDamage,
 		Blocked:                result.Blocked,
 		Parried:                result.Parried,

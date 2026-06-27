@@ -23,13 +23,22 @@ func (r *Runtime) damageEventsFromImpactsLocked(impacts []runtimeSkillImpact) []
 		if impactType == "" {
 			impactType = "physical"
 		}
+		damageType := strings.TrimSpace(impact.DamageType)
+		if damageType == "" {
+			damageType = "physical"
+		}
+		damageFamily := strings.TrimSpace(impact.DamageFamily)
+		if damageFamily == "" {
+			damageFamily = "physical"
+		}
 		responseProfile := strings.TrimSpace(impact.ImpactResponseProfile)
 		if responseProfile == "" {
 			responseProfile = impactProfileForEntity(target)
 		}
 		metadata := map[string]string{
 			"skill_id":                 impact.SkillID,
-			"damage_type":              "physical",
+			"damage_type":              damageType,
+			"damage_family":            damageFamily,
 			"impact_type":              impactType,
 			"impact_response_profile":  responseProfile,
 			"target_response_profile":  responseProfile,

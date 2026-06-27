@@ -81,6 +81,8 @@ type ControlEffectConfig = *apeironv1.SkillControlEffect
 type DamageResult struct {
 	Object                domainentity.Entity
 	FinalDamage           float64
+	DamageType            string
+	DamageFamily          string
 	PoiseDamage           float64
 	PostureDamage         float64
 	Blocked               bool
@@ -270,11 +272,14 @@ func (p *ImpactResolutionPipeline) Apply(ctx context.Context, damage DamageConte
 	// (rating/(rating+K) curve). Replaces the old flat model. Block/parry apply later, posture
 	// is a separate track. See aaa-damage-types-resistances-weapons-roadmap.md.
 	baseDamage = applyResistanceMitigation(baseDamage, damage.Skill, damage.TargetCore)
+	damageType := damage.Skill.GetDamageType()
 	result := DamageResult{
-		Object:      damage.Target,
-		FinalDamage: baseDamage,
-		HitArc:      "authoritative",
-		Reason:      "hit",
+		Object:       damage.Target,
+		FinalDamage:  baseDamage,
+		DamageType:   damageType,
+		DamageFamily: damageFamilyOf(damageType),
+		HitArc:       "authoritative",
+		Reason:       "hit",
 	}
 	if damage.Impact != nil {
 		result.PoiseDamage = damage.Impact.GetPoiseDamage()
