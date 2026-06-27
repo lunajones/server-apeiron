@@ -219,8 +219,9 @@ profiles so every actor has ratings:
 basic attacks = `slashing`, shield bash = `blunt`; wolf `bite` = `piercing`, `lunge` = `piercing`,
 `maul` = `blunt`. (Exact mapping is a quick design pass during Slice 2.)
 
-**Weapon kits** (Slice 3) — set `role` on `weaponkit_sword_shield` and INSERT the five new kits per
-the table above (`is_enabled = TRUE`, empty combat modes/skill slots for now).
+**Weapon kits** (Slice 3) — set `role` on `weaponkit_sword_shield` only. The five new kits are a
+backlog (table above), each INSERTed on demand when that weapon is developed (with its skills) — not
+bulk-seeded now, since a weapon without skills carries no damage type and the code does not need it.
 
 **`MITIGATION_K`** — config/env, default `100`.
 
@@ -250,10 +251,13 @@ not (its chemical rating, not physical, governs it).
 Constrain/seed `skill.damage_type` to the taxonomy, wire `armor_penetration` into the formula. Done
 when a high-penetration skill bypasses part of the matching resistance.
 
-### Slice 3 - Register the 6 weapon kits (data only)
-Add the `role` column + seed all six kits with id/name/role/theme (no damage-type columns on the
-kit; no skills for the new five yet). Done when all six kits load with correct role/identity and the
-existing sword+shield is unchanged.
+### Slice 3 - Weapon kit `role` column (registration on demand)
+Add the `role` column (migration 045) and set it on the existing `weaponkit_sword_shield`. **Do NOT
+bulk-register the five new weapons now** — the weapon carries no damage type (that is per-skill), so
+each new weapon is registered as its own row only when that weapon is actually being developed
+(together with its skills + their damage types). The code does not require an unused weapon to exist.
+Done when the kit loads its role and the existing sword+shield is unchanged. The five new kits are a
+documented backlog (the table above), created one at a time later.
 
 ### Slice 4 - Secondary damage instance (optional)
 Resolve `elemental_type` as a separate smaller mitigated instance (poison arrow, fire ammo). Done
