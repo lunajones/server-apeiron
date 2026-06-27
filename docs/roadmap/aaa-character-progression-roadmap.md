@@ -1,98 +1,132 @@
 # AAA Progression Roadmap — Combat-Mode Mastery + Character Level
 
-Date: 2026-06-27 · Status: design (approved structure, nodes TBD) · Owner: Claude builds, Codex fills nodes/tuning.
+Date: 2026-06-27 · Status: **design locked (structure + v1 numbers), node content TBD** ·
+Ownership: Claude builds the spine, Codex authors node pools + tuning.
 
-## The Pitch (no classes)
-
-Apeiron has **no classes**. Identity comes from **what you wield and how you fight**, on two parallel
-progression spines:
-
-- **Spine A — Combat-Mode Mastery (weapon side):** every weapon has 2+ **combat modes (stances)**;
-  **each combat mode owns its own level tree.** You earn a mode's XP by *using that mode*, level it,
-  and spend points in its tree on skills / passives / skill-modifiers.
-- **Spine B — Character Level (attribute side):** kills grant character XP → levels → **attribute
-  points** spent freely on Strength / Dexterity / Intelligence, plus **milestone passive picks**
-  (choose 1 of 3 at level 10/15/20/30…), a **universal** pool shared by everyone.
-
-Build diversity = `weapon × combat mode × mode-tree picks × stat allocation × milestone passive`.
-The attribute side stays universal (easy to manage); the weapon/mode side creates the real spread.
-
----
-
-## Spine A — Combat-Mode Mastery
-
-### One tree per combat mode, per weapon
-- The tree owner is the **combat mode**, not a node. Sword & shield keeps its two modes
-  (`vanguard`, `bulwark`) → two trees. Initially **2 modes per weapon**, can grow.
-- Each mode tree is organized by **mode level**. **Level 1 = the free basic attack** (not a node).
-  Every level after grants **+1 point**.
-- Each level exposes a **shelf** of options (mix of skills / passives / modifiers; sometimes a
-  **crossover** node). You spend the point on **one** option from a shelf you've reached. You never
-  buy the whole shelf → choice = build. Strong/late skills sit at deeper levels (must keep leveling).
-- Node types: `skill` (new ability), `passive` (always-on), `modifier` (changes an existing skill),
-  `crossover` (requires an attribute threshold too — bridges Spine B into the weapon, e.g. needs
-  high INT to deal chemical damage with this mode → wakes the dormant chemical/biological resists).
-
-### Earning XP — two pools, different rules
-XP is **credited only on the creature's death, only if you were in combat with it**, and always
-**relative to the creature's XP values**. There are two separate pools:
-
-**Character (level) XP — Spine B:**
-- Earned **only from damage** dealt to the creature (kills). **Healing and buffs grant ZERO level
-  XP.** This keeps leveling tied to fighting.
-- The creature's level-XP value is **split across damage contributors by damage share** (sums to the
-  creature's value — a group does not multiply it).
-
-**Weapon (mode) XP — Spine A:**
-- Earned **per combat mode**, only from **using that mode** in the fight, by **contribution**:
-  damage **or** healing **or** support (buff/debuff/control). So healer/support modes (needles,
-  censer) level without dealing damage.
-- **Hard cap per participant = the creature's weapon-XP value.** Overhealing/over-buffing cannot
-  farm beyond it: if a wolf grants 200 weapon XP, you can heal 100,000 and still earn at most 200.
-  Each participant's mode credit is `min(yourContribution → xp, creatureWeaponXpValue)`.
-
-Seam: the runtime already credits damage/posture at impact (`creditThreatLocked`,
-internal/gameapi/impact.go). XP crediting extends the same hook; healing/support add parallel credit
-calls when those effects resolve, accumulated per-creature and settled on death.
+## Contents
+1. Vision
+2. Glossary
+3. Spine A — Combat-Mode Mastery
+4. Spine B — Character Level + Attributes
+5. XP Crediting — two pools, exact rules
+6. Numbers & Pacing (v1)
+7. Worked Examples
+8. Edge Cases
+9. Balance Levers
+10. Telemetry & Validation
+11. Database Design
+12. Implementation Slices (with acceptance criteria)
+13. Non-Negotiable Rules
+14. Decisions Log
+15. Codex Handoff
 
 ---
 
-## Spine B — Character Level + Attributes
+## 1. Vision
 
-- **Character XP:** earned from **damage on kills only** (not healing/buff) → character level. Capped
-  by character level (v1 cap 10; full-game cap 50).
-- **Attribute points:** each level grants points spent freely on the three attributes:
+Apeiron has **no classes**. Who you are is **what you wield and how you fight**. Progression is
+**slow and deliberate**: creatures are sparse, every fight is laborious-but-satisfying, and *nothing*
+grants much XP. The player should think about how they leave the city and pick their battles — combat
+is the spine, not a treadmill. Two parallel ladders carry that fantasy:
+
+- **Spine A — Combat-Mode Mastery:** each weapon has 2+ **combat modes (stances)**; **each mode owns
+  its own deep level tree** (skills, passives, skill-modifiers). The long chase.
+- **Spine B — Character Level:** kills raise your level → **attribute points** (free build) + **milestone
+  passive picks** (universal). The shorter, capped ladder.
+
+Build identity emerges from `weapon × combat mode × mode-tree picks × stat allocation × milestone
+passive`. Spine B stays universal (cheap to balance); Spine A creates the real spread.
+
+---
+
+## 2. Glossary
+
+| Term | Meaning |
+| --- | --- |
+| **Combat mode (stance)** | A way to fight with a weapon (e.g. sword&shield → `vanguard`, `bulwark`). Owns one tree. |
+| **Mode level / mode point** | A combat mode's mastery level; each level grants 1 spendable point. Cap 50. |
+| **Node** | A buyable entry in a mode tree: `skill`, `passive`, `modifier`, or `crossover`. Costs ≥1 point. |
+| **Shelf** | The set of nodes that becomes available at a given mode level. You buy from shelves you've reached. |
+| **Milestone** | A character level (10/15/20/30…) where you pick 1 of 3 universal passives. |
+| **Contribution** | Your share of an encounter via damage, healing, or support — the basis for XP. |
+| **Level XP** | Character-ladder XP. Damage-on-kill only. |
+| **Weapon XP** | Mode-ladder XP. Damage/heal/support with that mode, capped per creature. |
+
+---
+
+## 3. Spine A — Combat-Mode Mastery
+
+**One tree per combat mode, per weapon.** The mode *owns* the tree; it is not a node inside one. Sword
+& shield keeps `vanguard` + `bulwark` → two trees. Initially **2 modes per weapon**, can grow.
+
+- Organized by **mode level**. **Level 1 = the free basic attack** (not a node). Every level after
+  grants **+1 point**.
+- Each level exposes a **shelf** of options (skills / passives / modifiers, sometimes a crossover).
+  Spend the point on **one** option from a shelf you've reached. You never buy the whole shelf, and
+  strong/late skills sit deeper → must keep leveling. **Nodes may cost >1 point** (a second balancing
+  lever beyond level-gating).
+- **Node types & gating:**
+  - `skill` — a new ability. Gated by `unlock_level`.
+  - `passive` — always-on bonus. Gated by `required_points_prior_tier` (≥N points spent in the prior level).
+  - `modifier` — changes an existing skill. Requires a `prerequisite_node_id` (the skill it modifies / a prior modifier).
+  - `crossover` — requires an **attribute threshold** too; can grant cross-family effects (e.g. high INT
+    → this mode deals chemical damage), which **wakes the dormant chemical/biological resistances**.
+
+---
+
+## 4. Spine B — Character Level + Attributes
+
+- **Character XP** (damage-on-kill only) → level. Cap: full game **50**, v1 **10**.
+- **Attribute points:** **+3 per level**, spent freely:
 
 | Attribute | Theme | Scales (additive over base profile) |
 | --- | --- | --- |
-| **Strength** | bruiser (sword, hammer, shield) | physical damage, max health, physical resistance rating |
+| **Strength** | bruiser (sword, hammer, shield) | physical damage, max health, physical resistance |
 | **Dexterity** | precise (bow, needles) | crit, stamina, armor penetration |
 | **Intelligence** | alchemist (censer, siphon) | chemical + biological damage and resistance |
 
-- **Milestone passives:** at milestone levels (`10, 15, 20, 30, …` — tunable) the player picks
-  **1 of 3** beneficial passives. The pool is **universal** (same options per milestone for everyone,
-  no class gating) — easy to author/balance; build spread comes from weapon/mode + stat allocation +
-  which of the 3 you pick.
-- Attribute scaling is an **additive bonus over the base profile** — slots into the damage doc's
-  `resistance/damage = base + gear + buffs` sum with no combat refactor.
+- **Milestone passives:** at levels **10/15/20/30** (and every +10 to 50) pick **1 of 3** beneficial
+  passives. The pool is **universal** (same options for everyone — no class gating), cheap to author and
+  balance. Spread comes from weapon/mode + stats + which of the 3 you take.
+- All attribute/passive effects are **additive over the base profile** — they slot into the damage doc's
+  `resistance/damage = base + gear + buffs` sum with **no** rewrite of combat resolution.
 
 ---
 
-## Numbers & Pacing (v1 starting values — tunable data)
+## 5. XP Crediting — two pools, exact rules
 
-**Design intent:** progression is **slow and deliberate**. Combat is laborious and creatures are
-**sparse** — the player should weigh each fight and how they leave the city, not grind mindlessly.
-Nothing in the game grants much XP. Reaching the v1 cap (level 10) should take **at least ~5 real
-days** and be **unreachable in a single 24h day**. Spawn sparsity + these numbers together enforce
-the pace.
+XP is credited **only when the creature dies**, **only if you were in combat with it**, always
+**relative to the creature's XP values**. Two separate pools:
+
+**Level XP (Spine B)**
+- From **damage only** (healing/buff grant zero level XP — leveling stays tied to fighting).
+- The creature's `experience_value` is **split across damage contributors by damage share** (a group
+  does not multiply it; sums to the creature's value).
+
+**Weapon XP (Spine A)**
+- Per **combat mode**, only from **using that mode**, by contribution: damage **or** healing **or**
+  support. Healer/support modes (needles, censer) level without dealing damage.
+- **Per-participant hard cap = the creature's `weapon_experience_value`.** Credit =
+  `min(yourContribution → xp, weapon_experience_value)`. Overhealing can't farm: heal 100,000 on a wolf
+  worth 200 → you still get at most 200. Multiple modes used → credit splits across them by what each did.
+
+**Seam:** impact already credits damage/posture (`creditThreatLocked`, internal/gameapi/impact.go).
+XP crediting extends the same hook; healing/support add parallel credit calls, accumulated per-creature
+and settled on death.
+
+---
+
+## 6. Numbers & Pacing (v1 starting values — tunable data)
+
+**Intent:** cap 10 should take **≥ ~5 real days** and be **unreachable in one 24h day**. Spawn sparsity
++ these numbers together enforce the pace.
 
 ### Caps
-- **Character level:** full game = **50**; **v1 (first map) = 10**. Config-gated per map.
-- **Combat-mode points:** **50 per mode** (1 point per mode level). A node may cost **>1 point**
-  (e.g. a strong skill costs 3) — a second balancing lever beyond level-gating.
+- **Character level:** game 50; **v1 = 10** (config-gated per map).
+- **Combat-mode points:** **50 per mode**; a node may cost >1 point.
 
-### Character level XP (v1, anchored on the wolf = 100 level XP)
-| Level | XP to next | Cumulative | Wolves this level | Cumulative wolves |
+### Character level XP — wolf = 100 level XP
+| Level | XP to next | Cumulative | Wolves/level | Cum. wolves |
 | --- | --- | --- | --- | --- |
 | 1→2 | 1,200 | 1,200 | 12 | 12 |
 | 2→3 | 1,600 | 2,800 | 16 | 28 |
@@ -104,13 +138,9 @@ the pace.
 | 8→9 | 6,100 | 26,400 | 61 | 264 |
 | 9→10 | 7,300 | 33,700 | 73 | **337** |
 
-~337 wolves to cap 10. First level is 12 wolves (each wolf a real contribution, but never "3 and
-ding"). Attribute points: **+3 per level**. Milestone passive picks at levels **10/15/20/30** (and
-every +10 thereafter to 50) — pick 1 of 3, universal.
+~337 wolves to cap 10; first level 12 wolves (a real contribution each, never "3 and ding").
 
-### Weapon-mode XP (long-tail, anchored on the wolf = 200 weapon XP)
-Curve: `modeXpToNext(M) = round(400 · M^1.3)` for mode level M = 1..49. Anchors:
-
+### Weapon-mode XP — wolf = 200 weapon XP · `modeXpToNext(M) = round(400 · M^1.3)`
 | Mode level | XP to next | ≈ wolves |
 | --- | --- | --- |
 | 1→2 | 400 | 2 |
@@ -121,146 +151,195 @@ Curve: `modeXpToNext(M) = round(400 · M^1.3)` for mode level M = 1..49. Anchors
 | 40→41 | 48,200 | 241 |
 | 49→50 | 62,900 | 314 |
 
-Weapon mastery is the **deep chase**: by the time a player hits character cap 10 (~337 wolves,
-~67k weapon XP into one mode) their main mode is only ~level 13/50. Modes 13→50 are the endgame.
+Weapon mastery is the **deep chase**: at character cap 10 (~337 wolves, ~67k weapon XP into one mode)
+your main mode is only ~level **13/50**. Modes 13→50 are the endgame.
 
 ### Respec
-- **Free below level 10.** From level 10 it **costs gold**, scaling with level.
-- Currency (Tang-era China, ~Wu Zetian): **copper → silver → gold**, `100 copper = 1 silver,
-  100 silver = 1 gold`. (The "bronze cash" of the period is the copper coin — treated as copper.)
-- Cost: `respecCost(L) = round(1.259^(L-10))` copper → clean milestones:
-  **1 copper at lv 10 · 1 silver at lv 30 · 1 gold at lv 50** (×10 every 10 levels).
+- **Free below level 10.** From level 10, costs gold scaling with level.
+- Currency: **copper → silver → gold**, `100 copper = 1 silver, 100 silver = 1 gold`.
+- `respecCost(L) = round(1.259^(L-10))` copper → **1 copper @ lv10 · 1 silver @ lv30 · 1 gold @ lv50**
+  (×10 every 10 levels).
+- **A respec refunds** all attribute points and all mode-tree points (re-spend freely) and reopens
+  milestone picks. Crossover nodes whose attribute requirement is no longer met **deactivate** until
+  re-met (not refunded automatically).
 
 ---
 
-## Database Design
+## 7. Worked Examples
 
-Legend: **NEW** = new table (CREATE). **EDIT-CREATE** = add column(s) to that table's existing
-CREATE TABLE migration (migrations are **CREATE-only — never ALTER**). All ids/names English.
+**A. Solo bruiser, first sessions.** Picks sword&shield `vanguard`. Each wolf ≈ a careful fight; ~12
+wolves → level 2 → +3 STR (more physical dmg/hp/resist) and `vanguard` mode ~level 6 (a couple early
+nodes bought). By ~337 wolves: character 10, `vanguard` ~13/50, a handful of skills + passives chosen.
 
-### Definition tables (authored data, seeded in bootstrap/)
+**B. Duo healer (needles).** Dealing no damage, heals their partner through wolf fights. On each wolf
+death they earn **0 level XP** (no damage) but up to **200 weapon XP** for the `needles` support mode
+(capped — overhealing doesn't help). They level the *weapon* steadily while contributing pure support;
+their character level lags unless they also land hits. Support is a viable mastery path.
 
-**`combat_mode_tree_node`** — NEW — a node in a combat mode's tree.
+**C. Crossover build (the unique hook).** Bow main, dumps attribute points into **INT to 40**. That
+unlocks a `crossover` node in the bow mode: *alchemical arrows* — the (physical) bow now deals
+**chemical** damage. Suddenly it bypasses heavily physical-resistant foes and **wakes the
+chemical resistance** that was dormant. A build no class system could express.
+
+---
+
+## 8. Edge Cases
+
+| Case | Resolution |
+| --- | --- |
+| **Last hit / kill-steal** | Irrelevant — credit is contribution-based, never last-hit. |
+| **Mode switch mid-fight** | Weapon XP splits across the modes by what each contributed; level XP unaffected (damage is mode-agnostic). |
+| **Disconnect / death before the kill** | XP settles on death; must be alive + in-combat with it at death to be credited (tunable engagement window). |
+| **Pure support in a group** | 0 level XP (no damage), up-to-cap weapon XP for the support mode. |
+| **Overkill / overheal** | Capped — never exceeds the creature's values. |
+| **Reaching a cap** | XP past the cap is discarded (no banking in v1). |
+| **Respec below a crossover's attribute gate** | The crossover node deactivates until the requirement is met again. |
+| **Group damage split** | Level XP divides by damage share among contributors; weapon XP is per-participant (each capped), not divided. |
+
+---
+
+## 9. Balance Levers
+
+Every knob is **tunable data**, not a Go literal:
+- Creature `experience_value` (level) and `weapon_experience_value` (weapon).
+- Character per-level XP table; mode XP coefficient/exponent (`400`, `1.3`).
+- Node `point_cost` (per node) and `unlock_level`.
+- Attribute scale constants (`k_str_dmg`, `k_str_res`, …).
+- Milestone cadence + the 3-option pools.
+- Respec growth base (`1.259`).
+- (External) spawn density — the real throttle alongside XP.
+
+---
+
+## 10. Telemetry & Validation
+
+To prove the pacing holds, log and watch:
+- **Median real-time to each level**; alert if time-to-10 drops below ~5 days or balloons past a ceiling.
+- **Wolves-per-level** distribution vs the table above.
+- **Main-mode level at character cap** (target ~13/50).
+- **Respec frequency** post-10 (is the cost meaningful but not punishing?).
+- **Support-only weapon XP/hour** (is healer leveling viable but not a farm?).
+
+---
+
+## 11. Database Design
+
+Legend: **NEW** = new table (CREATE). **EDIT-CREATE** = add column(s) to that table's existing CREATE
+migration (migrations are **CREATE-only — never ALTER**). All ids/names English.
+
+### Definition tables (authored, seeded in bootstrap/)
+
+**`combat_mode_tree_node`** — NEW
 | column | type | notes |
 | --- | --- | --- |
 | `id` | TEXT PK | e.g. `node_bulwark_l3_shieldwall` |
 | `combat_mode_id` | TEXT FK → weapon_combat_mode | owning stance |
-| `unlock_level` | INT | mode level where this node's shelf appears |
+| `unlock_level` | INT | mode level whose shelf this node sits on |
 | `node_type` | TEXT | `skill` \| `passive` \| `modifier` \| `crossover` |
-| `point_cost` | INT DEFAULT 1 | usually 1 |
-| `skill_id` | TEXT NULL FK → skill | when type is skill, or the skill a modifier targets |
-| `passive_id` | TEXT NULL FK → passive_definition | when type is passive |
-| `modifier_id` | TEXT NULL FK → skill_modifier | when type is modifier |
+| `point_cost` | INT DEFAULT 1 | may be >1 |
+| `skill_id` | TEXT NULL FK → skill | for skill nodes / the skill a modifier targets |
+| `passive_id` | TEXT NULL FK → passive_definition | for passive nodes |
+| `modifier_id` | TEXT NULL FK → skill_modifier | for modifier nodes |
 | `required_attribute` | TEXT NULL | crossover gate: `strength`\|`dexterity`\|`intelligence` |
 | `required_attribute_value` | INT NULL | crossover threshold |
-| `prerequisite_node_id` | TEXT NULL FK → combat_mode_tree_node | **modifier** nodes require a prior node (the skill they modify / a prior modifier) |
-| `required_points_prior_tier` | INT NULL | **passive** nodes require ≥ this many points spent in the previous level/tier |
+| `prerequisite_node_id` | TEXT NULL FK → combat_mode_tree_node | modifier prereq |
+| `required_points_prior_tier` | INT NULL | passive prereq (points in prior level) |
 | `name`, `description` | TEXT | |
 | `is_enabled` | BOOL DEFAULT TRUE | |
 | `metadata` | JSONB | |
 
-**`passive_definition`** — NEW — a reusable passive effect (used by weapon trees AND milestones).
-| column | type | notes |
-| `id` | TEXT PK | |
-| `name`, `description` | TEXT | |
-| `effect` | JSONB | structured effect (stat add, conditional dmg, on-dodge cleanse, …) |
-| `category` | TEXT | `offense`\|`defense`\|`utility`\|`support` |
-| `is_enabled` | BOOL | |
-| `metadata` | JSONB | |
+**`passive_definition`** — NEW — reusable passive (weapon trees AND milestones).
+`id` PK · `name`/`description` · `effect` JSONB (stat add / conditional dmg / on-dodge cleanse …) ·
+`category` (`offense`\|`defense`\|`utility`\|`support`) · `is_enabled` · `metadata`.
 
-**`skill_modifier`** — NEW — a modifier that changes a skill.
-| column | type | notes |
-| `id` | TEXT PK | |
-| `target_skill_id` | TEXT FK → skill | |
-| `name`, `description` | TEXT | |
-| `effect` | JSONB | what it changes (add bleed, +range, swap damage_type, …) |
-| `is_enabled` | BOOL | |
-| `metadata` | JSONB | |
+**`skill_modifier`** — NEW — changes a skill.
+`id` PK · `target_skill_id` FK → skill · `name`/`description` · `effect` JSONB (add bleed / +range /
+swap damage_type …) · `is_enabled` · `metadata`.
 
-**`attribute_milestone_passive`** — NEW — universal milestone choices (3 rows per milestone level).
-| column | type | notes |
-| `id` | TEXT PK | |
-| `milestone_level` | INT | 10, 15, 20, 30… |
-| `choice_index` | INT | 0..2 (the 3 options) |
-| `passive_id` | TEXT FK → passive_definition | the granted passive |
-| `is_enabled` | BOOL | |
-| `metadata` | JSONB | |
+**`attribute_milestone_passive`** — NEW — universal milestone choices (3 rows per milestone).
+`id` PK · `milestone_level` INT · `choice_index` INT (0..2) · `passive_id` FK → passive_definition ·
+`is_enabled` · `metadata`.
 
 ### Player-state tables (runtime-persisted)
 
-**`player`** — EDIT-CREATE — base columns already exist: `level`, `experience`, `attribute_points`,
-`strength`, `dexterity`, `intelligence`. **Add for respec wallet:** `copper INT NOT NULL DEFAULT 0`,
-`silver INT NOT NULL DEFAULT 0`, `gold INT NOT NULL DEFAULT 0` (added to the table's CREATE migration,
-not via ALTER).
+**`player`** — EDIT-CREATE — base columns exist (`level`, `experience`, `attribute_points`, `strength`,
+`dexterity`, `intelligence`). **Add wallet:** `copper INT DEFAULT 0`, `silver INT DEFAULT 0`,
+`gold INT DEFAULT 0` (in the CREATE migration, not ALTER).
 
-**`player_combat_mode_progress`** — NEW — per player per mode mastery.
-| column | type | notes |
-| `player_id` | TEXT FK → player | |
-| `combat_mode_id` | TEXT FK → weapon_combat_mode | |
-| `mode_level` | INT DEFAULT 1 | |
-| `mode_experience` | BIGINT DEFAULT 0 | |
-| `unspent_points` | INT DEFAULT 0 | |
-| PK | (player_id, combat_mode_id) | |
+**`player_combat_mode_progress`** — NEW — PK (`player_id`, `combat_mode_id`); `mode_level` INT DEFAULT 1,
+`mode_experience` BIGINT DEFAULT 0, `unspent_points` INT DEFAULT 0.
 
-**`player_combat_mode_node`** — NEW — nodes a player unlocked.
-| column | type | notes |
-| `player_id` | TEXT | |
-| `node_id` | TEXT FK → combat_mode_tree_node | |
-| `unlocked_at` | TIMESTAMP | |
-| PK | (player_id, node_id) | |
+**`player_combat_mode_node`** — NEW — PK (`player_id`, `node_id`); `node_id` FK → combat_mode_tree_node,
+`unlocked_at` TIMESTAMP.
 
-**`player_attribute_milestone_choice`** — NEW — milestone pick per player.
-| column | type | notes |
-| `player_id` | TEXT | |
-| `milestone_level` | INT | |
-| `chosen_passive_id` | TEXT FK → passive_definition | |
-| PK | (player_id, milestone_level) | |
+**`player_attribute_milestone_choice`** — NEW — PK (`player_id`, `milestone_level`);
+`chosen_passive_id` FK → passive_definition.
 
 ### Creature side
 
-**`creature_template`** — EDIT-CREATE — add `experience_value INT NOT NULL DEFAULT 0` (XP pool split
-across contributors on death). Tier-derived default acceptable.
+**`creature_template`** — EDIT-CREATE — add **two** XP pools:
+`experience_value INT NOT NULL DEFAULT 0` (level XP, split by damage share) and
+`weapon_experience_value INT NOT NULL DEFAULT 0` (weapon XP, per-participant cap). Wolf v1: `100` / `200`.
 
 ---
 
-## Implementation Slices
+## 12. Implementation Slices (with acceptance criteria)
 
-1. **Persistence spine.** Server loads `player` level/xp/attributes + `player_combat_mode_progress`
-   on attach; writes back on disconnect. (Today the server loads none of it.)
-2. **Creature death + contribution XP.** Detect death, split `experience_value` by contribution
-   (damage now; healing/support hooks stubbed), credit character XP + the used mode's XP.
-3. **Mode leveling + tree unlock.** Mode XP curve → mode level → `unspent_points`; spend a point to
-   insert a `player_combat_mode_node` (validate `unlock_level`, type, crossover attribute gate).
-4. **Character leveling + attributes + milestones.** Character XP curve → level → attribute_points;
-   apply milestone `pick 1 of 3`; persist choices.
-5. **Attributes + nodes scale combat.** Wire attributes and unlocked passives/modifiers into derived
-   stats as additive bonuses over the base profile (damage, health, resistance, crossover damage
-   families). Healing/support contribution credit goes live here.
-6. **Presentation.** Publish mode levels, character level/xp, attributes, and chosen passives in the
-   snapshot for the HUD.
+1. **Persistence spine.** Load `player` level/xp/attributes/wallet + `player_combat_mode_progress` on
+   attach; write back on disconnect. ✅ *when a player's level/XP/points survive a reconnect.*
+2. **Creature death + contribution XP.** Detect death; split `experience_value` by damage share (level
+   XP); credit the used mode's weapon XP capped at `weapon_experience_value`. ✅ *when killing a wolf
+   raises level XP (by damage) and weapon XP (capped).*
+3. **Mode leveling + tree unlock.** Mode XP curve → `mode_level` → `unspent_points`; spending inserts a
+   `player_combat_mode_node` after validating `unlock_level`, `point_cost`, prereqs, crossover gate.
+   ✅ *when points buy nodes and gating is enforced.*
+4. **Character leveling + attributes + milestones.** Character XP curve → level (+3 points); apply
+   milestone pick-1-of-3; persist. ✅ *when ~337 wolves reach level 10 with milestone picks at 10.*
+5. **Scaling into combat.** Wire attributes + unlocked passives/modifiers into derived stats as additive
+   bonuses (damage, health, resistance, crossover families). Healing/support credit goes live.
+   ✅ *when a high-STR character visibly out-damages/out-tanks a fresh one and a crossover deals its
+   cross-family damage.*
+6. **Presentation.** Publish mode levels, character level/xp, attributes, chosen passives, wallet in the
+   snapshot. ✅ *when the HUD can show all of it.*
 
-## Non-Negotiable Rules
+---
 
-- One tree **per combat mode per weapon**; the mode owns the tree (not a node). Level 1 = free basic
-  attack. +1 point per mode level; one pick per point; never the whole shelf. A node may cost >1 point.
-- XP is credited **only on death, only in combat**, always relative to the creature's XP values.
-  **Level XP: damage only** (no heal/buff), split by damage share. **Weapon XP: damage/heal/support
-  for the mode used, capped per participant at the creature's weapon-XP value.**
-- Node gating: **modifier** nodes require a `prerequisite_node_id`; **passive** nodes require
-  `required_points_prior_tier`; **crossover** nodes require an attribute threshold.
-- Caps: character level 50 (v1 = 10); combat-mode points 50. Pacing target: cap 10 ≈ 5+ real days.
-- Respec **free below level 10**, then **gold cost scaling 1 copper (lv10) → 1 silver (lv30) →
-  1 gold (lv50)**. Currency: copper/silver/gold, 100:100.
-- Attribute milestone passives are **universal** (same per milestone for all) — no class gating.
-- All scaling/curves/costs are **tunable data**, never buried Go literals.
-- Attribute/passive effects are **additive over the base profile** — no rewrite of combat resolution.
-- Migrations are **CREATE-only**; new tables are CREATE, column adds go in the table's CREATE migration.
-- English-only for all code/data/ids/values/comments.
+## 13. Non-Negotiable Rules
 
-## Codex Handoff (after Claude builds the spine)
+- One tree **per combat mode per weapon**; the mode owns it. Level 1 = free basic attack. +1 point per
+  mode level; one pick per point; never the whole shelf; nodes may cost >1.
+- XP credited **only on death, only in combat**, relative to creature values. **Level XP: damage only**,
+  split by damage share. **Weapon XP: damage/heal/support for the mode used, capped per participant at
+  `weapon_experience_value`.**
+- Node gating: `modifier` → `prerequisite_node_id`; `passive` → `required_points_prior_tier`;
+  `crossover` → attribute threshold.
+- Caps: character 50 (v1 10); mode points 50. Pacing target: cap 10 ≈ 5+ real days.
+- Respec **free below 10**, then **1 copper (lv10) → 1 silver (lv30) → 1 gold (lv50)**; refunds attribute
+  + mode points and reopens milestones.
+- Milestone passives are **universal** — no class gating.
+- All curves/costs/scales are **tunable data**, never buried Go literals.
+- Effects are **additive over the base profile** — no rewrite of combat resolution.
+- Migrations are **CREATE-only**; English-only for all code/data/ids/values/comments.
 
-- Author the actual node pools per combat mode (`combat_mode_tree_node` + `passive_definition` +
-  `skill_modifier`) — per weapon, on demand.
-- Author the universal milestone passive sets (`attribute_milestone_passive`).
-- Tune curves (mode XP, character XP), point costs, milestone cadence, attribute scale constants.
-- Wire crossover nodes that grant cross-family damage (wakes chemical/biological resistances).
+---
+
+## 14. Decisions Log
+
+**Locked:** classless; two spines; one tree per mode per weapon; level-1 free basic attack; node types
++ gating; two XP pools with the heal/support cap; +3 attr/level; universal milestone picks; caps
+(char 50/v1 10, mode 50); v1 numbers (wolf 100/200, the tables); respec model + copper/silver/gold.
+
+**Tunable (data, expected to change in balancing):** every number in §6 and §9.
+
+**Deferred (Codex / later docs):** the actual node pools and passive/modifier effects; milestone passive
+sets; gear stats; skill trees beyond combat modes; XP banking; cross-weapon/account-wide mastery.
+
+---
+
+## 15. Codex Handoff
+
+- Author node pools per combat mode (`combat_mode_tree_node` + `passive_definition` + `skill_modifier`),
+  per weapon, on demand.
+- Author the universal milestone sets (`attribute_milestone_passive`).
+- Tune the levers in §9; validate against §10 telemetry.
+- Wire crossover nodes that grant cross-family damage (waking chemical/biological resistances).
