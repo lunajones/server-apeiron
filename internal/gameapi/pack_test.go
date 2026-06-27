@@ -58,6 +58,33 @@ func TestPackFormationGroupsNearbyAndSolosIdentity(t *testing.T) {
 	}
 }
 
+// TestEnsureWolfPackSpawnsClusteredPack locks the live spawn path: CREATURE_PACK_SIZE wolves are
+// spawned clustered enough to form a single pack (so PIE actually shows pack coordination).
+func TestEnsureWolfPackSpawnsClusteredPack(t *testing.T) {
+	runtime := NewRuntimeWithContracts(DevFixtureRuntimeContracts())
+	player := runtime.ensurePlayerLocked("local_player")
+
+	runtime.ensureWolfPackLocked(player, 3)
+
+	if got := runtime.countSteppeWolvesLocked(); got != 3 {
+		t.Fatalf("spawned %d wolves, want 3", got)
+	}
+	runtime.formCreaturePacksLocked()
+
+	packIDs := map[string]bool{}
+	for _, e := range runtime.entities {
+		if e.entityType == "creature" && e.templateID == "steppe_wolf" {
+			if e.packID == "" {
+				t.Fatal("spawned wolf got no pack id")
+			}
+			packIDs[e.packID] = true
+		}
+	}
+	if len(packIDs) != 1 {
+		t.Fatalf("3 clustered wolves formed %d packs, want 1", len(packIDs))
+	}
+}
+
 // TestPackOfOneIsIdentity locks that a single creature forms a pack of one keyed on itself.
 func TestPackOfOneIsIdentity(t *testing.T) {
 	runtime := NewRuntimeWithContracts(DevFixtureRuntimeContracts())
