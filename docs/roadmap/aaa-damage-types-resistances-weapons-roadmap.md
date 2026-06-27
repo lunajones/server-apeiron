@@ -118,12 +118,30 @@ added. Block/parry (already in `combat_core_profile`) apply after type mitigatio
 AAA rule: damage type and resistance are the ONLY new mitigation here. Do not fold attribute
 scaling or DoT ticks into this slice.
 
-## Proposed DB Contract Changes
+## Database Changes (full spec)
 
-### Resistances on `combat_core_profile`
+Implementation checklist. Latest migration is `043`, so new files are `044+`. Schema lives in
+`db-apeiron/migrations/`, seed data in `db-apeiron/bootstrap/`.
 
-Resistances are **ratings** (grow with gear/stats; 0 = none, tens/hundreds at gear tiers), plus the
-mitigation curve constant and safety cap:
+| # | File | What |
+| --- | --- | --- |
+| 044 | `migrations/044_combat_resistance_ratings.sql` | add 3 resistance ratings + cap to `combat_core_profile`; deprecate the 2 old defenses |
+| 045 | `migrations/045_weapon_kit_role.sql` | add `role` to `weapon_kit` |
+| — | `bootstrap/0xx_*` (new or edit existing combat-core/skill/weapon seeds) | seed resistance ratings (player + creatures), `damage_type` per skill, the 6 weapon kits |
+| — | no schema change | `skill.damage_type` / `elemental_type` / `armor_penetration` already exist (migration 011) |
+| — | config/env | `MITIGATION_K` (default 100) |
+
+### Migration 044 — `combat_core_profile` resistance ratings
+
+Per-actor table (one row per combat profile: player + each creature). Resistances are **ratings**
+(grow with gear/stats; 0 = none, tens/hundreds at gear tiers).
+
+| Column | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `physical_resistance_rating` | FLOAT NOT NULL | 0.0 | mitigation rating vs physical family (slashing/piercing/blunt) |
+| `chemical_resistance_rating` | FLOAT NOT NULL | 0.0 | mitigation rating vs chemical family (fire/corrosive) |
+| `biological_resistance_rating` | FLOAT NOT NULL | 0.0 | mitigation rating vs biological family (poison/bleed/trauma) |
+| `resistance_cap` | FLOAT NOT NULL | 0.85 | max % reduction the curve may reach (safety net) |
 
 ```sql
 ALTER TABLE apeiron.combat_core_profile
@@ -133,21 +151,33 @@ ALTER TABLE apeiron.combat_core_profile
     ADD COLUMN resistance_cap               FLOAT NOT NULL DEFAULT 0.85;
 ```
 
-The curve constant `K` is the gear-treadmill knob. Start it as one tunable global value (a combat
-config row / env, e.g. `MITIGATION_K = 100`); the implementation reads it as
-`mitigationK(attackerTier)` returning that constant for now, so the seam exists for per-tier scaling
-when the progression doc lands. Do not bury `K` per-actor.
+Deprecate `physical_defense` + `magic_defense` (leave the columns, stop reading them; drop in a later
+migration once nothing references them). Example feel at `K=100`: 100 rating = 50% reduction, 300 =
+75%, never 100%.
 
-`physical_defense`/`magic_defense` are deprecated (keep the columns until callers are migrated, then
-drop). Seed resistance ratings for the player profile and every creature profile (steppe wolf, etc.)
-so mitigation is data-driven for ALL actors — not just the player. Example feel: at `K=100`, a 100
-physical rating = 50% reduction; 300 rating = 75%; the curve never reaches 100%.
+### Migration 045 — `weapon_kit.role`
 
-### Damage type taxonomy on `skill`
+| Column | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `role` | TEXT NOT NULL | `'frontline'` | gameplay role: `frontline` / `ranged_dps` / `breaker` / `area_control` / `healer` / `anti_tank` |
 
-`skill.damage_type` is reused (constrain values to the taxonomy above). `family` is derived in
-code (a small map), not stored, so adding a type is a one-line change. Keep `elemental_type` for
-the optional secondary instance and `armor_penetration` for the formula.
+```sql
+ALTER TABLE apeiron.weapon_kit
+    ADD COLUMN role TEXT NOT NULL DEFAULT 'frontline';
+-- no damage_type columns on the weapon: damage type is per-skill (skill.damage_type).
+```
+
+### No migration — `skill` damage typing (already exists, migration 011)
+
+| Column (existing) | Use |
+| --- | --- |
+| `damage_type TEXT` | primary type; allowed values: `slashing`, `piercing`, `blunt`, `fire`, `corrosive`, `poison`, `bleed`, `trauma` |
+| `elemental_type TEXT` (nullable) | optional secondary type (same allowed values), e.g. poison arrow |
+| `armor_penetration FLOAT` | rating subtracted from the defender's effective resistance rating |
+
+The **type -> family** map lives in code (the only code-side table; keep it tiny), not in the DB:
+`physical = {slashing, piercing, blunt}`, `chemical = {fire, corrosive}`,
+`biological = {poison, bleed, trauma}`. Adding a type later = one line in this map + use it on a skill.
 
 ### Weapon kits (the 6 initial weapons, data only — no skills yet)
 
@@ -158,28 +188,41 @@ gameplay **role** (and its existing name/description for theme). The damage-type
 added to the weapon; the "primary/secondary damage" below is just **design intent for the future
 skills**, not a weapon attribute.
 
-```sql
-ALTER TABLE apeiron.weapon_kit
-    ADD COLUMN role TEXT NOT NULL DEFAULT 'frontline';
--- no damage_type columns on the weapon: damage type is per-skill (skill.damage_type).
-```
+The `role` column comes from migration 045. Register the six initial kits (combat modes / skill
+slots stay empty for the new five for now). The "skills will deal" column is design intent for
+those future skills, NOT stored on the kit:
 
-Register the six initial kits (combat modes / skill slots stay empty for the new five for now). The
-"skills will deal" column is documentation for designing those skills later, NOT stored on the kit:
+| `weapon_kit.id` | `name` | `role` | `primary_weapon_type` | Its skills will deal (intent) |
+| --- | --- | --- | --- | --- |
+| `weaponkit_sword_shield` (exists) | Sword & Shield | `frontline` | `sword` | slashing (sword), blunt (shield bash) |
+| `weaponkit_bow` | Bow | `ranged_dps` | `bow` | piercing; poison/fire on special ammo |
+| `weaponkit_warhammer` | Warhammer | `breaker` | `warhammer` | blunt; heavy posture/poise break |
+| `weaponkit_alchemical_censer` | Alchemical Censer | `area_control` | `censer` | fire, poison; smoke/debuff zones |
+| `weaponkit_bone_bronze_needles` | Bone & Bronze Needles | `healer` | `needles` | light piercing; trauma + bio effects |
+| `weaponkit_caustic_siphon` | Caustic Siphon | `anti_tank` | `siphon` | corrosive; chemical fire/pressure |
 
-| Weapon kit | Role | Its skills will deal | Strong against (emergent) |
-| --- | --- | --- | --- |
-| `weaponkit_sword_shield` (exists) | tank / bruiser / frontline | slashing (sword), blunt (shield) | physical-armored, pressure |
-| `weaponkit_bow` | ranged DPS | piercing; poison/fire on special ammo | light targets, biological via ammo |
-| `weaponkit_warhammer` | heavy DPS / breaker | blunt; heavy posture/poise break | physical armor, shields, poise |
-| `weaponkit_alchemical_censer` | technical caster / area control | fire, poison; smoke/debuff zones | grouped enemies, chemical/biological |
-| `weaponkit_bone_bronze_needles` | healer / debuffer (field medic, NOT mystic) | light piercing; trauma + bio effects | precision; biological over time |
-| `weaponkit_caustic_siphon` | anti-tank / offensive alchemist | corrosive; chemical fire/pressure | heavy armor, shields (chemical) |
-
-Theme guardrail in `weapon_kit` description/metadata: needles/censer/siphon are
+Theme guardrail in each kit's `description`/`metadata`: needles/censer/siphon are
 **field-medic / alchemist** (needles, moxa, herbs, bandages, antidote, cautery;
-tank-hose-bellows-bronze-nozzle), **never** mystic staves. Same for "caster" — technical alchemist,
-not a mage.
+tank-hose-bellows-bronze-nozzle), **never** mystic staves. "Caster" = technical alchemist, not a mage.
+
+### Seed changes (data)
+
+**Resistance ratings** (Slice 1) — starting values, tune in PIE. Update the seeded combat-core
+profiles so every actor has ratings:
+
+| Profile id | `physical` | `chemical` | `biological` | `resistance_cap` | Note |
+| --- | --- | --- | --- | --- | --- |
+| `combat_core_player_sword_shield_v1` | 80 | 25 | 30 | 0.85 | armored frontline: high physical |
+| `combat_core_steppe_wolf` | 40 | 30 | 45 | 0.85 | beast: light armor, tougher vs bio |
+
+**Skill damage types** (Slices 1-2) — set `damage_type` on the existing skill seeds, e.g. player
+basic attacks = `slashing`, shield bash = `blunt`; wolf `bite` = `piercing`, `lunge` = `piercing`,
+`maul` = `blunt`. (Exact mapping is a quick design pass during Slice 2.)
+
+**Weapon kits** (Slice 3) — set `role` on `weaponkit_sword_shield` and INSERT the five new kits per
+the table above (`is_enabled = TRUE`, empty combat modes/skill slots for now).
+
+**`MITIGATION_K`** — config/env, default `100`.
 
 ## Server Runtime Work
 
