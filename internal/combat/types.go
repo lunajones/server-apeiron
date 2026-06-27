@@ -266,6 +266,10 @@ func (p *ImpactResolutionPipeline) Apply(ctx context.Context, damage DamageConte
 	if damage.TargetCore != nil {
 		baseDamage *= firstPositiveCombat(damage.TargetCore.GetDamageTakenMultiplier(), 1)
 	}
+	// Type-based mitigation: reduce by the target's resistance for this damage's family
+	// (rating/(rating+K) curve). Replaces the old flat model. Block/parry apply later, posture
+	// is a separate track. See aaa-damage-types-resistances-weapons-roadmap.md.
+	baseDamage = applyResistanceMitigation(baseDamage, damage.Skill, damage.TargetCore)
 	result := DamageResult{
 		Object:      damage.Target,
 		FinalDamage: baseDamage,
