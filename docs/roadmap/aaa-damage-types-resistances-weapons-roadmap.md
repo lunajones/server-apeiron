@@ -118,6 +118,36 @@ added. Block/parry (already in `combat_core_profile`) apply after type mitigatio
 AAA rule: damage type and resistance are the ONLY new mitigation here. Do not fold attribute
 scaling or DoT ticks into this slice.
 
+## Pipeline Order, Interactions & Edge Cases
+
+Where type mitigation sits relative to the combat systems that already exist in `combat_core_profile`:
+
+```text
+1. baseDamage   = skill.base_damage × source.damage_dealt_mult × target.damage_taken_mult   (today)
+2. crit         = if crit roll: baseDamage × critical_multiplier                             (crit multiplies BEFORE mitigation)
+3. typeMitigate = step2 × (1 - resistanceReduction(family))                                  (NEW: the rating curve)
+4. guard        = if blocking: × (1 - block_damage_reduction); parry may negate/punish        (block/parry AFTER type mitigation)
+5. FinalDamage  = step4
+```
+
+- **Crit before resistance** so a crit is a clean multiplier on the hit; resistance then governs how
+  much of that lands. (Order is fixed here to avoid double-dipping.)
+- **Block/parry after resistance.** For this slice block is **type-agnostic** (one
+  `block_damage_reduction`). A shield blocking fire worse than a slash is a future refinement
+  (per-shield block-by-family); do not add it now.
+- **Posture / poise damage is a SEPARATE track and is NOT mitigated by resistance.** `posture_damage`
+  is governed by the posture system + block, not by Physical/Chemical/Biological resistance. Only
+  health damage runs through the rating curve. (A future doc may add posture mitigation if needed.)
+- **`armor_penetration` is now in RATING units**, not a 0..1 fraction — it is subtracted from the
+  defender's effective resistance rating (same units). The existing column default `0.0` is fine; if
+  any skill ever seeded it as a fraction, rescale it to rating units.
+- **The healer weapon (needles) is NOT in scope here.** Healing is a separate future system (field
+  medicine: bandages/antidotes/cautery), not negative damage and not part of this doc. This doc only
+  defines that weapon's *damage* types when it is eventually built. Do not stub healing here.
+- **DoT effects (bleed/poison ticks) are out of scope.** `poison`/`bleed` here only classify a hit's
+  damage family; the over-time ticking belongs to the status-effect system (future). A `bleed` hit's
+  direct damage is biological-mitigated; its lingering tick is not built in this slice.
+
 ## Database Changes (full spec)
 
 Implementation checklist. Latest migration is `043`, so new files are `044+`. Schema lives in
@@ -155,6 +185,12 @@ Deprecate `physical_defense` + `magic_defense` (leave the columns, stop reading 
 migration once nothing references them). Example feel at `K=100`: 100 rating = 50% reduction, 300 =
 75%, never 100%.
 
+**This profile value is the BASE rating, not the total.** The gear-chase only works if equipped
+armor/sets and buffs ADD to it: `effectiveResistanceRating(family) = base + equippedGear + buffs`.
+Gear and buffs are future systems (inventory/equipment + status effects), so for now the total = the
+profile base. Implement the runtime resolver as a **sum** from the start (even if only the base feeds
+it today) so adding gear later is a new addend, not a refactor of the mitigation path.
+
 ### Migration 045 — `weapon_kit.role`
 
 | Column | Type | Default | Meaning |
@@ -178,6 +214,11 @@ ALTER TABLE apeiron.weapon_kit
 The **type -> family** map lives in code (the only code-side table; keep it tiny), not in the DB:
 `physical = {slashing, piercing, blunt}`, `chemical = {fire, corrosive}`,
 `biological = {poison, bleed, trauma}`. Adding a type later = one line in this map + use it on a skill.
+
+**Legacy + unknown types (do not break existing data):** every skill today is `damage_type='physical'`.
+Keep `physical` as a valid alias that maps to the **Physical** family, so legacy skills keep working
+(mitigated by physical resistance) until each is re-typed during Slice 2. Any unmapped/unknown type
+falls back to the **Physical** family and logs a one-time warning — it must never zero damage or panic.
 
 ### Weapon kits (the 6 initial weapons, data only — no skills yet)
 
