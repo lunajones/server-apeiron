@@ -63,13 +63,14 @@ func loadMitigationK() float64 {
 }
 
 // applyResistanceMitigation reduces a damage amount by the target's resistance for the skill's
-// damage family, using the diminishing-returns curve rating/(rating+K), capped. (Armor penetration
-// is wired in Slice 2 once it is surfaced on the skill proto.)
+// damage family, using the diminishing-returns curve rating/(rating+K), capped. Armor penetration
+// (in rating units) is subtracted from the defender's effective rating first.
 func applyResistanceMitigation(damageAmount float64, skill *apeironv1.Skill, targetCore *apeironv1.CombatCoreProfile) float64 {
 	if damageAmount <= 0 || skill == nil || targetCore == nil {
 		return damageAmount
 	}
 	rating := familyResistanceRating(targetCore, damageFamilyOf(skill.GetDamageType()))
+	rating -= skill.GetArmorPenetration() // armor penetration bypasses part of the resistance
 	if rating <= 0 {
 		return damageAmount
 	}

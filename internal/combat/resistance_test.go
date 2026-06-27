@@ -36,6 +36,22 @@ func TestResistanceCapNeverFullImmunity(t *testing.T) {
 	}
 }
 
+// TestArmorPenetrationBypassesResistance locks Slice 2: armor penetration subtracts from the
+// defender's effective rating, so a penetrating hit lands more damage; full pen = full damage.
+func TestArmorPenetrationBypassesResistance(t *testing.T) {
+	mitigationKValue = 100
+	target := &apeironv1.CombatCoreProfile{PhysicalResistanceRating: 100, ResistanceCap: 0.85}
+
+	noPen := applyResistanceMitigation(100, &apeironv1.Skill{DamageType: "blunt"}, target)
+	withPen := applyResistanceMitigation(100, &apeironv1.Skill{DamageType: "blunt", ArmorPenetration: 60}, target)
+	if withPen <= noPen {
+		t.Fatalf("armor pen did not increase damage through: noPen=%.1f withPen=%.1f", noPen, withPen)
+	}
+	if fullPen := applyResistanceMitigation(100, &apeironv1.Skill{DamageType: "blunt", ArmorPenetration: 100}, target); math.Abs(fullPen-100) > 0.01 {
+		t.Fatalf("full penetration mitigated = %.1f, want 100 (rating fully bypassed)", fullPen)
+	}
+}
+
 // TestDamageFamilyMappingAndFallback locks the type->family map incl. legacy 'physical' and the
 // unknown-type fallback to the Physical family (fail-safe, never zero/panic).
 func TestDamageFamilyMappingAndFallback(t *testing.T) {
