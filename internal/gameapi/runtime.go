@@ -1412,6 +1412,27 @@ func (r *Runtime) applyMove(player *entityState, cmd *gamev1.PlayerCommand) {
 	handoffApplied := r.applyMoveHandoffLocked(player, cmd, move)
 	if !handoffApplied && r.advanceActionMotionLocked(player, time.Now()) {
 		if player.actionMotion != nil && blocksNormalInputDuringOwnedRoot(player.actionMotion.NormalInputPolicy) {
+			motion := player.actionMotion
+			elapsedMS := time.Since(motion.StartedAt).Milliseconds()
+			lockRemainingMS := int64(0)
+			if !player.actionLockedUntil.IsZero() {
+				lockRemainingMS = time.Until(player.actionLockedUntil).Milliseconds()
+			}
+			handoffRemainingMS := int64(0)
+			if !player.actionHandoffUntil.IsZero() {
+				handoffRemainingMS = time.Until(player.actionHandoffUntil).Milliseconds()
+			}
+			r.logLeapDebugStateLocked("move_blocked_by_owned_root", player, map[string]string{
+				"blocked_action":      motion.Contract.ActionType,
+				"blocked_ability":     motion.Contract.AbilityKey,
+				"motion_elapsed_ms":   strconv.FormatInt(elapsedMS, 10),
+				"motion_duration_ms":  strconv.FormatInt(int64(motion.Contract.DurationMS), 10),
+				"motion_remaining_ms": strconv.FormatInt(int64(motion.Contract.DurationMS)-elapsedMS, 10),
+				"lock_remaining_ms":   strconv.FormatInt(lockRemainingMS, 10),
+				"handoff_remaining_ms": strconv.FormatInt(handoffRemainingMS, 10),
+				"input_policy":        motion.NormalInputPolicy,
+				"move_sequence":       strconv.FormatUint(cmd.GetSequence(), 10),
+			})
 			player.lastSequence = cmd.GetSequence()
 			player.lastClientTick = cmd.GetClientTick()
 			return
