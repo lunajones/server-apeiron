@@ -161,12 +161,13 @@ message PlayerProgressionState {
   int64 experience_into_level = 3;
   int64 experience_for_next_level = 4;
   int32 attribute_points = 5;
-  double strength = 6;
-  double dexterity = 7;
-  double intelligence = 8;
-  double endurance = 9;
+  double muscles = 6;
+  double nerves = 7;
+  double cruelty = 8;
+  double resilience = 9;
   int64 coin = 10;
   int32 level_cap = 11;
+  double kindness = 12;
 }
 
 message SnapshotEvent {

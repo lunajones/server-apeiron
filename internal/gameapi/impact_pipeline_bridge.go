@@ -162,7 +162,7 @@ func (r *Runtime) resolveRuntimeSkillImpact(source *entityState, target *entityS
 	if err != nil {
 		return runtimeSkillImpact{}, false
 	}
-	// Slice 5: Strength scales a player's outgoing physical damage (additive over the resolved base).
+	// Slice 5: Muscles scale a player's outgoing physical damage (additive over the resolved base).
 	finalDamage := result.FinalDamage
 	if source.entityType == "player" && source.progression != nil {
 		finalDamage *= attributePhysicalDamageMultiplier(source.progression)
@@ -316,7 +316,7 @@ func (r *Runtime) runtimeCombatCoreProfile(entity *entityState) *dbv1.CombatCore
 		return nil
 	}
 	needsPostureCopy := entity != nil && entity.maxPosture > 0 && entity.maxPosture != profile.GetMaxPosture()
-	// Slice 5: Strength adds to a player's physical resistance rating (additive over the base profile).
+	// Slice 5: Resilience adds to a player's physical resistance rating (additive over the base profile).
 	resistanceBonus := 0.0
 	if entity != nil && entity.entityType == "player" && entity.progression != nil {
 		resistanceBonus = attributePhysicalResistanceBonus(entity.progression)

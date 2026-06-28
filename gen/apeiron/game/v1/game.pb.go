@@ -1406,12 +1406,13 @@ type PlayerProgressionState struct {
 	ExperienceIntoLevel    int64                  `protobuf:"varint,3,opt,name=experience_into_level,json=experienceIntoLevel,proto3" json:"experience_into_level,omitempty"`
 	ExperienceForNextLevel int64                  `protobuf:"varint,4,opt,name=experience_for_next_level,json=experienceForNextLevel,proto3" json:"experience_for_next_level,omitempty"`
 	AttributePoints        int32                  `protobuf:"varint,5,opt,name=attribute_points,json=attributePoints,proto3" json:"attribute_points,omitempty"`
-	Strength               float64                `protobuf:"fixed64,6,opt,name=strength,proto3" json:"strength,omitempty"`
-	Dexterity              float64                `protobuf:"fixed64,7,opt,name=dexterity,proto3" json:"dexterity,omitempty"`
-	Intelligence           float64                `protobuf:"fixed64,8,opt,name=intelligence,proto3" json:"intelligence,omitempty"`
-	Endurance              float64                `protobuf:"fixed64,9,opt,name=endurance,proto3" json:"endurance,omitempty"`
+	Muscles                float64                `protobuf:"fixed64,6,opt,name=muscles,proto3" json:"muscles,omitempty"`
+	Nerves                 float64                `protobuf:"fixed64,7,opt,name=nerves,proto3" json:"nerves,omitempty"`
+	Cruelty                float64                `protobuf:"fixed64,8,opt,name=cruelty,proto3" json:"cruelty,omitempty"`
+	Resilience             float64                `protobuf:"fixed64,9,opt,name=resilience,proto3" json:"resilience,omitempty"`
 	Coin                   int64                  `protobuf:"varint,10,opt,name=coin,proto3" json:"coin,omitempty"`
 	LevelCap               int32                  `protobuf:"varint,11,opt,name=level_cap,json=levelCap,proto3" json:"level_cap,omitempty"`
+	Kindness               float64                `protobuf:"fixed64,12,opt,name=kindness,proto3" json:"kindness,omitempty"`
 	unknownFields          protoimpl.UnknownFields
 	sizeCache              protoimpl.SizeCache
 }
@@ -1481,30 +1482,30 @@ func (x *PlayerProgressionState) GetAttributePoints() int32 {
 	return 0
 }
 
-func (x *PlayerProgressionState) GetStrength() float64 {
+func (x *PlayerProgressionState) GetMuscles() float64 {
 	if x != nil {
-		return x.Strength
+		return x.Muscles
 	}
 	return 0
 }
 
-func (x *PlayerProgressionState) GetDexterity() float64 {
+func (x *PlayerProgressionState) GetNerves() float64 {
 	if x != nil {
-		return x.Dexterity
+		return x.Nerves
 	}
 	return 0
 }
 
-func (x *PlayerProgressionState) GetIntelligence() float64 {
+func (x *PlayerProgressionState) GetCruelty() float64 {
 	if x != nil {
-		return x.Intelligence
+		return x.Cruelty
 	}
 	return 0
 }
 
-func (x *PlayerProgressionState) GetEndurance() float64 {
+func (x *PlayerProgressionState) GetResilience() float64 {
 	if x != nil {
-		return x.Endurance
+		return x.Resilience
 	}
 	return 0
 }
@@ -1519,6 +1520,13 @@ func (x *PlayerProgressionState) GetCoin() int64 {
 func (x *PlayerProgressionState) GetLevelCap() int32 {
 	if x != nil {
 		return x.LevelCap
+	}
+	return 0
+}
+
+func (x *PlayerProgressionState) GetKindness() float64 {
+	if x != nil {
+		return x.Kindness
 	}
 	return 0
 }
@@ -5086,7 +5094,7 @@ const file_proto_apeiron_game_v1_game_proto_rawDesc = "" +
 	"\x17movement_reconciliation\x18\x19 \x01(\v2..apeiron.game.v1.MovementReconciliationProfileR\x16movementReconciliation\x12L\n" +
 	"\x11creature_ai_state\x18\x1a \x01(\v2 .apeiron.game.v1.CreatureAIStateR\x0fcreatureAiState\x12L\n" +
 	"\x11combat_mode_state\x18\x1b \x01(\v2 .apeiron.game.v1.CombatModeStateR\x0fcombatModeState\x12V\n" +
-	"\x12player_progression\x18\x1c \x01(\v2'.apeiron.game.v1.PlayerProgressionStateR\x11playerProgression\"\x95\x03\n" +
+	"\x12player_progression\x18\x1c \x01(\v2'.apeiron.game.v1.PlayerProgressionStateR\x11playerProgression\"\xa1\x03\n" +
 	"\x16PlayerProgressionState\x12\x14\n" +
 	"\x05level\x18\x01 \x01(\x05R\x05level\x12\x1e\n" +
 	"\n" +
@@ -5094,14 +5102,17 @@ const file_proto_apeiron_game_v1_game_proto_rawDesc = "" +
 	"experience\x122\n" +
 	"\x15experience_into_level\x18\x03 \x01(\x03R\x13experienceIntoLevel\x129\n" +
 	"\x19experience_for_next_level\x18\x04 \x01(\x03R\x16experienceForNextLevel\x12)\n" +
-	"\x10attribute_points\x18\x05 \x01(\x05R\x0fattributePoints\x12\x1a\n" +
-	"\bstrength\x18\x06 \x01(\x01R\bstrength\x12\x1c\n" +
-	"\tdexterity\x18\a \x01(\x01R\tdexterity\x12\"\n" +
-	"\fintelligence\x18\b \x01(\x01R\fintelligence\x12\x1c\n" +
-	"\tendurance\x18\t \x01(\x01R\tendurance\x12\x12\n" +
+	"\x10attribute_points\x18\x05 \x01(\x05R\x0fattributePoints\x12\x18\n" +
+	"\amuscles\x18\x06 \x01(\x01R\amuscles\x12\x16\n" +
+	"\x06nerves\x18\a \x01(\x01R\x06nerves\x12\x18\n" +
+	"\acruelty\x18\b \x01(\x01R\acruelty\x12\x1e\n" +
+	"\n" +
+	"resilience\x18\t \x01(\x01R\n" +
+	"resilience\x12\x12\n" +
 	"\x04coin\x18\n" +
 	" \x01(\x03R\x04coin\x12\x1b\n" +
-	"\tlevel_cap\x18\v \x01(\x05R\blevelCap\"\xfd\x02\n" +
+	"\tlevel_cap\x18\v \x01(\x05R\blevelCap\x12\x1a\n" +
+	"\bkindness\x18\f \x01(\x01R\bkindness\"\xfd\x02\n" +
 	"\rSnapshotEvent\x12\x19\n" +
 	"\bevent_id\x18\x01 \x01(\tR\aeventId\x126\n" +
 	"\x04type\x18\x02 \x01(\x0e2\".apeiron.game.v1.SnapshotEventTypeR\x04type\x12\x16\n" +

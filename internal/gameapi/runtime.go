@@ -78,16 +78,17 @@ type playerProgression struct {
 	level           int32
 	experience      int64
 	attributePoints int32
-	strength        float64
-	dexterity       float64
-	intelligence    float64
-	endurance       float64
+	muscles         float64
+	nerves          float64
+	cruelty         float64
+	kindness        float64
+	resilience      float64
 	coin            int64
 	dirty           bool // set when runtime mutates progression; cleared once persisted
 }
 
 func defaultPlayerProgression() *playerProgression {
-	return &playerProgression{level: 1, strength: 1, dexterity: 1, intelligence: 1, endurance: 1}
+	return &playerProgression{level: 1, muscles: 1, nerves: 1, cruelty: 1, kindness: 1, resilience: 1}
 }
 
 // SetPlayerProgressionSource wires the data service used to load and persist player progression.
@@ -831,10 +832,11 @@ func applyPlayerProgressionLocked(player *entityState, p *dbv1.Player) {
 	prog.level = p.GetLevel()
 	prog.experience = p.GetExperience()
 	prog.attributePoints = p.GetAttributePoints()
-	prog.strength = p.GetStrength()
-	prog.dexterity = p.GetDexterity()
-	prog.intelligence = p.GetIntelligence()
-	prog.endurance = p.GetEndurance()
+	prog.muscles = p.GetMuscles()
+	prog.nerves = p.GetNerves()
+	prog.cruelty = p.GetCruelty()
+	prog.kindness = p.GetKindness()
+	prog.resilience = p.GetResilience()
 	prog.coin = p.GetCoin()
 }
 

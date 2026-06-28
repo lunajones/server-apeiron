@@ -17,26 +17,26 @@ func TestAllocateAttributeSpendsPointsAndScales(t *testing.T) {
 	cmd := &gamev1.PlayerCommand{
 		Type: gamev1.CommandType_COMMAND_TYPE_ALLOCATE_ATTRIBUTE,
 		Payload: &gamev1.PlayerCommand_AllocateAttribute{
-			AllocateAttribute: &gamev1.AllocateAttributeCommand{Attribute: "strength", Amount: 5},
+			AllocateAttribute: &gamev1.AllocateAttributeCommand{Attribute: "resilience", Amount: 5},
 		},
 	}
 	if ok, code, _ := runtime.allocatePlayerAttributeLocked(player, cmd); !ok {
 		t.Fatalf("allocate failed: %s", code)
 	}
-	if player.progression.strength != 6 || player.progression.attributePoints != 0 {
-		t.Fatalf("str/points = %.0f/%d, want 6/0", player.progression.strength, player.progression.attributePoints)
+	if player.progression.resilience != 6 || player.progression.attributePoints != 0 {
+		t.Fatalf("resilience/points = %.0f/%d, want 6/0", player.progression.resilience, player.progression.attributePoints)
 	}
 	if player.maxHealth != 150 {
-		t.Fatalf("maxHealth = %.0f, want 150 (str 6)", player.maxHealth)
+		t.Fatalf("maxHealth = %.0f, want 150 (resilience 6)", player.maxHealth)
 	}
 	if ok, code, _ := runtime.allocatePlayerAttributeLocked(player, cmd); ok || code != "insufficient_attribute_points" {
 		t.Fatalf("expected insufficient_attribute_points, got ok=%v code=%s", ok, code)
 	}
 }
 
-// TestStrengthScalesDerivedCombatStats locks Progression Slice 5: Strength adds max health, outgoing
-// physical damage and physical resistance, additively over the base (base attribute 1.0 = no bonus).
-func TestStrengthScalesDerivedCombatStats(t *testing.T) {
+// TestAttributesScaleDerivedCombatStats locks Progression Slice 5: Muscles add outgoing physical damage,
+// Resilience adds max health + physical resistance, additively over the base (base attribute 1.0 = none).
+func TestAttributesScaleDerivedCombatStats(t *testing.T) {
 	runtime := NewRuntimeWithOptions(DevFixtureRuntimeContracts(), RuntimeOptions{DisableCreatures: true})
 	player := runtime.ensurePlayerLocked("p1")
 
@@ -50,17 +50,18 @@ func TestStrengthScalesDerivedCombatStats(t *testing.T) {
 		t.Fatalf("base resist bonus = %.1f, want 0", got)
 	}
 
-	// Strength 6 → +50 HP (10/pt), +25% physical damage (0.05/pt), +10 physical resistance (2/pt).
-	player.progression.strength = 6
+	// Muscles 6 → +25% physical damage (0.05/pt). Resilience 6 → +50 HP (10/pt) + 10 physical resist (2/pt).
+	player.progression.muscles = 6
+	player.progression.resilience = 6
 	runtime.applyAttributeDerivedStatsLocked(player)
 	if player.maxHealth != 150 || player.health != 150 {
-		t.Fatalf("str6 health = %.0f/%.0f, want 150/150", player.health, player.maxHealth)
+		t.Fatalf("resilience6 health = %.0f/%.0f, want 150/150", player.health, player.maxHealth)
 	}
 	if got := attributePhysicalDamageMultiplier(player.progression); math.Abs(got-1.25) > 1e-9 {
-		t.Fatalf("str6 dmg mult = %.4f, want 1.25", got)
+		t.Fatalf("muscles6 dmg mult = %.4f, want 1.25", got)
 	}
 	if got := attributePhysicalResistanceBonus(player.progression); got != 10 {
-		t.Fatalf("str6 resist bonus = %.1f, want 10", got)
+		t.Fatalf("resilience6 resist bonus = %.1f, want 10", got)
 	}
 	if cp := runtime.runtimeCombatCoreProfile(player); cp != nil {
 		if base := runtime.contracts.combatCoreProfileForEntity(player); base != nil {
@@ -123,14 +124,14 @@ func TestSnapshotPublishesPlayerProgression(t *testing.T) {
 	player.progression.level = 2
 	player.progression.experience = 1500
 	player.progression.attributePoints = 3
-	player.progression.strength = 5
+	player.progression.muscles = 5
 
 	pp := player.snapshot(runtime.contracts).GetPlayerProgression()
 	if pp == nil {
 		t.Fatal("player progression missing from snapshot")
 	}
-	if pp.GetLevel() != 2 || pp.GetExperience() != 1500 || pp.GetAttributePoints() != 3 || pp.GetStrength() != 5 {
-		t.Fatalf("snapshot = lvl %d xp %d pts %d str %.0f", pp.GetLevel(), pp.GetExperience(), pp.GetAttributePoints(), pp.GetStrength())
+	if pp.GetLevel() != 2 || pp.GetExperience() != 1500 || pp.GetAttributePoints() != 3 || pp.GetMuscles() != 5 {
+		t.Fatalf("snapshot = lvl %d xp %d pts %d muscles %.0f", pp.GetLevel(), pp.GetExperience(), pp.GetAttributePoints(), pp.GetMuscles())
 	}
 	// Level 2 spans 1200..2800, so exp 1500 is 300 into a 1600 band.
 	if pp.GetExperienceIntoLevel() != 300 || pp.GetExperienceForNextLevel() != 1600 {

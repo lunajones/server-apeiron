@@ -26,42 +26,50 @@ const (
 var cumulativeCharacterXP = []int64{0, 0, 1200, 2800, 4900, 7600, 11000, 15200, 20300, 26400, 33700}
 
 // Attribute -> derived combat stats (Slice 5). Additive over the base profile, never a rewrite.
-// Strength scales physical damage, max health and physical resistance (the only one visible in v1,
-// since all skills are physical); Dexterity (armor pen) and Intelligence (chem/bio) bind when those
-// damage families exist. Attributes start at 1.0, so only points ABOVE the base scale anything.
-// Constants are tunable starting values.
+// Muscles scale physical damage; Resilience scales max health + physical resistance. Nerves (chemical
+// dmg), Cruelty (biological/DoT) and Kindness (healing) bind when those families/skills exist.
+// Attributes start at 1.0, so only points ABOVE the base scale anything. Tunable starting values.
 const (
-	baseAttributeValue             = 1.0
-	basePlayerMaxHealth            = 100.0
-	strengthMaxHealthPerPoint      = 10.0 // +HP per Strength point above base
-	strengthPhysicalDamagePerPoint = 0.05 // +5% physical damage per Strength point above base
-	strengthPhysicalResistPerPoint = 2.0  // +physical resistance rating per Strength point above base
+	baseAttributeValue               = 1.0
+	basePlayerMaxHealth              = 100.0
+	resilienceMaxHealthPerPoint      = 10.0 // +HP per Resilience point above base
+	musclesPhysicalDamagePerPoint    = 0.05 // +5% physical damage per Muscles point above base
+	resiliencePhysicalResistPerPoint = 2.0  // +physical resistance rating per Resilience point above base
 )
 
-func strengthAboveBase(prog *playerProgression) float64 {
-	if prog == nil || prog.strength <= baseAttributeValue {
+func attributeAboveBase(value float64) float64 {
+	if value <= baseAttributeValue {
 		return 0
 	}
-	return prog.strength - baseAttributeValue
+	return value - baseAttributeValue
 }
 
-// attributePhysicalDamageMultiplier scales outgoing physical damage by Strength (1.0 at base).
+// attributePhysicalDamageMultiplier scales outgoing physical damage by Muscles (1.0 at base).
 func attributePhysicalDamageMultiplier(prog *playerProgression) float64 {
-	return 1 + strengthAboveBase(prog)*strengthPhysicalDamagePerPoint
+	if prog == nil {
+		return 1
+	}
+	return 1 + attributeAboveBase(prog.muscles)*musclesPhysicalDamagePerPoint
 }
 
-// attributePhysicalResistanceBonus is the additive physical resistance rating from Strength.
+// attributePhysicalResistanceBonus is the additive physical resistance rating from Resilience.
 func attributePhysicalResistanceBonus(prog *playerProgression) float64 {
-	return strengthAboveBase(prog) * strengthPhysicalResistPerPoint
+	if prog == nil {
+		return 0
+	}
+	return attributeAboveBase(prog.resilience) * resiliencePhysicalResistPerPoint
 }
 
-// attributeMaxHealth is the player's max health: base + Strength bonus.
+// attributeMaxHealth is the player's max health: base + Resilience bonus.
 func attributeMaxHealth(prog *playerProgression) float64 {
-	return basePlayerMaxHealth + strengthAboveBase(prog)*strengthMaxHealthPerPoint
+	if prog == nil {
+		return basePlayerMaxHealth
+	}
+	return basePlayerMaxHealth + attributeAboveBase(prog.resilience)*resilienceMaxHealthPerPoint
 }
 
 // applyAttributeDerivedStatsLocked recomputes a player's derived stats (max health) from attributes.
-// Called on attach (and after progression changes) so Strength visibly raises the health pool.
+// Called on attach (and after progression changes) so Resilience visibly raises the health pool.
 func (r *Runtime) applyAttributeDerivedStatsLocked(player *entityState) {
 	if player == nil || player.entityType != "player" || player.progression == nil {
 		return
@@ -156,14 +164,16 @@ func (r *Runtime) allocatePlayerAttributeLocked(player *entityState, cmd *gamev1
 		return false, "insufficient_attribute_points", "not enough attribute points"
 	}
 	switch strings.ToLower(strings.TrimSpace(alloc.GetAttribute())) {
-	case "strength":
-		prog.strength += float64(amount)
-	case "dexterity":
-		prog.dexterity += float64(amount)
-	case "intelligence":
-		prog.intelligence += float64(amount)
-	case "endurance":
-		prog.endurance += float64(amount)
+	case "muscles":
+		prog.muscles += float64(amount)
+	case "nerves":
+		prog.nerves += float64(amount)
+	case "cruelty":
+		prog.cruelty += float64(amount)
+	case "kindness":
+		prog.kindness += float64(amount)
+	case "resilience":
+		prog.resilience += float64(amount)
 	default:
 		return false, "invalid_attribute", "unknown attribute"
 	}
@@ -210,10 +220,11 @@ func playerProgressionSnapshot(e *entityState) *gamev1.PlayerProgressionState {
 		ExperienceIntoLevel:    intoLevel,
 		ExperienceForNextLevel: span,
 		AttributePoints:        p.attributePoints,
-		Strength:               p.strength,
-		Dexterity:              p.dexterity,
-		Intelligence:           p.intelligence,
-		Endurance:              p.endurance,
+		Muscles:                p.muscles,
+		Nerves:                 p.nerves,
+		Cruelty:                p.cruelty,
+		Kindness:               p.kindness,
+		Resilience:             p.resilience,
 		Coin:                   p.coin,
 		LevelCap:               characterLevelCapV1,
 	}
@@ -253,10 +264,11 @@ func playerProgressionToProto(playerID string, p *playerProgression) *dbv1.Playe
 		Level:           p.level,
 		Experience:      p.experience,
 		AttributePoints: p.attributePoints,
-		Strength:        p.strength,
-		Dexterity:       p.dexterity,
-		Intelligence:    p.intelligence,
-		Endurance:       p.endurance,
+		Muscles:         p.muscles,
+		Nerves:          p.nerves,
+		Cruelty:         p.cruelty,
+		Kindness:        p.kindness,
+		Resilience:      p.resilience,
 		Coin:            p.coin,
 	}
 }

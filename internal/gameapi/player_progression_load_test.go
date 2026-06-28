@@ -33,7 +33,7 @@ func TestAttachLoadsPersistedPlayerProgression(t *testing.T) {
 		found: true,
 		player: &dbv1.Player{
 			Level: 7, Experience: 4200, AttributePoints: 9,
-			Strength: 12, Dexterity: 5, Intelligence: 3, Endurance: 4, Coin: 150,
+			Muscles: 12, Nerves: 5, Cruelty: 3, Kindness: 7, Resilience: 4, Coin: 150,
 		},
 	})
 
@@ -49,8 +49,8 @@ func TestAttachLoadsPersistedPlayerProgression(t *testing.T) {
 	if prog.level != 7 || prog.experience != 4200 || prog.attributePoints != 9 {
 		t.Fatalf("level/xp/points = %d/%d/%d, want 7/4200/9", prog.level, prog.experience, prog.attributePoints)
 	}
-	if prog.strength != 12 || prog.dexterity != 5 || prog.intelligence != 3 || prog.endurance != 4 {
-		t.Fatalf("attributes = %v/%v/%v/%v, want 12/5/3/4", prog.strength, prog.dexterity, prog.intelligence, prog.endurance)
+	if prog.muscles != 12 || prog.nerves != 5 || prog.cruelty != 3 || prog.resilience != 4 || prog.kindness != 7 {
+		t.Fatalf("attributes = %v/%v/%v/%v/%v, want 12/5/3/4/7", prog.muscles, prog.nerves, prog.cruelty, prog.resilience, prog.kindness)
 	}
 	if prog.coin != 150 {
 		t.Fatalf("coin = %d, want 150", prog.coin)
