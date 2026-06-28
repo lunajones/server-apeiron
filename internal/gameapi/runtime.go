@@ -1753,6 +1753,9 @@ func (r *Runtime) applyImpulse(player *entityState, cmd *gamev1.PlayerCommand, c
 	}
 	player.position = start
 	player.velocity = fromDomainVector(progress.Velocity)
+	if budgetVelocity, ok := ownedRootBudgetVelocity(player.actionMotion); ok {
+		player.velocity = budgetVelocity
+	}
 	player.movementState = contract.ActionType
 	player.skillState = contract.AbilityKey
 	player.locomotion = locomotionFromContractWithOverrides(contract, "active", start, player.position, r.tick, cmd.GetSequence(), fullMotion.SpeedCMPerSecond, progress.DistanceCM)
@@ -2154,6 +2157,9 @@ func (r *Runtime) advanceActionMotionLocked(entity *entityState, now time.Time) 
 
 	entity.position = projected
 	entity.velocity = velocity
+	if budgetVelocity, ok := ownedRootBudgetVelocity(motion); ok {
+		entity.velocity = budgetVelocity
+	}
 	entity.movementState = motion.Contract.ActionType
 	if motion.SkillID != "" {
 		entity.skillState = "active"
@@ -2214,6 +2220,29 @@ func (r *Runtime) advanceActionMotionLocked(entity *entityState, now time.Time) 
 		return false
 	}
 	return true
+}
+
+// ownedRootBudgetVelocity returns the velocity to publish for a HORIZONTAL owned-root action (dodge,
+// grounded skills): the constant distance/duration budget along the motion direction. The server moves
+// such actions by a distance-budgeted curve, but the raw curve velocity at a given instant (e.g. an
+// eased start) disagrees with the actual travel — a client predicting from velocity then undershoots and
+// snaps. Publishing the budget velocity (consistent with the action's real average speed and the
+// locomotion target speed) makes the client's prediction match the server's travel. Vertical (leap)
+// actions are excluded so their gravity arc velocity is preserved.
+func ownedRootBudgetVelocity(motion *actionMotionState) (vector, bool) {
+	if motion == nil || motion.UseVerticalRoot {
+		return vector{}, false
+	}
+	durationMS := motion.Contract.DurationMS
+	if durationMS <= 0 || motion.TotalDistanceCM <= 0 {
+		return vector{}, false
+	}
+	dir := normalize(motion.Direction)
+	if dir == (vector{}) {
+		return vector{}, false
+	}
+	budget := motion.TotalDistanceCM / (float64(durationMS) / 1000.0)
+	return vector{x: dir.x * budget, y: dir.y * budget}, true
 }
 
 func applyActionMotionLocomotionTiming(state *gamev1.LocomotionState, motion *actionMotionState, now time.Time) {
