@@ -96,6 +96,24 @@ These are primarily Codex-authored; Claude only touched the orientation/lunge la
 
 ---
 
+## 6. Player Inventory & Equipment
+Doc: [aaa-player-inventory-equipment-roadmap.md](aaa-player-inventory-equipment-roadmap.md)
+
+**Built:** nothing yet — **design draft** (grounded in the existing `inventory`/`item_template`/
+`inventory_item` tables from migration 026). DB already has containers with slots + weight, item
+templates with weight, and item instances with `is_equipped`; `InventoryDataService` is read-only.
+
+**Design:** 15 named equipment slots (head/chest/gloves/pants/boots/cape/shoulder/amulet/ring_1/ring_2/
+accessory_1/accessory_2/weapon_main/weapon_off/bag); **slots = hard cap, weight = soft cap** (over weight
+→ slower, never stuck; never more stacks than the bag allows); the **bag** drives backpack capacity.
+Open design decisions in the doc §11.
+
+**Codex / future:** author item content (bags, armor, weapon items linked to `weapon_kit`), wire
+`equip_stats` into the damage doc's gear addend, tune the encumbrance curve. Weapon slots bridge into the
+combat-mode/progression mastery spine.
+
+---
+
 ## Prior Handoff
 [CODEX-HANDOFF-2026-06-25.md](CODEX-HANDOFF-2026-06-25.md) — superseded by this index for system status;
 keep for the dated movement/orientation context.
