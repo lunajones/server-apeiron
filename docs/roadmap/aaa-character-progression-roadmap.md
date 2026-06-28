@@ -76,6 +76,10 @@ passive`. Spine B stays universal (cheap to balance); Spine A creates the real s
 
 ## 4. Spine B — Character Level + Attributes
 
+> ⚠️ **The attribute → damage/resistance mapping below is UNDER REVISION — see §17.** Endurance becomes
+> a 4th (vitality) attribute, biological damage moves off Intelligence, and weapon→attribute scaling is
+> added. Treat the table here as the implemented-but-superseded v1.
+
 - **Character XP** (damage-on-kill only) → level. Cap: full game **50**, v1 **10**.
 - **Attribute points:** **+3 per level**, spent freely:
 
@@ -401,3 +405,45 @@ sets; gear stats; skill trees beyond combat modes; XP banking; cross-weapon/acco
 - **db-api resets the schema each boot** (dev) → the dev player returns to level 1 on db-api restart;
   progression persists across client reconnects / game-server restarts while db-api stays up.
 - All curves/scales (§6, §9) are placeholder v1 values — expected to change in balancing.
+
+---
+
+## 17. Pending Design Revision (2026-06-28) — §4/§5 ARE NOT FINAL
+
+The attribute model is being reworked. The items below override the earlier mapping where they
+conflict and must be resolved before the attribute → family scaling is considered final. **Not
+implemented — design notes for a future pass.**
+
+### Attributes (in revision)
+- **Endurance = Vitality** (confirmed): scales **max health, stamina, posture**. The survivability stat,
+  separate from Strength (which currently overloads damage + hp + resistance — move hp/survival to
+  Endurance).
+- **Biological damage should NOT scale with Intelligence** — it needs a **different attribute (TBD)**.
+  Intelligence should not own biological offense.
+- **Trauma:** stays a Biological damage *type* — still **only 3 resistances** (no 4th family). Trauma
+  resistance = Biological resistance. Which attribute backs Biological **damage** vs Biological
+  **resistance** is open (depends on the point above).
+- Net: the §4 attribute → damage/resistance table is **not final** — revisit which attribute scales each
+  damage family and each resistance once the biological-damage attribute is chosen.
+
+### NEW — Weapon → attribute scaling (Souls-like)
+- Some weapons must **scale with specific attributes** to increase damage (e.g. one weapon scales with
+  Strength, another with Dexterity), on top of / instead of the flat per-family attribute bonus. This is
+  the lever that ties **build (attributes) to weapon choice** for damage output.
+- To design: which weapon scales with which attribute(s); the scaling shape (Souls-style letter grades?
+  linear coefficient per attribute point?); how it stacks with the family-based attribute damage bonus in
+  §4/§5.
+- Touches: `weapon_kit` (an attribute-scaling spec per weapon/mode) and the damage resolution (apply the
+  weapon's attribute scaling to outgoing damage).
+
+### Consolidated incomplete points (for the future review)
+- **Slice 3** — combat-mode trees + weapon-XP runtime (engine + content). Not started.
+- **Dexterity & Intelligence** combat scaling — not wired (only Strength is).
+- **Endurance** — not wired yet (vitality + resistance per the revision above).
+- **Biological-damage attribute** — undecided (not Intelligence).
+- **Weapon → attribute scaling** — new, undesigned (above).
+- **Milestone passive picks** — mechanism + content not built.
+- **Respec** (free <10, gold cost, refund) — not implemented.
+- **Healing/support → weapon XP** — not implemented.
+- **Telemetry** (§10) — not implemented.
+- **Real character creation** (dev seed is a stand-in) and **creature respawn** after kill — not done.
