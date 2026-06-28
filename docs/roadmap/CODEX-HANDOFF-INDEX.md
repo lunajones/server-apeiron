@@ -36,9 +36,10 @@ Doc: [aaa-damage-types-resistances-weapons-roadmap.md](aaa-damage-types-resistan
 Doc: [aaa-character-progression-roadmap.md](aaa-character-progression-roadmap.md)
 **On Codex's worklist starting Monday 2026-06-29.**
 
-**Built:** nothing yet — but **design is LOCKED and AAA-complete** (structure + v1 numbers; node content
-is the fill-in work). DB columns `player.level/experience/attribute_points/strength/dexterity/intelligence`
-exist but the **server never loads them**; creatures have **no death/kill/XP event** yet.
+**Built & live (the level + attribute spine):** load + persist (dev player `local_player` verified
+live), level XP on kill, level-up + attribute points, Strength scaling combat (hp/damage/resistance),
+the attribute-point spend command, and snapshot publishing for the HUD. The full playable loop
+(kill → XP → level → spend → stronger → persists) is closed server-side. See doc §16.
 
 **Design (locked):** classless, two spines. Spine A = one level tree per combat mode per weapon (mode
 owns the tree; level 1 = free basic attack; +1 pt/level; node types skill/passive/modifier/crossover;
@@ -46,9 +47,11 @@ cap 50 pts). Spine B = character XP → level (v1 cap 10, game 50) → +3 attr/l
 picks (1 of 3). Two XP pools: level XP = damage-on-kill only; weapon XP = damage/heal/support for the
 mode, capped per participant at the creature's weapon-XP value. Respec free <10, then copper→silver→gold.
 
-**Codex expands:** author node pools per combat mode (`combat_mode_tree_node` + `passive_definition` +
-`skill_modifier`), the universal milestone sets, tune the levers, wire crossover nodes that wake the
-dormant chemical/biological resistances. Full DB spec + balance levers + telemetry targets in the doc.
+**Codex authors (remaining):** Slice 3 — combat-mode trees + weapon-XP runtime (the new node/passive/
+modifier/player-progress tables, per-weapon node pools, mode-XP crediting, unlock/gating, crossover
+wiring) — and the universal milestone passive pools. Plus tuning the v1 curves/scales and **the
+overtuned wolf evasion** (it dodges to the player's back almost every hit — see §16 + the threat/pack
+docs). Full DB spec + balance levers + telemetry in the doc.
 
 ---
 

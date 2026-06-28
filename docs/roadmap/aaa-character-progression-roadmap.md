@@ -291,8 +291,9 @@ new currency columns. All already exposed by `PlayerDataService.GetPlayer`.
 **Build status (2026-06-27):** ✅ Slice 1 (load + persist, dev player verified live) · ✅ Slice 2
 (level XP on kill) · ✅ Slice 4 (level-up + attribute points) · ✅ Slice 5 (Strength scales
 hp/damage/resistance; Dex/Int bind when their families exist) · ✅ Slice 6 (snapshot publishes
-progression; Unreal HUD rendering is client-side). ⏳ Slice 3 (mode tree + weapon XP) · attribute-point
-**spend command** (so attributes rise above 1.0 and Slice 5 becomes visible) · milestone passive picks.
+progression; Unreal HUD rendering is client-side) · ✅ attribute-point **spend command**
+(`COMMAND_TYPE_ALLOCATE_ATTRIBUTE`). ⏳ Slice 3 (mode tree + weapon XP) and milestone passive picks are
+**Codex-authoring scope** (see §16). The level + attribute spine is complete and live.
 
 1. **Persistence spine.** Load `player` level/xp/attributes/wallet + `player_combat_mode_progress` on
    attach; write back on disconnect. ✅ *when a player's level/XP/points survive a reconnect.*
@@ -361,3 +362,42 @@ sets; gear stats; skill trees beyond combat modes; XP banking; cross-weapon/acco
 - Author the universal milestone sets (`attribute_milestone_passive`).
 - Tune the levers in §9; validate against §10 telemetry.
 - Wire crossover nodes that grant cross-family damage (waking chemical/biological resistances).
+
+---
+
+## 16. Implementation Conclusion & Tuning Notes (2026-06-27)
+
+### Built and live (the level + attribute spine — Claude)
+- **Persistence:** server loads player progression on attach (`PlayerDataService.GetPlayer`) and persists
+  dirty players every 10s + on shutdown (`PlayerDataService.UpdatePlayer`). Persistent dev player
+  `local_player` ("Wanderer"); `player.creature_instance_id` made nullable. Verified live (read+write).
+- **XP on kill:** creatures carry `experience_value` / `weapon_experience_value` in behavior metadata
+  (wolf 100/200); a per-creature damage ledger splits **level XP** by damage share on death; the creature
+  despawns. (Weapon-XP crediting to the active mode is part of Slice 3 — not yet wired.)
+- **Leveling:** cumulative XP curve (v1 table, cap 10) raises level and grants +3 attribute points.
+- **Attribute scaling (Slice 5):** Strength → max health (+10/pt), physical damage (+5%/pt), physical
+  resistance (+2/pt), additive over the base profile.
+- **Spend loop:** `COMMAND_TYPE_ALLOCATE_ATTRIBUTE` spends points into an attribute → derived stats
+  recompute immediately → persists. The full playable loop (kill → XP → level → spend → stronger) is
+  closed server-side.
+- **Presentation:** `SnapshotEntity.player_progression` carries level/xp/attributes/points/coin + XP-bar
+  fields for the Unreal HUD.
+
+### Remaining — Codex authoring scope (needs design + content, per-weapon)
+- **Slice 3 — combat-mode trees + weapon XP runtime:** the new tables (`combat_mode_tree_node`,
+  `passive_definition`, `skill_modifier`, `attribute_milestone_passive`, `player_combat_mode_progress`,
+  `player_combat_mode_node`, `player_attribute_milestone_choice`), the per-mode node pools, mode-XP
+  crediting to the active combat mode, node unlock/gating, and crossover wiring. Design is locked in
+  §3/§11; the **content** (which skills/passives/modifiers per mode) is per-weapon authoring.
+- **Milestone passive picks:** author the universal 1-of-3 pools (`attribute_milestone_passive`) + the
+  client pick flow.
+
+### Tuning notes (when you return to balance)
+- **Wolf evasion is overtuned** — it dodges to the player's back almost every time, making it very hard to
+  land hits. This is creature evasion/AI tuning (see `aaa-threat-aggro-runtime-roadmap.md` /
+  `aaa-pack-coordination-runtime-roadmap.md`), independent of progression. Tune before judging XP pacing.
+- **Dev player has `strength 6`** (demo) so Slice 5 scaling is visible (150 hp, +25% dmg). Real new
+  characters start at 1.0; remove/zero this once the attribute UI drives spending in PIE.
+- **db-api resets the schema each boot** (dev) → the dev player returns to level 1 on db-api restart;
+  progression persists across client reconnects / game-server restarts while db-api stays up.
+- All curves/scales (§6, §9) are placeholder v1 values — expected to change in balancing.
