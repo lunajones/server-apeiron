@@ -91,13 +91,18 @@ Docs:
   — Claude landed the **attack_yaw latch** (rules 3-5). Open for Codex: turn-rate caps, `commit_align_ms`,
   airborne root re-aim, **generalize orientation to players** (not just creatures).
 - [aaa-creature-action-transition-runtime-roadmap.md](aaa-creature-action-transition-runtime-roadmap.md)
-- [aaa-skill-movement-contract-roadmap.md](aaa-skill-movement-contract-roadmap.md)
-- [aaa-temporal-melee-hit-volume-roadmap.md](aaa-temporal-melee-hit-volume-roadmap.md)
+  — action transition phases runtime (active → recovery → exit_handoff). Couples with the orientation latch.
 - [aaa-movement-rubberband-regression-roadmap.md](aaa-movement-rubberband-regression-roadmap.md)
-- [server-apeiron-aaa-movement-action-contract-roadmap.md](server-apeiron-aaa-movement-action-contract-roadmap.md)
+  — rebuilt 2026-06-28 from live diagnosis (server completes cleanly; client reconciliation + dodge
+  budget-velocity; leap input-lock).
 - [temp-reconciliation-contract-migration-roadmap.md](temp-reconciliation-contract-migration-roadmap.md)
 
-These are primarily Codex-authored; Claude only touched the orientation/lunge latch. Codex owns the rest.
+⛔ **Three movement docs are CORRUPTED (byte-lost) and quarantined** in
+`_corrupted-do-not-read/` — `aaa-skill-movement-contract-roadmap.md`,
+`aaa-temporal-melee-hit-volume-roadmap.md`, `server-apeiron-aaa-movement-action-contract-roadmap.md`.
+**Do not read or reference them** (see that folder's DO-NOT-READ.md). Reconstruct from code if needed.
+
+These are primarily Codex-authored; Claude touched the orientation/lunge latch + the rubberband diagnosis.
 
 ---
 
