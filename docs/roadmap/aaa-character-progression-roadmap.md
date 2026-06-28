@@ -156,7 +156,8 @@ your main mode is only ~level **13/50**. Modes 13→50 are the endgame.
 
 ### Respec
 - **Free below level 10.** From level 10, costs gold scaling with level.
-- Currency: **copper → silver → gold**, `100 copper = 1 silver, 100 silver = 1 gold`.
+- Currency: **copper → silver → gold**, `100 copper = 1 silver, 100 silver = 1 gold`. Stored as total
+  copper in the existing `player.coin`; silver/gold are display conversions (no extra columns).
 - `respecCost(L) = round(1.259^(L-10))` copper → **1 copper @ lv10 · 1 silver @ lv30 · 1 gold @ lv50**
   (×10 every 10 levels).
 - **A respec refunds** all attribute points and all mode-tree points (re-spend freely) and reopens
@@ -262,9 +263,11 @@ swap damage_type …) · `is_enabled` · `metadata`.
 
 ### Player-state tables (runtime-persisted)
 
-**`player`** — EDIT-CREATE — base columns exist (`level`, `experience`, `attribute_points`, `strength`,
-`dexterity`, `intelligence`). **Add wallet:** `copper INT DEFAULT 0`, `silver INT DEFAULT 0`,
-`gold INT DEFAULT 0` (in the CREATE migration, not ALTER).
+**`player`** — **no change needed.** Base columns already exist: `level`, `experience`,
+`attribute_points`, `strength`, `dexterity`, `intelligence`, plus `endurance` (a 4th attribute column —
+**reserved/unused by this design**, kept at default), and **`coin BIGINT`** which serves as the wallet.
+Wallet = `player.coin` stored as **total copper**; silver/gold are display conversions (`100:100`). No
+new currency columns. All already exposed by `PlayerDataService.GetPlayer`.
 
 **`player_combat_mode_progress`** — NEW — PK (`player_id`, `combat_mode_id`); `mode_level` INT DEFAULT 1,
 `mode_experience` BIGINT DEFAULT 0, `unspent_points` INT DEFAULT 0.
@@ -287,6 +290,8 @@ swap damage_type …) · `is_enabled` · `metadata`.
 
 1. **Persistence spine.** Load `player` level/xp/attributes/wallet + `player_combat_mode_progress` on
    attach; write back on disconnect. ✅ *when a player's level/XP/points survive a reconnect.*
+   **Status: 1a (load) DONE** — runtime reads progression via `PlayerDataService.GetPlayer` on attach.
+   **1b (write-back) pending** — needs a new `UpdatePlayer`/`SavePlayerProgression` RPC (db has read only).
 2. **Creature death + contribution XP.** Detect death; split `experience_value` by damage share (level
    XP); credit the used mode's weapon XP capped at `weapon_experience_value`. ✅ *when killing a wolf
    raises level XP (by damage) and weapon XP (capped).*
