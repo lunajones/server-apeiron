@@ -209,6 +209,7 @@ type WolfRuntimePolicy struct {
 	SkillSetupPolicies             []CreatureSkillSetupRuntimePolicy
 	Threat                         ThreatRuntimeProfile
 	Pack                           PackRuntimeProfile
+	Progression                    CreatureProgressionProfile
 }
 
 // PackRuntimeProfile is the creature's data-driven pack-coordination tuning, loaded from the
@@ -240,6 +241,15 @@ type ThreatRuntimeProfile struct {
 	SwitchThresholdRatio      float64
 	SwitchCooldownMS          int32
 	LeashDistanceCM           float64
+}
+
+// CreatureProgressionProfile is the creature's data-driven XP payout, loaded from the creature
+// behavior contract metadata ("progression" object). See aaa-character-progression-roadmap.md.
+// ExperienceValue is the level-XP pool split across damage contributors on death; WeaponExperienceValue
+// is the per-participant weapon-XP cap (used once mode-progress plumbing lands).
+type CreatureProgressionProfile struct {
+	ExperienceValue       float64
+	WeaponExperienceValue float64
 }
 
 type CreatureSkillBehaviorRuntimeBinding struct {
@@ -308,8 +318,14 @@ type creatureStaminaPolicyJSON struct {
 }
 
 type creatureBehaviorMetadataJSON struct {
-	Threat creatureThreatPolicyJSON `json:"threat"`
-	Pack   creaturePackPolicyJSON   `json:"pack"`
+	Threat      creatureThreatPolicyJSON      `json:"threat"`
+	Pack        creaturePackPolicyJSON        `json:"pack"`
+	Progression creatureProgressionPolicyJSON `json:"progression"`
+}
+
+type creatureProgressionPolicyJSON struct {
+	ExperienceValue       float64 `json:"experienceValue"`
+	WeaponExperienceValue float64 `json:"weaponExperienceValue"`
 }
 
 type creaturePackPolicyJSON struct {
@@ -701,6 +717,10 @@ func applyWolfBehaviorPolicyJSON(policy *WolfRuntimePolicy, behavior *dbv1.Creat
 				SurroundSpacingDeg:    p.SurroundSpacingDeg,
 				CommitTokenCooldownMS: p.CommitTokenCooldownMs,
 				FocusPolicy:           p.FocusPolicy,
+			}
+			policy.Progression = CreatureProgressionProfile{
+				ExperienceValue:       meta.Progression.ExperienceValue,
+				WeaponExperienceValue: meta.Progression.WeaponExperienceValue,
 			}
 		}
 	}

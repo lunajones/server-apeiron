@@ -148,6 +148,7 @@ type entityState struct {
 	orientationAttackYaw        float64
 	orientationAttackYawKnown   bool
 	threat                      *threatTable
+	damageCredits               map[uint64]float64
 	creatureLeashed             bool
 	packID                      string
 	packRingSlotDeg             float64
