@@ -293,9 +293,12 @@ new currency columns. All already exposed by `PlayerDataService.GetPlayer`.
    **Status: 1a (load) + 1b (write-back) DONE** — runtime reads progression via
    `PlayerDataService.GetPlayer` on attach and persists dirty players every 10s (+ shutdown flush) via
    the new `PlayerDataService.UpdatePlayer` RPC. Both unit-tested.
-   ⚠️ **End-to-end gap:** there is **no `player` row** yet (no character-creation flow / seed), so live
-   the load returns not-found (keeps defaults) and the persist UPDATEs 0 rows. Needs a player row
-   (character creation or a dev seed, which also needs a `creature_instance` FK row) to be demonstrable.
+   ✅ **End-to-end demonstrable:** a persistent dev player (`local_player`, name "Wanderer") is seeded
+   (`bootstrap/022_dev_player_seed.sql`); `player.creature_instance_id` was made nullable so the record
+   needs no permanent live body. Verified live against the running stack: GetPlayer reads it, UpdatePlayer
+   writes level/xp/attributes and they persist on re-read. ⚠️ db-api resets the schema on every boot, so
+   the dev row returns to level 1 on db-api restart; progression persists across client reconnects /
+   game-server restarts while db-api stays up. A real character-creation flow replaces the dev seed later.
 2. **Creature death + contribution XP.** Detect death; split `experience_value` by damage share (level
    XP); credit the used mode's weapon XP capped at `weapon_experience_value`. ✅ *when killing a wolf
    raises level XP (by damage) and weapon XP (capped).*
