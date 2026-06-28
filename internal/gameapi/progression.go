@@ -1,6 +1,20 @@
 package gameapi
 
-// Character progression — XP on kill (Slice 2). See docs/roadmap/aaa-character-progression-roadmap.md.
+import (
+	"context"
+	"time"
+
+	dbv1 "db-apeiron/gen/apeiron/v1"
+
+	"server-apeiron/internal/logging"
+)
+
+// progressionFlushInterval is how often dirty player progression is persisted to the data service.
+// There is no disconnect hook, so a periodic flush (plus a final flush on shutdown) is the write path.
+const progressionFlushInterval = 10 * time.Second
+
+// Character progression — XP on kill (Slice 2) + persistence (Slice 1b).
+// See docs/roadmap/aaa-character-progression-roadmap.md.
 // Level XP is credited only on a creature's death, split across damage contributors by damage share.
 // Weapon XP (per-mode, capped) lands with the mode-progress plumbing in a later slice.
 
@@ -46,6 +60,7 @@ func (r *Runtime) awardKillXPLocked(creature *entityState) {
 				}
 				if award := int64(xpValue * (dmg / total)); award > 0 {
 					player.progression.experience += award
+					player.progression.dirty = true
 				}
 			}
 		}
@@ -60,4 +75,73 @@ func (r *Runtime) despawnCreatureLocked(creature *entityState) {
 		return
 	}
 	delete(r.entities, creature.id)
+}
+
+// playerProgressionToProto builds the data-service payload for persisting a player's progression.
+func playerProgressionToProto(playerID string, p *playerProgression) *dbv1.Player {
+	return &dbv1.Player{
+		Id:              playerID,
+		Level:           p.level,
+		Experience:      p.experience,
+		AttributePoints: p.attributePoints,
+		Strength:        p.strength,
+		Dexterity:       p.dexterity,
+		Intelligence:    p.intelligence,
+		Endurance:       p.endurance,
+		Coin:            p.coin,
+	}
+}
+
+// collectDirtyProgressionLocked snapshots players whose progression changed and clears their dirty
+// flag, returning the payloads to write. Must be called under r.mu.
+func (r *Runtime) collectDirtyProgressionLocked() []*dbv1.Player {
+	var out []*dbv1.Player
+	for playerID, entity := range r.players {
+		if entity == nil || entity.progression == nil || !entity.progression.dirty {
+			continue
+		}
+		out = append(out, playerProgressionToProto(playerID, entity.progression))
+		entity.progression.dirty = false
+	}
+	return out
+}
+
+// flushDirtyProgression persists changed player progression. It locks only to collect the payloads,
+// then writes OUTSIDE the lock so a slow data service never stalls the runtime. A failed write
+// re-marks the player dirty so the next flush retries.
+func (r *Runtime) flushDirtyProgression(ctx context.Context) {
+	r.mu.Lock()
+	source := r.playerSource
+	payloads := r.collectDirtyProgressionLocked()
+	r.mu.Unlock()
+	if source == nil || len(payloads) == 0 {
+		return
+	}
+	for _, payload := range payloads {
+		if _, err := source.UpdatePlayer(ctx, payload); err != nil {
+			logging.WithComponent("gameapi").Warn().Err(err).Str("player_id", payload.GetId()).
+				Msg("player progression persist failed; will retry")
+			r.mu.Lock()
+			if entity := r.players[payload.GetId()]; entity != nil && entity.progression != nil {
+				entity.progression.dirty = true
+			}
+			r.mu.Unlock()
+		}
+	}
+}
+
+// runProgressionFlushLoop persists dirty player progression on a fixed interval, with a final flush
+// on shutdown. Started only when a player source is wired (prod), never in tests.
+func (r *Runtime) runProgressionFlushLoop(ctx context.Context, interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			r.flushDirtyProgression(context.Background())
+			return
+		case <-ticker.C:
+			r.flushDirtyProgression(ctx)
+		}
+	}
 }

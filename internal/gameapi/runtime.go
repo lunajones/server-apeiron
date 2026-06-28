@@ -63,11 +63,13 @@ type Runtime struct {
 	playerSource PlayerProgressionSource
 }
 
-// PlayerProgressionSource loads persisted player progression (level/xp/attributes/coin) from the
-// data service. The live runtime sets it from the db-apeiron client and reads it on attach; tests
-// leave it nil and keep entity defaults. Signature matches dbv1.PlayerDataServiceClient.GetPlayer.
+// PlayerProgressionSource loads and persists player progression (level/xp/attributes/coin) via the
+// data service. The live runtime sets it from the db-apeiron client (read on attach, written by the
+// periodic flush); tests leave it nil and keep entity defaults. Signatures match
+// dbv1.PlayerDataServiceClient.
 type PlayerProgressionSource interface {
 	GetPlayer(ctx context.Context, in *dbv1.IdRequest, opts ...grpc.CallOption) (*dbv1.PlayerResponse, error)
+	UpdatePlayer(ctx context.Context, in *dbv1.Player, opts ...grpc.CallOption) (*dbv1.OperationResult, error)
 }
 
 // playerProgression holds the DB-authoritative character progression for a player entity. nil for
@@ -81,17 +83,24 @@ type playerProgression struct {
 	intelligence    float64
 	endurance       float64
 	coin            int64
+	dirty           bool // set when runtime mutates progression; cleared once persisted
 }
 
 func defaultPlayerProgression() *playerProgression {
 	return &playerProgression{level: 1, strength: 1, dexterity: 1, intelligence: 1, endurance: 1}
 }
 
-// SetPlayerProgressionSource wires the data service used to load player progression on attach.
+// SetPlayerProgressionSource wires the data service used to load and persist player progression.
 func (r *Runtime) SetPlayerProgressionSource(source PlayerProgressionSource) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.playerSource = source
+}
+
+func (r *Runtime) hasPlayerProgressionSource() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.playerSource != nil
 }
 
 type RuntimeOptions struct {
@@ -223,6 +232,10 @@ func ServeRuntime(ctx context.Context, cfg config.NetworkConfig, runtime *Runtim
 		<-ctx.Done()
 		server.GracefulStop()
 	}()
+
+	if runtime.hasPlayerProgressionSource() {
+		go runtime.runProgressionFlushLoop(ctx, progressionFlushInterval)
+	}
 
 	log.Info().Str("addr", addr).Msg("game grpc server listening")
 	if err := server.Serve(lis); err != nil {

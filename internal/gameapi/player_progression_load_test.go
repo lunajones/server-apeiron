@@ -11,19 +11,25 @@ import (
 )
 
 type fakePlayerProgressionSource struct {
-	player *dbv1.Player
-	found  bool
+	player  *dbv1.Player
+	found   bool
+	updated []*dbv1.Player
 }
 
-func (f fakePlayerProgressionSource) GetPlayer(ctx context.Context, in *dbv1.IdRequest, opts ...grpc.CallOption) (*dbv1.PlayerResponse, error) {
+func (f *fakePlayerProgressionSource) GetPlayer(ctx context.Context, in *dbv1.IdRequest, opts ...grpc.CallOption) (*dbv1.PlayerResponse, error) {
 	return &dbv1.PlayerResponse{Found: f.found, Player: f.player}, nil
+}
+
+func (f *fakePlayerProgressionSource) UpdatePlayer(ctx context.Context, in *dbv1.Player, opts ...grpc.CallOption) (*dbv1.OperationResult, error) {
+	f.updated = append(f.updated, in)
+	return &dbv1.OperationResult{Success: true}, nil
 }
 
 // TestAttachLoadsPersistedPlayerProgression locks Progression Slice 1 (load): a player with non-default
 // DB progression has it loaded onto the entity on attach, instead of resetting to hardcoded defaults.
 func TestAttachLoadsPersistedPlayerProgression(t *testing.T) {
 	runtime := NewRuntimeWithOptions(DevFixtureRuntimeContracts(), RuntimeOptions{DisableCreatures: true})
-	runtime.SetPlayerProgressionSource(fakePlayerProgressionSource{
+	runtime.SetPlayerProgressionSource(&fakePlayerProgressionSource{
 		found: true,
 		player: &dbv1.Player{
 			Level: 7, Experience: 4200, AttributePoints: 9,
@@ -63,5 +69,33 @@ func TestAttachWithoutSourceKeepsDefaults(t *testing.T) {
 	}
 	if player.progression.level != 1 {
 		t.Fatalf("default level = %d, want 1", player.progression.level)
+	}
+}
+
+// TestFlushPersistsDirtyProgression locks Progression Slice 1b (persist): an XP award marks the player
+// dirty, and a flush writes it back via UpdatePlayer; a second flush with no change writes nothing.
+func TestFlushPersistsDirtyProgression(t *testing.T) {
+	fake := &fakePlayerProgressionSource{found: true, player: &dbv1.Player{Level: 1}}
+	runtime := NewRuntimeWithOptions(DevFixtureRuntimeContracts(), RuntimeOptions{DisableCreatures: true})
+	runtime.contracts.WolfPolicy.Progression = CreatureProgressionProfile{ExperienceValue: 100}
+	runtime.SetPlayerProgressionSource(fake)
+
+	player := runtime.ensurePlayerLocked("p1")
+	wolf := runtime.ensureWolfLocked(player)
+	runtime.creditDamageLocked(wolf, player, 50)
+	wolf.health = 0
+	runtime.awardKillXPLocked(wolf)
+
+	runtime.flushDirtyProgression(context.Background())
+	if len(fake.updated) != 1 {
+		t.Fatalf("UpdatePlayer calls = %d, want 1", len(fake.updated))
+	}
+	if fake.updated[0].GetId() != "p1" || fake.updated[0].GetExperience() != 100 {
+		t.Fatalf("persisted id %q xp %d, want p1/100", fake.updated[0].GetId(), fake.updated[0].GetExperience())
+	}
+
+	runtime.flushDirtyProgression(context.Background())
+	if len(fake.updated) != 1 {
+		t.Fatalf("second flush wrote again (%d); dirty not cleared", len(fake.updated))
 	}
 }
