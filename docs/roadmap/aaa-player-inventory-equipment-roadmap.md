@@ -101,11 +101,16 @@ Two independent limits, exactly as specified:
 **No bag → zero slots → you cannot loot or haul anything, period.** There is no base backpack; the bag
 *is* your backpack. Bigger/rarer bags = more slots. This makes the bag a real, sought-after item.
 
-**Carrying capacity (`max_weight`)** = **no flat base** (zero) + the bag's `bag_weight` contribution +
-an attribute bonus from **Strength/Endurance** (your body bears load). So a bagless character's capacity
-is purely their body (attributes) — enough to wear gear, but no space to loot. The bag adds both the
-slots (loot space) and extra weight capacity. *(Tuning note: a fresh character's attribute capacity must
-cover basic starting equipment so they aren't immobilized by their own armor — see §5.)*
+**Two different limits — don't conflate them:**
+- **Slots (loot space)** = **0 without a bag**; with a bag, up to a **max of 50** stacks. The bag *is*
+  your loot space.
+- **Carrying capacity (`max_weight`, in catties)** = a **floor of 200 catties** (so a new character can
+  always bear basic gear and isn't immobilized) + a **Strength/Endurance** bonus (your body bears load) +
+  the bag's `bag_weight`. The 200 floor is the answer to "new-character capacity."
+
+So a bagless character can still *wear* gear (200+ capacity covers it) but has **zero slots** → cannot
+loot/haul. Weight unit = **catty (斤, jīn)** — the Tang-era Chinese unit (1 jīn = 16 taels; 100 jīn = 1
+dan). Individual item weights are authored later when items exist.
 
 **Big-haul farming is intentionally gated.** Because the bag is small, you cannot solo-haul a fortune
 from the wild. Large-scale farming is meant to need **NPC infrastructure** — hire a farmer NPC / bring a
@@ -147,10 +152,13 @@ decays.** Two modes, set by `durability_mode`:
 - **Wear (equipment / non-consumable):** durability drops with **use** (combat, wearing). **Repairable**
   (NPC smith / station). `max_durability` varies wildly — a fine blade lasts far longer than a rusty one.
   At 0 → broken: still equipped but grants no benefit until repaired.
-- **Decay (consumables, perishables, even quest items):** durability drops with **time**, not use, and is
-  **NOT repairable**. At 0 → spoiled/destroyed. Meat carried 3 days in the wild rots and can no longer
-  feed you. This is what forces expeditions, profession resources, and managing hunger/thirst instead of
-  stockpiling.
+- **Decay (consumables, perishables):** durability drops with **online play time**, not use, and is
+  **NOT repairable**. At 0 → spoiled/destroyed. Meat carried a few days *of play* rots and can no longer
+  feed you. This forces expeditions and profession resources instead of stockpiling.
+  - **Clock = hours PLAYED, online only.** Decay accrues only while the player is online — log off for a
+    week and you don't return to a rotted inventory. (Implementation: advance decay by online time, e.g.
+    don't move `acquired_at` while offline / track played-time.)
+  - **Quest items NEVER decay** (exempt) — quests can't soft-lock from spoilage.
 
 **Storage slows decay.** Perishables in a city **bank/chest** decay slowly or not at all; in the field
 (your bag) they decay at full rate — provision for a trip, don't haul a pantry on your back.
@@ -253,13 +261,17 @@ by id.
 
 ## 11. Non-negotiable rules
 
-- **Slots are the hard cap; weight is the soft cap.** Never hold more stacks than `max_slots` (the bag).
-  You *may* exceed `max_weight`, but speed drops 2% per 1% over and you are **immobile at +50%** — weight
-  never blocks pickup, but enough overload pins you until you drop something.
-- The **bag** drives backpack capacity; **no bag = zero slots = no hauling.** Carry capacity has no flat
-  base — it comes from attributes (Strength/Endurance) + the bag.
-- **Only equipment is permanent** (wears, repairable); everything else **decays by time** and is not
-  repairable — nothing is hoarded forever except gear.
+- **Slots are the hard cap; weight is the soft cap.** Never hold more stacks than `max_slots` (the bag,
+  **max 50**). You *may* exceed `max_weight`, but speed drops 2% per 1% over and you are **immobile at
+  +50%** — weight never blocks pickup, but enough overload pins you until you drop something.
+- The **bag** drives slots; **no bag = zero slots = no hauling.** **Carry capacity (catties) has a floor
+  of 200** + Strength/Endurance + bag — a new character is never immobilized by basic gear.
+- **Two-handed weapons** occupy `weapon_main` and **lock** `weapon_off` (the off-hand can't be used).
+- **Duplicate rings/accessories allowed** (two of the same item may be slotted).
+- **Repair only at an NPC blacksmith** (a repair profession may allow it later — professions undesigned).
+  Consumables/perishables are never repairable.
+- **Only equipment is permanent** (wears, repairable); everything else **decays by online time** and is
+  not repairable — nothing is hoarded forever except gear.
 - Inventory is **DB-authoritative** and persisted; the server never invents or loses items.
 - Equip validation is **server-side** (category match, two-handed, slot-count) — clients cannot bypass.
 - Encumbrance is a **movement-speed multiplier** over the resolved speed — never a teleport/rubber-band.
@@ -271,20 +283,23 @@ by id.
 ## 12. Open design decisions
 
 ### Resolved (2026-06-28)
-- **Base carry capacity without a bag:** **zero** flat — capacity is attributes + bag; no bag = no slots.
-- **Equipped gear counts toward weight:** **yes** (equipped + backpack = carried weight).
-- **Encumbrance curve:** **2% speed per 1% over, immobile at +50%** (§5).
-- **Unequipping a bag with items inside:** **rejected** — free the slots first.
-- **Durability:** **in now**, two modes — wear-on-use (equipment, repairable) vs decay-by-time
-  (perishables/quest, not repairable); bank slows/pauses decay (§6).
+- **Slots:** 0 without a bag; **max 50** with a bag. **Weight capacity:** floor **200 catties** +
+  Strength/Endurance + bag (a new char is never immobilized by basic gear).
+- **Weight unit:** **catty (斤, jīn)** (Tang-era China). Weight = per-unit × quantity.
+- **Equipped gear counts toward weight:** yes.
+- **Encumbrance curve:** 2% speed per 1% over, **immobile at +50%** (§5).
+- **Unequipping a bag with items inside:** rejected — free the slots first.
+- **Durability:** in now — wear-on-use (equipment, repairable) vs decay-by-**online-time** (perishables,
+  not repairable). **Quest items never decay.** Bank slows/pauses decay (§6).
+- **Two-handed weapons:** occupy `weapon_main`, **lock** `weapon_off`.
+- **Duplicate rings/accessories:** allowed.
+- **Repair:** **NPC blacksmith only** (repair profession maybe later). Cost (coin):
+  `base_value × (missing_durability / max_durability) × rarity_mult`; **full repair, no max-durability
+  loss** (gear stays permanent). Consumables never repairable.
 
-### Still open
-- **Stacking & weight:** weight = per-unit × quantity (assumed) — confirm; do partial stacks count fully?
-- **Decay clock:** in-game hours vs real time; exact `decay_per_hour` per item; how the bank pauses it
-  (don't advance `acquired_at`, or a flag?).
-- **Quest items & decay:** exempt quest-critical items, or very long decay, so quests can't soft-lock?
-- **New-character capacity tuning:** ensure starting attribute capacity covers basic starting gear so a
-  fresh char isn't immobilized by their own armor.
-- **Two-handed weapons:** occupy both weapon slots — confirm the off-hand auto-clears on equip.
-- **Rings/accessories:** allow equipping two of the *same* item, or block duplicates?
-- **Repair cost/where:** NPC smith only, or field-repair kits? Cost model (coin from progression wallet).
+### Still open (tuning / future, when items + professions exist)
+- Per-item **weights**, **`decay_per_hour`**, **`bag_slots`/`bag_weight`** tiers, repair **`rarity_mult`**
+  values — authored with the items.
+- **Bank decay:** fully pause vs slow — pick the rate.
+- **Professions** (incl. a repair profession) — separate future doc.
+- **Online-time tracking** for decay (played-time counter vs not advancing `acquired_at` while offline).

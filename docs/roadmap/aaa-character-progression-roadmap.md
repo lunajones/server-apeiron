@@ -414,27 +414,31 @@ The attribute model is being reworked. The items below override the earlier mapp
 conflict and must be resolved before the attribute → family scaling is considered final. **Not
 implemented — design notes for a future pass.**
 
-### Attributes (in revision)
-- **Endurance = Vitality** (confirmed): scales **max health, stamina, posture**. The survivability stat,
-  separate from Strength (which currently overloads damage + hp + resistance — move hp/survival to
-  Endurance).
-- **Biological damage should NOT scale with Intelligence** — it needs a **different attribute (TBD)**.
-  Intelligence should not own biological offense.
-- **Trauma:** stays a Biological damage *type* — still **only 3 resistances** (no 4th family). Trauma
-  resistance = Biological resistance. Which attribute backs Biological **damage** vs Biological
-  **resistance** is open (depends on the point above).
-- Net: the §4 attribute → damage/resistance table is **not final** — revisit which attribute scales each
-  damage family and each resistance once the biological-damage attribute is chosen.
+### Attributes — 4 total, revised mapping (2026-06-28)
+We have **4 attributes**: Strength, Dexterity, Intelligence, **Endurance** (now activated).
 
-### NEW — Weapon → attribute scaling (Souls-like)
-- Some weapons must **scale with specific attributes** to increase damage (e.g. one weapon scales with
-  Strength, another with Dexterity), on top of / instead of the flat per-family attribute bonus. This is
-  the lever that ties **build (attributes) to weapon choice** for damage output.
-- To design: which weapon scales with which attribute(s); the scaling shape (Souls-style letter grades?
-  linear coefficient per attribute point?); how it stacks with the family-based attribute damage bonus in
-  §4/§5.
-- Touches: `weapon_kit` (an attribute-scaling spec per weapon/mode) and the damage resolution (apply the
-  weapon's attribute scaling to outgoing damage).
+| Attribute | Damage | Resistance | Other |
+| --- | --- | --- | --- |
+| **Strength** | Physical | Physical | — |
+| **Dexterity** | **Biological** (bleed/poison/trauma) ‡ | — | crit, armor penetration |
+| **Intelligence** | Chemical | — | alchemist |
+| **Endurance** | — | **Chemical + Biological** | max health, stamina, posture (vitality) |
+
+- **Endurance = Vitality + chemical/biological resistance.** Offloads survivability from Strength.
+- **Trauma needs no own attribute/resistance:** it is a **Biological damage type** — resisted by
+  **Biological resistance (Endurance)**; its damage scales with whatever scales Biological damage.
+- ‡ **Biological damage → Dexterity** (precise, vicious strikes that bleed/poison/cause trauma) —
+  **proposed, pending final confirm** (it's the "not Intelligence" answer; the only free attribute).
+- Still only **3 resistances** (Physical/Chemical/Biological) — no 4th family.
+- This supersedes the §4 table for the attribute → family mapping once confirmed + wired.
+
+### Weapon → attribute scaling (Souls-like)
+- Weapons **scale with specific attributes** to increase damage (the lever tying build → weapon choice).
+- **Confirmed v1:** **sword & shield scales with Strength + Endurance.** (Other weapons get their scaling
+  when developed.)
+- To design later: the scaling shape (Souls letter grades vs linear coefficient per point) and how it
+  stacks with the family-based attribute damage bonus. Touches `weapon_kit` (a scaling spec per
+  weapon/mode) + the damage resolution.
 
 ### Consolidated incomplete points (for the future review)
 - **Slice 3** — combat-mode trees + weapon-XP runtime (engine + content). Not started.
