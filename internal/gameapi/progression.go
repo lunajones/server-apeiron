@@ -13,6 +13,16 @@ import (
 // There is no disconnect hook, so a periodic flush (plus a final flush on shutdown) is the write path.
 const progressionFlushInterval = 10 * time.Second
 
+// Character leveling (Slice 4). v1 cap is 10; +3 attribute points per level. cumulativeCharacterXP[L]
+// is the total experience required to reach level L (index = level), per the v1 curve in
+// aaa-character-progression-roadmap.md §6 (wolf = 100 level XP → ~337 wolves to cap 10). Tunable data.
+const (
+	characterLevelCapV1     = 10
+	attributePointsPerLevel = 3
+)
+
+var cumulativeCharacterXP = []int64{0, 0, 1200, 2800, 4900, 7600, 11000, 15200, 20300, 26400, 33700}
+
 // Character progression — XP on kill (Slice 2) + persistence (Slice 1b).
 // See docs/roadmap/aaa-character-progression-roadmap.md.
 // Level XP is credited only on a creature's death, split across damage contributors by damage share.
@@ -61,11 +71,35 @@ func (r *Runtime) awardKillXPLocked(creature *entityState) {
 				if award := int64(xpValue * (dmg / total)); award > 0 {
 					player.progression.experience += award
 					player.progression.dirty = true
+					r.applyLevelProgressionLocked(player)
 				}
 			}
 		}
 	}
 	r.despawnCreatureLocked(creature)
+}
+
+// applyLevelProgressionLocked raises the player's level for as long as their cumulative experience
+// crosses the next threshold (up to the v1 cap), granting attribute points per level. Milestone
+// passive picks (1 of 3 at lv 10/15/20/30) need authored data + a client choice and land in a later
+// slice. Marks dirty so the gains persist.
+func (r *Runtime) applyLevelProgressionLocked(player *entityState) {
+	if player == nil || player.progression == nil {
+		return
+	}
+	prog := player.progression
+	for prog.level >= 1 && prog.level < characterLevelCapV1 {
+		next := prog.level + 1
+		if int(next) >= len(cumulativeCharacterXP) {
+			break
+		}
+		if prog.experience < cumulativeCharacterXP[next] {
+			break
+		}
+		prog.level = next
+		prog.attributePoints += attributePointsPerLevel
+		prog.dirty = true
+	}
 }
 
 // despawnCreatureLocked removes a creature from the world after death. Respawn cadence is a later

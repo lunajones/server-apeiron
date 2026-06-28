@@ -46,6 +46,31 @@ func TestKillXPSplitsByDamageContribution(t *testing.T) {
 	}
 }
 
+// TestExperienceLevelsUpAndGrantsAttributePoints locks Progression Slice 4: cumulative experience
+// crossing thresholds raises level (+3 attribute points each), up to the v1 cap of 10.
+func TestExperienceLevelsUpAndGrantsAttributePoints(t *testing.T) {
+	runtime := NewRuntimeWithOptions(DevFixtureRuntimeContracts(), RuntimeOptions{DisableCreatures: true})
+	player := runtime.ensurePlayerLocked("p1")
+
+	player.progression.experience = 1200
+	runtime.applyLevelProgressionLocked(player)
+	if player.progression.level != 2 || player.progression.attributePoints != 3 {
+		t.Fatalf("level/points = %d/%d, want 2/3", player.progression.level, player.progression.attributePoints)
+	}
+
+	player.progression.experience = 33700
+	runtime.applyLevelProgressionLocked(player)
+	if player.progression.level != 10 || player.progression.attributePoints != 27 {
+		t.Fatalf("level/points = %d/%d, want 10/27", player.progression.level, player.progression.attributePoints)
+	}
+
+	player.progression.experience = 10_000_000
+	runtime.applyLevelProgressionLocked(player)
+	if player.progression.level != 10 || player.progression.attributePoints != 27 {
+		t.Fatalf("over-cap level/points = %d/%d, want 10/27 (capped)", player.progression.level, player.progression.attributePoints)
+	}
+}
+
 // TestNoXPWithoutExperienceValue ensures a creature with no progression payout grants nothing (and
 // still despawns), so unconfigured creatures never leak XP.
 func TestNoXPWithoutExperienceValue(t *testing.T) {
