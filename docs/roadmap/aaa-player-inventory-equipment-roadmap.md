@@ -8,12 +8,13 @@ Date: 2026-06-28 · Status: design draft (grounded in the existing inventory sch
 3. Equipment slots
 4. The bag & carrying model (slots = hard cap, weight = soft cap)
 5. Weight → movement speed (encumbrance)
-6. Database design (exists vs add)
-7. Runtime design
-8. Implementation slices
-9. Connections to other systems
-10. Non-negotiable rules
-11. Open design decisions
+6. Durability & decay
+7. Database design (exists vs add)
+8. Runtime design
+9. Implementation slices
+10. Connections to other systems
+11. Non-negotiable rules
+12. Open design decisions
 
 ---
 
@@ -91,12 +92,20 @@ Two independent limits, exactly as specified:
   but doing so makes you **over-encumbered** and slows you down (§5). There is no hard weight wall (only
   the slot wall).
 
-**The bag drives capacity.** The item equipped in the `bag` slot grants the backpack its `max_slots`
-(and a `max_weight` contribution). No bag equipped → minimal/zero backpack (you can equip gear but not
-haul loot). Bigger/rarer bags = more slots. This makes the bag a real, sought-after item.
+**The bag drives capacity.** The item equipped in the `bag` slot grants the backpack its `max_slots`.
+**No bag → zero slots → you cannot loot or haul anything, period.** There is no base backpack; the bag
+*is* your backpack. Bigger/rarer bags = more slots. This makes the bag a real, sought-after item.
 
-`max_weight` (carrying capacity) = a small **base** + the bag's contribution + (future) an attribute
-bonus from **Strength/Endurance** (progression tie-in — strong/tough characters haul more).
+**Carrying capacity (`max_weight`)** = **no flat base** (zero) + the bag's `bag_weight` contribution +
+an attribute bonus from **Strength/Endurance** (your body bears load). So a bagless character's capacity
+is purely their body (attributes) — enough to wear gear, but no space to loot. The bag adds both the
+slots (loot space) and extra weight capacity. *(Tuning note: a fresh character's attribute capacity must
+cover basic starting equipment so they aren't immobilized by their own armor — see §5.)*
+
+**Big-haul farming is intentionally gated.** Because the bag is small, you cannot solo-haul a fortune
+from the wild. Large-scale farming is meant to need **NPC infrastructure** — hire a farmer NPC / bring a
+**cart** into the wilderness and **guard it** while it works. The player protects the operation rather
+than personally hauling everything. (Design vision; the NPC/cart systems are future docs — noted in §10.)
 
 ---
 
@@ -105,21 +114,49 @@ bonus from **Strength/Endurance** (progression tie-in — strong/tough character
 The server computes **total carried weight** = Σ(`item.weight` × `quantity`) across the player's
 backpack **and** equipped gear, then compares to `max_weight`:
 
-| Load | Effect |
-| --- | --- |
-| `carried ≤ max_weight` | normal movement speed |
-| `carried > max_weight` | **over-encumbered**: speed reduced proportionally to the overage, down to a floor |
+**Curve (locked):** every **1% over** capacity = **2% speed lost**, reaching **100% loss (immobile) at
+50% over**. Formula: `speedMultiplier = clamp(1 - 2 × (carried - max_weight) / max_weight, 0, 1)`.
 
-Proposed (tunable): `speedMultiplier = clamp(1 - (carried - max_weight) / max_weight × k_enc, floor, 1)`
-with e.g. `k_enc = 0.5`, `floor = 0.4`. So at 2× capacity you're at the floor (40% speed) — heavy but
-never fully stuck. Slots remain the only hard wall.
+| Overage (carried vs max_weight) | Speed lost | Speed multiplier |
+| --- | --- | --- |
+| ≤ 0% (within capacity) | 0% | 1.00 |
+| +10% | 20% | 0.80 |
+| +20% | 40% | 0.60 |
+| +35% | 70% | 0.30 |
+| +50% or more | 100% | **0.00 (immobile)** |
+
+So weight never blocks *picking up* (slots do that), but enough overload **can pin you in place** until
+you drop weight — a real consequence, not a soft nudge. `k = 2` and the immobilize point (50%) are
+tunable.
 
 Runtime: the encumbrance multiplier modulates the player's movement speed each tick (a clean multiplier
 over the resolved move speed; never a teleport/rubber-band — respects the movement contracts).
 
 ---
 
-## 6. Database design (exists vs add)
+## 6. Durability & decay
+
+Durability is what stops the player hoarding forever — **only equipment is permanent; everything else
+decays.** Two modes, set by `durability_mode`:
+
+- **Wear (equipment / non-consumable):** durability drops with **use** (combat, wearing). **Repairable**
+  (NPC smith / station). `max_durability` varies wildly — a fine blade lasts far longer than a rusty one.
+  At 0 → broken: still equipped but grants no benefit until repaired.
+- **Decay (consumables, perishables, even quest items):** durability drops with **time**, not use, and is
+  **NOT repairable**. At 0 → spoiled/destroyed. Meat carried 3 days in the wild rots and can no longer
+  feed you. This is what forces expeditions, profession resources, and managing hunger/thirst instead of
+  stockpiling.
+
+**Storage slows decay.** Perishables in a city **bank/chest** decay slowly or not at all; in the field
+(your bag) they decay at full rate — provision for a trip, don't haul a pantry on your back.
+
+Net: **gear** is the only thing kept forever (and even it needs repair); food/potions/materials are a
+**flow** you must keep replenishing — the heartbeat of the survival/profession loop. *(Caution:
+quest-critical items may need exemption or very long decay so quests can't soft-lock — see §12.)*
+
+---
+
+## 7. Database design (exists vs add)
 
 Legend: **EXISTS** = already in migration 026. **ADD** = new column in that table's CREATE migration
 (migrations are CREATE-only — no ALTER). All ids/names English.
@@ -137,10 +174,16 @@ Use as-is. A player gets two rows: `inventory_type='backpack'` and `inventory_ty
 | `bag_slots` | **ADD** INT NULL | bag items: backpack slots granted |
 | `bag_weight` | **ADD** FLOAT NULL | bag items: carrying-capacity contribution |
 | `equip_stats` | **ADD** JSONB | gear stat bonuses (resistance/attributes) — authored later; the "gear" addend in the damage doc's base+gear+buffs |
+| `durability_mode` | **ADD** TEXT NULL | `wear` (equipment) / `decay` (perishable) / NULL = indestructible |
+| `max_durability` | **ADD** FLOAT NULL | full durability; varies widely by item |
+| `durability_per_use` | **ADD** FLOAT NULL | wear mode: durability lost per use |
+| `decay_per_hour` | **ADD** FLOAT NULL | decay mode: durability lost per in-game hour (slowed/0 in bank) |
+| `is_repairable` | **ADD** BOOL DEFAULT FALSE | equipment true; consumables false (never repairable) |
 
-### `inventory_item` — EXISTS
-Use as-is (`slot_index`, `is_equipped`, `quantity`, `durability`). Equipment slots map to fixed
-`slot_index` values in the equipment inventory.
+### `inventory_item` — EXISTS (+ ADD)
+Use `slot_index`, `is_equipped`, `quantity`, `durability` as-is (current durability lives here).
+Equipment slots map to fixed `slot_index` values in the equipment inventory. **ADD** `acquired_at`
+TIMESTAMP so decay can be computed from time-held (the bank can pause it by not advancing decay).
 
 ### Player link — EXISTS
 `inventory.owner_type='player'` + `owner_id = player.id`. No schema change; the player owns inventories
@@ -148,7 +191,7 @@ by id.
 
 ---
 
-## 7. Runtime design
+## 8. Runtime design
 
 - **Load on attach:** the game server loads the player's backpack + equipment inventories (extend the
   load that already brought in progression). Compute initial carried weight + capacity.
@@ -159,28 +202,31 @@ by id.
   rules, slot-count hard cap on pickup).
 - **Encumbrance:** recompute carried weight on any inventory change; apply the speed multiplier (§5).
 - **Bag:** equipping/unequipping a bag updates the backpack's `max_slots`/`max_weight`; unequipping a
-  bag that would orphan items is rejected (or items stay until slots free up — decision §11).
+  bag that would orphan items is **rejected** (you must free the slots first — decision resolved, §12).
 - **Persistence:** inventory is DB-authoritative; persist changes (periodic flush + on change), same
   shape as progression persistence.
 
 ---
 
-## 8. Implementation slices
+## 9. Implementation slices
 
-1. **Schema additions.** `item_template.equip_slot` + `weapon_kit_id` + `bag_slots`/`bag_weight` +
-   `equip_stats`; seed a few starter items (a bag, basic armor, the sword/shield as weapon items).
+1. **Schema additions.** `item_template`: `equip_slot` + `weapon_kit_id` + `bag_slots`/`bag_weight` +
+   `equip_stats` + durability columns; `inventory_item.acquired_at`. Seed starter items (a bag, basic
+   armor, the sword/shield as weapon items, a perishable like meat).
 2. **Load + persist player inventories** on attach; add inventory write RPCs.
 3. **Equip / unequip** command + slot validation (category match, ring/accessory/weapon rules).
 4. **Bag → backpack capacity.** Equipped bag sets `max_slots`/`max_weight`; no bag = no haul.
-5. **Weight → movement speed.** Carried-weight calc + encumbrance multiplier on movement.
-6. **Item pickup (loot).** Add items to the backpack respecting the slot hard cap + stacking.
-7. **Presentation.** Publish equipment + backpack in the snapshot for the inventory UI.
-8. **(Future) Equipment stats.** Wire `equip_stats` into resistance/attributes (the gear addend) and
+5. **Weight → movement speed.** Carried-weight calc + encumbrance multiplier (immobile at +50%).
+6. **Item pickup (loot).** Add to the backpack respecting the slot hard cap + stacking.
+7. **Durability & repair.** Wear-on-use for equipment (broken = no benefit, repairable); decay-by-time
+   for perishables (spoils → destroyed, not repairable); bank pauses/slows decay.
+8. **Presentation.** Publish equipment + backpack + weight/encumbrance in the snapshot for the UI.
+9. **(Future) Equipment stats.** Wire `equip_stats` into resistance/attributes (the gear addend) and
    weapon items into the combat kit (→ combat modes → progression mode trees).
 
 ---
 
-## 9. Connections to other systems
+## 10. Connections to other systems
 
 - **Combat / Progression:** equipping a weapon (`weapon_kit_id`) sets your combat kit → its **combat
   modes** → the **mode trees** from the progression roadmap. The weapon slots are the bridge between
@@ -191,14 +237,24 @@ by id.
   invest beyond combat.
 - **Economy:** `item_template.base_value` + the player wallet (`coin`) from progression feed buying/
   selling later.
+- **NPC haulers & carts (future):** because the bag is small and perishables decay, **large-scale
+  farming needs NPC infrastructure** — hire a farmer NPC, bring a **cart** into the wild, and **guard
+  it** while it gathers/hauls. The player defends the operation instead of personally carrying a fortune.
+  This makes wilderness expeditions a protect-the-convoy loop. (Separate future doc; the limited bag here
+  is what creates the need.)
+- **Survival (future):** decay (§6) feeds hunger/thirst — you provision for a trip, can't hoard food.
 
 ---
 
-## 10. Non-negotiable rules
+## 11. Non-negotiable rules
 
-- **Slots are the hard cap; weight is the soft cap.** Never hold more stacks than `max_slots`; you may
-  exceed `max_weight` but pay movement speed for it (down to a floor, never fully stuck).
-- The **bag** drives backpack capacity; no bag = no hauling.
+- **Slots are the hard cap; weight is the soft cap.** Never hold more stacks than `max_slots` (the bag).
+  You *may* exceed `max_weight`, but speed drops 2% per 1% over and you are **immobile at +50%** — weight
+  never blocks pickup, but enough overload pins you until you drop something.
+- The **bag** drives backpack capacity; **no bag = zero slots = no hauling.** Carry capacity has no flat
+  base — it comes from attributes (Strength/Endurance) + the bag.
+- **Only equipment is permanent** (wears, repairable); everything else **decays by time** and is not
+  repairable — nothing is hoarded forever except gear.
 - Inventory is **DB-authoritative** and persisted; the server never invents or loses items.
 - Equip validation is **server-side** (category match, two-handed, slot-count) — clients cannot bypass.
 - Encumbrance is a **movement-speed multiplier** over the resolved speed — never a teleport/rubber-band.
@@ -207,13 +263,23 @@ by id.
 
 ---
 
-## 11. Open design decisions
+## 12. Open design decisions
 
-- **Stacking & weight of stacks:** weight = per-unit × quantity (assumed). Confirm.
-- **Base carry capacity** without a bag (some small amount, or truly zero?).
-- **Encumbrance curve** numbers (`k_enc`, `floor`) and whether it's stepped or smooth.
-- **Two-handed weapons:** occupy both weapon slots — confirm the off-hand auto-clears.
-- **Unequipping a bag with items still inside:** reject, or allow and lock the overflow until slots free?
-- **Equipment weight:** does equipped gear count toward encumbrance (assumed yes) or only the backpack?
-- **Durability** (`inventory_item.durability` exists): in scope now or later?
-- **Rings/accessories:** any restriction on equipping two of the same item?
+### Resolved (2026-06-28)
+- **Base carry capacity without a bag:** **zero** flat — capacity is attributes + bag; no bag = no slots.
+- **Equipped gear counts toward weight:** **yes** (equipped + backpack = carried weight).
+- **Encumbrance curve:** **2% speed per 1% over, immobile at +50%** (§5).
+- **Unequipping a bag with items inside:** **rejected** — free the slots first.
+- **Durability:** **in now**, two modes — wear-on-use (equipment, repairable) vs decay-by-time
+  (perishables/quest, not repairable); bank slows/pauses decay (§6).
+
+### Still open
+- **Stacking & weight:** weight = per-unit × quantity (assumed) — confirm; do partial stacks count fully?
+- **Decay clock:** in-game hours vs real time; exact `decay_per_hour` per item; how the bank pauses it
+  (don't advance `acquired_at`, or a flag?).
+- **Quest items & decay:** exempt quest-critical items, or very long decay, so quests can't soft-lock?
+- **New-character capacity tuning:** ensure starting attribute capacity covers basic starting gear so a
+  fresh char isn't immobilized by their own armor.
+- **Two-handed weapons:** occupy both weapon slots — confirm the off-hand auto-clears on equip.
+- **Rings/accessories:** allow equipping two of the *same* item, or block duplicates?
+- **Repair cost/where:** NPC smith only, or field-repair kits? Cost model (coin from progression wallet).
