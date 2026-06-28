@@ -105,7 +105,7 @@ Two independent limits, exactly as specified:
 - **Slots (loot space)** = **0 without a bag**; with a bag, up to a **max of 50** stacks. The bag *is*
   your loot space.
 - **Carrying capacity (`max_weight`, in catties)** = a **floor of 200 catties** (so a new character can
-  always bear basic gear and isn't immobilized) + a **Strength/Endurance** bonus (your body bears load) +
+  always bear basic gear and isn't immobilized) + a **Muscles/Resilience** bonus (your body bears load) +
   the bag's `bag_weight`. The 200 floor is the answer to "new-character capacity."
 
 So a bagless character can still *wear* gear (200+ capacity covers it) but has **zero slots** → cannot
@@ -244,9 +244,13 @@ by id.
 - **Combat / Progression:** equipping a weapon (`weapon_kit_id`) sets your combat kit → its **combat
   modes** → the **mode trees** from the progression roadmap. The weapon slots are the bridge between
   inventory and the whole combat-mastery spine.
-- **Damage / Resistances:** `equip_stats` is the **gear** term in the damage doc's
-  `resistance/damage = base + gear + buffs` sum — equipment grants resistance/attribute bonuses.
-- **Progression attributes:** Strength/Endurance raise carrying capacity (`max_weight`) — a reason to
+- **Damage / Resistances / Armor:** total resistance = **Resilience** (attribute base) + **armor**
+  (`equip_stats`, the "gear" term in the damage doc's `resistance = base + gear`). Armor **weight class**
+  sets the total — **light < medium < heavy** resistance — and heavier armor costs **more weight** →
+  feeds encumbrance (tank more, move less). Each piece **distributes** its resistance across the 3
+  families differently (a light piece with more physical than chemical, etc.) → mix armor to cover
+  weaknesses. (Attribute model + this resistance split are in the progression doc §17.)
+- **Progression attributes:** Muscles/Resilience raise carrying capacity (`max_weight`) — a reason to
   invest beyond combat.
 - **Economy:** `item_template.base_value` + the player wallet (`coin`) from progression feed buying/
   selling later.
@@ -265,7 +269,7 @@ by id.
   **max 50**). You *may* exceed `max_weight`, but speed drops 2% per 1% over and you are **immobile at
   +50%** — weight never blocks pickup, but enough overload pins you until you drop something.
 - The **bag** drives slots; **no bag = zero slots = no hauling.** **Carry capacity (catties) has a floor
-  of 200** + Strength/Endurance + bag — a new character is never immobilized by basic gear.
+  of 200** + Muscles/Resilience + bag — a new character is never immobilized by basic gear.
 - **Two-handed weapons** occupy `weapon_main` and **lock** `weapon_off` (the off-hand can't be used).
 - **Duplicate rings/accessories allowed** (two of the same item may be slotted).
 - **Repair only at an NPC blacksmith** (a repair profession may allow it later — professions undesigned).
@@ -284,7 +288,7 @@ by id.
 
 ### Resolved (2026-06-28)
 - **Slots:** 0 without a bag; **max 50** with a bag. **Weight capacity:** floor **200 catties** +
-  Strength/Endurance + bag (a new char is never immobilized by basic gear).
+  Muscles/Resilience + bag (a new char is never immobilized by basic gear).
 - **Weight unit:** **catty (斤, jīn)** (Tang-era China). Weight = per-unit × quantity.
 - **Equipped gear counts toward weight:** yes.
 - **Encumbrance curve:** 2% speed per 1% over, **immobile at +50%** (§5).

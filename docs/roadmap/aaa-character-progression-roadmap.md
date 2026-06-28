@@ -76,22 +76,25 @@ passive`. Spine B stays universal (cheap to balance); Spine A creates the real s
 
 ## 4. Spine B — Character Level + Attributes
 
-> ⚠️ **The attribute → damage/resistance mapping below is UNDER REVISION — see §17.** Endurance becomes
-> a 4th (vitality) attribute, biological damage moves off Intelligence, and weapon→attribute scaling is
-> added. Treat the table here as the implemented-but-superseded v1.
+> ⚠️ **The attribute model is REDESIGNED — §17 is authoritative.** The 5 attributes are **Muscles**
+> (physical dmg), **Nerves** (chemical dmg), **Cruelty** (biological/DoT — poison/bleed/trauma),
+> **Kindness** (healing), **Resilience** (base resistances + vitality). The table below is the old/
+> as-built v1 (Strength/Dexterity/Intelligence) — kept only because the code/DB still use those names.
 
 - **Character XP** (damage-on-kill only) → level. Cap: full game **50**, v1 **10**.
-- **Attribute points:** **+3 per level**, spent freely:
+- **Attribute points:** **+3 per level**, spent freely. New model (see §17):
 
-| Attribute | Theme | Scales (additive over base profile) |
-| --- | --- | --- |
-| **Strength** | bruiser (sword, hammer, shield) | physical damage, max health, physical resistance |
-| **Dexterity** | precise (bow, needles) | crit, stamina, armor penetration |
-| **Intelligence** | alchemist (censer, siphon) | chemical + biological damage and resistance |
+| Attribute | Governs |
+| --- | --- |
+| **Muscles** | physical damage |
+| **Nerves** | chemical/alchemical damage |
+| **Cruelty** | biological / damage-over-time (poison, bleed, trauma) |
+| **Kindness** | healing power |
+| **Resilience** | base resistances (3 families) + vitality (hp/stamina/posture) |
 
-- **Milestone passives:** at levels **10/15/20/30** (and every +10 to 50) pick **1 of 3** beneficial
-  passives. The pool is **universal** (same options for everyone — no class gating), cheap to author and
-  balance. Spread comes from weapon/mode + stats + which of the 3 you take.
+- **Milestone passives — per attribute:** investing in an attribute unlocks its milestone passive choices
+  (pick 1 of N); effects (incl. crit / armor penetration) can be shared across different attributes'
+  pools. Crit/pen are passive/weapon stats, not a dedicated attribute. Content authored later.
 - All attribute/passive effects are **additive over the base profile** — they slot into the damage doc's
   `resistance/damage = base + gear + buffs` sum with **no** rewrite of combat resolution.
 
@@ -408,46 +411,63 @@ sets; gear stats; skill trees beyond combat modes; XP banking; cross-weapon/acco
 
 ---
 
-## 17. Pending Design Revision (2026-06-28) — §4/§5 ARE NOT FINAL
+## 17. Attribute Model — REDESIGNED to 5 (2026-06-28, AUTHORITATIVE; supersedes §4/§5)
 
-The attribute model is being reworked. The items below override the earlier mapping where they
-conflict and must be resolved before the attribute → family scaling is considered final. **Not
-implemented — design notes for a future pass.**
+The attribute system is redesigned. **This section is the source of truth.** §4/§5 and the as-built
+Slice 5 (§16) use the OLD names and are superseded — the rename + impl impact is at the end.
 
-### Attributes — 4 total, revised mapping (2026-06-28)
-We have **4 attributes**: Strength, Dexterity, Intelligence, **Endurance** (now activated).
+### The 5 attributes
+| Attribute (id) | Governs |
+| --- | --- |
+| **Muscles** (was Strength) | **physical** damage |
+| **Nerves** (was Intelligence) | **chemical/alchemical** damage (the immediate "elemental") |
+| **Cruelty** (new) | **biological / damage-over-time**: poison, bleed, **trauma** |
+| **Kindness** (new) | **healing** power (via skills) |
+| **Resilience** (was Endurance) | **base resistances** (all 3 families) + **vitality** (max health, stamina, posture) |
 
-| Attribute | Damage | Resistance | Other |
-| --- | --- | --- | --- |
-| **Strength** | Physical | Physical | — |
-| **Dexterity** | **Biological** (bleed/poison/trauma) ‡ | — | crit, armor penetration |
-| **Intelligence** | Chemical | — | alchemist |
-| **Endurance** | — | **Chemical + Biological** | max health, stamina, posture (vitality) |
+Structure: **3 damage attributes by timing** (Muscles/Nerves = immediate, Cruelty = over-time) +
+**1 healing** (Kindness) + **1 defense/vitality** (Resilience). No precision attribute — see below.
 
-- **Endurance = Vitality + chemical/biological resistance.** Offloads survivability from Strength.
-- **Trauma needs no own attribute/resistance:** it is a **Biological damage type** — resisted by
-  **Biological resistance (Endurance)**; its damage scales with whatever scales Biological damage.
-- ‡ **Biological damage → Dexterity** (precise, vicious strikes that bleed/poison/cause trauma) —
-  **proposed, pending final confirm** (it's the "not Intelligence" answer; the only free attribute).
-- Still only **3 resistances** (Physical/Chemical/Biological) — no 4th family.
-- This supersedes the §4 table for the attribute → family mapping once confirmed + wired.
+### Resistance = Resilience + armor
+- **Resilience** gives the base resistance to all three families + vitality.
+- **Armor** adds on top. Weight class sets the total: **light < medium < heavy**; heavier = more
+  resistance but **more weight** → feeds the inventory encumbrance (tank more, move less).
+- Each armor **piece distributes** its resistance across families differently (a light piece with more
+  physical than chemical, etc.) → mix armor to cover weaknesses. This is the inventory `equip_stats` +
+  the damage doc's `resistance = base + gear` (base = Resilience, gear = armor).
 
-### Weapon → attribute scaling (Souls-like)
+### Crit / armor penetration / attack speed — no dedicated attribute
+These are **milestone-passive effects and/or weapon stats**, not an attribute. The same effect (e.g.
+armor penetration) can appear in **different attributes' milestone pools** — a Nerves milestone or a
+Muscles milestone can both grant it. The old Dexterity is **dropped** as an attribute.
+
+### Milestone passives — per attribute (kept)
+Attribute milestones stay: investing in an attribute unlocks that attribute's milestone passive choices
+(pick 1 of N), and the same effect can appear across **different attributes' pools**. Content authored later.
+
+### Weapon → attribute scaling
 - Weapons **scale with specific attributes** to increase damage (the lever tying build → weapon choice).
-- **Confirmed v1:** **sword & shield scales with Strength + Endurance.** (Other weapons get their scaling
-  when developed.)
-- To design later: the scaling shape (Souls letter grades vs linear coefficient per point) and how it
-  stacks with the family-based attribute damage bonus. Touches `weapon_kit` (a scaling spec per
-  weapon/mode) + the damage resolution.
+- **Confirmed v1:** **sword & shield scales with Muscles + Resilience.** (Other weapons when developed.)
+- Scaling shape (letter grades vs linear) + stacking with the family bonus — designed later. Touches
+  `weapon_kit` (a scaling spec per weapon/mode) + the damage resolution.
+
+### Trauma
+A **biological damage-over-time type** → scales with **Cruelty**, resisted by **Resilience** (biological
+resistance). It is the **medic's** offensive tool (needles striking vital points), so a needle-medic
+invests in **Cruelty (trauma) + Kindness (healing)** — a real hybrid.
+
+### Implementation / rename impact
+- DB `player` columns: rename `strength→muscles`, `intelligence→nerves`, `endurance→resilience`; **add**
+  `cruelty`, `kindness`; **drop** `dexterity` as an attribute (crit/pen move to passives/weapon stats).
+- Slice 5 scaling (currently "Strength → hp/damage/resistance") splits: **physical damage → Muscles**;
+  **hp/stamina/posture + resistances → Resilience**. The spend command + snapshot keys take the new names.
+- The §4 table + §16 as-built keep the OLD names until this lands.
 
 ### Consolidated incomplete points (for the future review)
+- **Attribute rename + new 5-attribute model** (above) — not yet wired (code/DB still use the old 4).
 - **Slice 3** — combat-mode trees + weapon-XP runtime (engine + content). Not started.
-- **Dexterity & Intelligence** combat scaling — not wired (only Strength is).
-- **Endurance** — not wired yet (vitality + resistance per the revision above).
-- **Biological-damage attribute** — undecided (not Intelligence).
-- **Weapon → attribute scaling** — new, undesigned (above).
-- **Milestone passive picks** — mechanism + content not built.
-- **Respec** (free <10, gold cost, refund) — not implemented.
-- **Healing/support → weapon XP** — not implemented.
-- **Telemetry** (§10) — not implemented.
-- **Real character creation** (dev seed is a stand-in) and **creature respawn** after kill — not done.
+- **Per-attribute damage scaling** — only the old "Strength" path is wired (→ Muscles/Resilience split);
+  **Nerves (chemical), Cruelty (biological/DoT), Kindness (healing)** scaling not wired.
+- **Milestone passive pools** (per attribute; crit/pen effects shared across attributes) — not built.
+- **Weapon → attribute scaling** — designed (sword+shield = Muscles+Resilience), not wired.
+- **Respec, healing→weapon XP, telemetry, real character creation, creature respawn** — not done.

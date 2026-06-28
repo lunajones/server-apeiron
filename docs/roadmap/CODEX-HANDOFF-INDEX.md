@@ -37,14 +37,19 @@ Doc: [aaa-character-progression-roadmap.md](aaa-character-progression-roadmap.md
 **On Codex's worklist starting Monday 2026-06-29.**
 
 **Built & live (the level + attribute spine):** load + persist (dev player `local_player` verified
-live), level XP on kill, level-up + attribute points, Strength scaling combat (hp/damage/resistance),
+live), level XP on kill, level-up + attribute points, attribute scaling combat (hp/damage/resistance),
 the attribute-point spend command, and snapshot publishing for the HUD. The full playable loop
 (kill → XP → level → spend → stronger → persists) is closed server-side. See doc §16.
+⚠️ **Attribute model REDESIGNED (doc §17, authoritative):** 5 attributes — **Muscles** (physical dmg),
+**Nerves** (chemical dmg), **Cruelty** (biological/DoT — poison/bleed/trauma), **Kindness** (healing),
+**Resilience** (base resistances + vitality). Crit/armor-pen are milestone-passive/weapon stats (no
+precision attribute). The as-built code/DB still use the old strength/dexterity/intelligence/endurance —
+renaming is part of the remaining work.
 
 **Design (locked):** classless, two spines. Spine A = one level tree per combat mode per weapon (mode
 owns the tree; level 1 = free basic attack; +1 pt/level; node types skill/passive/modifier/crossover;
-cap 50 pts). Spine B = character XP → level (v1 cap 10, game 50) → +3 attr/level + universal milestone
-picks (1 of 3). Two XP pools: level XP = damage-on-kill only; weapon XP = damage/heal/support for the
+cap 50 pts). Spine B = character XP → level (v1 cap 10, game 50) → +3 attr/level + **per-attribute**
+milestone passive picks (1 of N; effects like crit/armor-pen shared across attributes' pools). Two XP pools: level XP = damage-on-kill only; weapon XP = damage/heal/support for the
 mode, capped per participant at the creature's weapon-XP value. Respec free <10, then copper→silver→gold.
 
 **Codex authors (remaining):** Slice 3 — combat-mode trees + weapon-XP runtime (the new node/passive/
