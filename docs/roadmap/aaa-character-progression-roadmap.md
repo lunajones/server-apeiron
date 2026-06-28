@@ -290,8 +290,12 @@ new currency columns. All already exposed by `PlayerDataService.GetPlayer`.
 
 1. **Persistence spine.** Load `player` level/xp/attributes/wallet + `player_combat_mode_progress` on
    attach; write back on disconnect. ✅ *when a player's level/XP/points survive a reconnect.*
-   **Status: 1a (load) DONE** — runtime reads progression via `PlayerDataService.GetPlayer` on attach.
-   **1b (write-back) pending** — needs a new `UpdatePlayer`/`SavePlayerProgression` RPC (db has read only).
+   **Status: 1a (load) + 1b (write-back) DONE** — runtime reads progression via
+   `PlayerDataService.GetPlayer` on attach and persists dirty players every 10s (+ shutdown flush) via
+   the new `PlayerDataService.UpdatePlayer` RPC. Both unit-tested.
+   ⚠️ **End-to-end gap:** there is **no `player` row** yet (no character-creation flow / seed), so live
+   the load returns not-found (keeps defaults) and the persist UPDATEs 0 rows. Needs a player row
+   (character creation or a dev seed, which also needs a `creature_instance` FK row) to be demonstrable.
 2. **Creature death + contribution XP.** Detect death; split `experience_value` by damage share (level
    XP); credit the used mode's weapon XP capped at `weapon_experience_value`. ✅ *when killing a wolf
    raises level XP (by damage) and weapon XP (capped).*
