@@ -45,6 +45,11 @@ trade-off, and item pickup — built on the inventory tables that already exist.
 - **`InventoryDataService`** (read-only today): GetInventory, GetInventoryByOwner, GetInventoryWithItems,
   GetItemTemplate, ListItemTemplatesByType, GetItem, GetItemsByInventory.
 
+> 📑 **Full technical reference:** every existing table/column/model/RPC, the game-server side, the data
+> flow, and the **anti-dup rules** are mapped in
+> [aaa-inventory-system-reference.md](aaa-inventory-system-reference.md). This roadmap is the design;
+> that is the as-built map.
+
 So slots, per-item weight, current/max weight, and an equipment container are **already modeled**. We
 add the named slots, the bag-capacity link, the weight→speed runtime, equip/pickup commands, and write
 RPCs (the service is read-only, like PlayerDataService was before progression).

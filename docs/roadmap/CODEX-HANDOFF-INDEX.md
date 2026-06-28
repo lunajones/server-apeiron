@@ -97,7 +97,9 @@ These are primarily Codex-authored; Claude only touched the orientation/lunge la
 ---
 
 ## 6. Player Inventory & Equipment
-Doc: [aaa-player-inventory-equipment-roadmap.md](aaa-player-inventory-equipment-roadmap.md)
+Docs: [aaa-player-inventory-equipment-roadmap.md](aaa-player-inventory-equipment-roadmap.md) (design/plan)
+· [aaa-inventory-system-reference.md](aaa-inventory-system-reference.md) (**technical reference** — every
+existing table/column/model/RPC mapped, the game-server side, and anti-dup rules)
 
 **Built:** nothing yet — **design draft** (grounded in the existing `inventory`/`item_template`/
 `inventory_item` tables from migration 026). DB already has containers with slots + weight, item
