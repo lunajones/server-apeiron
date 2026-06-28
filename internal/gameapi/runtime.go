@@ -490,6 +490,12 @@ func (r *Runtime) SubmitCommand(ctx context.Context, cmd *gamev1.PlayerCommand) 
 		r.applyDefense(player, cmd)
 	case gamev1.CommandType_COMMAND_TYPE_SWITCH_COMBAT_MODE:
 		r.applyCombatMode(player, cmd)
+	case gamev1.CommandType_COMMAND_TYPE_ALLOCATE_ATTRIBUTE:
+		if ok, code, message := r.allocatePlayerAttributeLocked(player, cmd); !ok {
+			ack := r.ackLocked(cmd, player, false, code, message)
+			r.queueAckLocked(cmd.GetContext().GetSessionId(), ack)
+			return ack, nil
+		}
 	default:
 		player.locomotion = r.locomotion("grounded", "idle", "", "idle", player.position, player.position, 0)
 	}
@@ -2746,6 +2752,8 @@ func commandTypeName(t gamev1.CommandType) string {
 		return "use_consumable"
 	case gamev1.CommandType_COMMAND_TYPE_INTERACT:
 		return "interact"
+	case gamev1.CommandType_COMMAND_TYPE_ALLOCATE_ATTRIBUTE:
+		return "allocate_attribute"
 	default:
 		return "unknown"
 	}

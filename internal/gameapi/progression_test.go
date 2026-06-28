@@ -3,7 +3,36 @@ package gameapi
 import (
 	"math"
 	"testing"
+
+	gamev1 "server-apeiron/gen/apeiron/game/v1"
 )
+
+// TestAllocateAttributeSpendsPointsAndScales locks the attribute-spend loop: spending points raises the
+// attribute, recomputes derived stats (max health), and fails when there are no points left.
+func TestAllocateAttributeSpendsPointsAndScales(t *testing.T) {
+	runtime := NewRuntimeWithOptions(DevFixtureRuntimeContracts(), RuntimeOptions{DisableCreatures: true})
+	player := runtime.ensurePlayerLocked("p1")
+	player.progression.attributePoints = 5
+
+	cmd := &gamev1.PlayerCommand{
+		Type: gamev1.CommandType_COMMAND_TYPE_ALLOCATE_ATTRIBUTE,
+		Payload: &gamev1.PlayerCommand_AllocateAttribute{
+			AllocateAttribute: &gamev1.AllocateAttributeCommand{Attribute: "strength", Amount: 5},
+		},
+	}
+	if ok, code, _ := runtime.allocatePlayerAttributeLocked(player, cmd); !ok {
+		t.Fatalf("allocate failed: %s", code)
+	}
+	if player.progression.strength != 6 || player.progression.attributePoints != 0 {
+		t.Fatalf("str/points = %.0f/%d, want 6/0", player.progression.strength, player.progression.attributePoints)
+	}
+	if player.maxHealth != 150 {
+		t.Fatalf("maxHealth = %.0f, want 150 (str 6)", player.maxHealth)
+	}
+	if ok, code, _ := runtime.allocatePlayerAttributeLocked(player, cmd); ok || code != "insufficient_attribute_points" {
+		t.Fatalf("expected insufficient_attribute_points, got ok=%v code=%s", ok, code)
+	}
+}
 
 // TestStrengthScalesDerivedCombatStats locks Progression Slice 5: Strength adds max health, outgoing
 // physical damage and physical resistance, additively over the base (base attribute 1.0 = no bonus).

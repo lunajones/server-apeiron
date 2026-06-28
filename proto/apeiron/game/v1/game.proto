@@ -199,6 +199,7 @@ enum CommandType {
   COMMAND_TYPE_SWITCH_COMBAT_MODE = 9;
   COMMAND_TYPE_USE_CONSUMABLE = 10;
   COMMAND_TYPE_INTERACT = 11;
+  COMMAND_TYPE_ALLOCATE_ATTRIBUTE = 12;
 }
 
 message PlayerCommand {
@@ -220,7 +221,15 @@ message PlayerCommand {
     SwitchCombatModeCommand switch_combat_mode = 26;
     UseConsumableCommand use_consumable = 27;
     InteractCommand interact = 28;
+    AllocateAttributeCommand allocate_attribute = 29;
   }
+}
+
+// AllocateAttributeCommand spends attribute points into one attribute (Slice 5/the spend loop).
+// attribute is one of: strength, dexterity, intelligence, endurance. amount defaults to 1.
+message AllocateAttributeCommand {
+  string attribute = 1;
+  int32 amount = 2;
 }
 
 message MoveCommand {

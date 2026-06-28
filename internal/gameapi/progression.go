@@ -2,6 +2,7 @@ package gameapi
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	dbv1 "db-apeiron/gen/apeiron/v1"
@@ -136,6 +137,40 @@ func (r *Runtime) awardKillXPLocked(creature *entityState) {
 		}
 	}
 	r.despawnCreatureLocked(creature)
+}
+
+// allocatePlayerAttributeLocked spends attribute points into one attribute — the spend loop that makes
+// Slice 5 scaling usable (level up → invest points → stronger). Returns ok plus an ack code/message on
+// failure (no points, unknown attribute). Recomputes derived stats and marks the player dirty.
+func (r *Runtime) allocatePlayerAttributeLocked(player *entityState, cmd *gamev1.PlayerCommand) (bool, string, string) {
+	if player == nil || player.progression == nil {
+		return false, "no_progression", "player has no progression"
+	}
+	alloc := cmd.GetAllocateAttribute()
+	amount := alloc.GetAmount()
+	if amount <= 0 {
+		amount = 1
+	}
+	prog := player.progression
+	if prog.attributePoints < amount {
+		return false, "insufficient_attribute_points", "not enough attribute points"
+	}
+	switch strings.ToLower(strings.TrimSpace(alloc.GetAttribute())) {
+	case "strength":
+		prog.strength += float64(amount)
+	case "dexterity":
+		prog.dexterity += float64(amount)
+	case "intelligence":
+		prog.intelligence += float64(amount)
+	case "endurance":
+		prog.endurance += float64(amount)
+	default:
+		return false, "invalid_attribute", "unknown attribute"
+	}
+	prog.attributePoints -= amount
+	prog.dirty = true
+	r.applyAttributeDerivedStatsLocked(player)
+	return true, "", ""
 }
 
 // applyLevelProgressionLocked raises the player's level for as long as their cumulative experience
