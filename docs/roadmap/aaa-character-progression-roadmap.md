@@ -288,6 +288,11 @@ new currency columns. All already exposed by `PlayerDataService.GetPlayer`.
 
 ## 12. Implementation Slices (with acceptance criteria)
 
+**Build status (2026-06-27):** ✅ Slice 1 (load + persist, dev player verified live) · ✅ Slice 2
+(level XP on kill) · ✅ Slice 4 (level-up + attribute points) · ✅ Slice 6 (snapshot publishes
+progression; Unreal HUD rendering is client-side). ⏳ Slice 3 (mode tree + weapon XP) · Slice 5
+(attributes scale combat) · milestone passive picks (need authored data + client choice).
+
 1. **Persistence spine.** Load `player` level/xp/attributes/wallet + `player_combat_mode_progress` on
    attach; write back on disconnect. ✅ *when a player's level/XP/points survive a reconnect.*
    **Status: 1a (load) + 1b (write-back) DONE** — runtime reads progression via
