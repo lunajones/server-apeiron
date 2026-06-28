@@ -46,6 +46,42 @@ func TestKillXPSplitsByDamageContribution(t *testing.T) {
 	}
 }
 
+// TestSnapshotPublishesPlayerProgression locks Progression Slice 6: the player snapshot carries
+// level/xp/attributes/points/coin plus the XP-bar fields for the HUD.
+func TestSnapshotPublishesPlayerProgression(t *testing.T) {
+	runtime := NewRuntimeWithOptions(DevFixtureRuntimeContracts(), RuntimeOptions{DisableCreatures: true})
+	player := runtime.ensurePlayerLocked("p1")
+	player.progression.level = 2
+	player.progression.experience = 1500
+	player.progression.attributePoints = 3
+	player.progression.strength = 5
+
+	pp := player.snapshot(runtime.contracts).GetPlayerProgression()
+	if pp == nil {
+		t.Fatal("player progression missing from snapshot")
+	}
+	if pp.GetLevel() != 2 || pp.GetExperience() != 1500 || pp.GetAttributePoints() != 3 || pp.GetStrength() != 5 {
+		t.Fatalf("snapshot = lvl %d xp %d pts %d str %.0f", pp.GetLevel(), pp.GetExperience(), pp.GetAttributePoints(), pp.GetStrength())
+	}
+	// Level 2 spans 1200..2800, so exp 1500 is 300 into a 1600 band.
+	if pp.GetExperienceIntoLevel() != 300 || pp.GetExperienceForNextLevel() != 1600 {
+		t.Fatalf("xp bar = %d/%d, want 300/1600", pp.GetExperienceIntoLevel(), pp.GetExperienceForNextLevel())
+	}
+	if pp.GetLevelCap() != 10 {
+		t.Fatalf("cap = %d, want 10", pp.GetLevelCap())
+	}
+}
+
+// TestCreatureSnapshotHasNoProgression ensures only players carry progression in the snapshot.
+func TestCreatureSnapshotHasNoProgression(t *testing.T) {
+	runtime := NewRuntimeWithOptions(DevFixtureRuntimeContracts(), RuntimeOptions{DisableCreatures: true})
+	player := runtime.ensurePlayerLocked("p1")
+	wolf := runtime.ensureWolfLocked(player)
+	if wolf.snapshot(runtime.contracts).GetPlayerProgression() != nil {
+		t.Fatal("creature snapshot should not carry player progression")
+	}
+}
+
 // TestExperienceLevelsUpAndGrantsAttributePoints locks Progression Slice 4: cumulative experience
 // crossing thresholds raises level (+3 attribute points each), up to the v1 cap of 10.
 func TestExperienceLevelsUpAndGrantsAttributePoints(t *testing.T) {

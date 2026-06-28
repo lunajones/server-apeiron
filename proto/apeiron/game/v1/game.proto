@@ -149,6 +149,24 @@ message SnapshotEntity {
   MovementReconciliationProfile movement_reconciliation = 25;
   CreatureAIState creature_ai_state = 26;
   CombatModeState combat_mode_state = 27;
+  PlayerProgressionState player_progression = 28;
+}
+
+// PlayerProgressionState carries the player's character progression for the HUD (Slice 6). Only set
+// for player entities. experience_into_level / experience_for_next_level drive the XP bar (the latter
+// is 0 at the level cap).
+message PlayerProgressionState {
+  int32 level = 1;
+  int64 experience = 2;
+  int64 experience_into_level = 3;
+  int64 experience_for_next_level = 4;
+  int32 attribute_points = 5;
+  double strength = 6;
+  double dexterity = 7;
+  double intelligence = 8;
+  double endurance = 9;
+  int64 coin = 10;
+  int32 level_cap = 11;
 }
 
 message SnapshotEvent {

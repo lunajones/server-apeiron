@@ -5,6 +5,7 @@ import (
 	"time"
 
 	dbv1 "db-apeiron/gen/apeiron/v1"
+	gamev1 "server-apeiron/gen/apeiron/game/v1"
 
 	"server-apeiron/internal/logging"
 )
@@ -100,6 +101,47 @@ func (r *Runtime) applyLevelProgressionLocked(player *entityState) {
 		prog.attributePoints += attributePointsPerLevel
 		prog.dirty = true
 	}
+}
+
+// playerProgressionSnapshot builds the HUD progression payload for a player entity (nil otherwise),
+// so the client can show level, XP bar, attributes, points and coin (Slice 6).
+func playerProgressionSnapshot(e *entityState) *gamev1.PlayerProgressionState {
+	if e == nil || e.entityType != "player" || e.progression == nil {
+		return nil
+	}
+	p := e.progression
+	intoLevel, span := characterXPBar(p.level, p.experience)
+	return &gamev1.PlayerProgressionState{
+		Level:                  p.level,
+		Experience:             p.experience,
+		ExperienceIntoLevel:    intoLevel,
+		ExperienceForNextLevel: span,
+		AttributePoints:        p.attributePoints,
+		Strength:               p.strength,
+		Dexterity:              p.dexterity,
+		Intelligence:           p.intelligence,
+		Endurance:              p.endurance,
+		Coin:                   p.coin,
+		LevelCap:               characterLevelCapV1,
+	}
+}
+
+// characterXPBar returns experience earned into the current level and that level's span (0 at the
+// cap), for the HUD XP bar.
+func characterXPBar(level int32, experience int64) (intoLevel int64, span int64) {
+	if level < 1 {
+		level = 1
+	}
+	if int(level)+1 >= len(cumulativeCharacterXP) { // at/above cap: no next level
+		return 0, 0
+	}
+	base := cumulativeCharacterXP[level]
+	next := cumulativeCharacterXP[level+1]
+	intoLevel = experience - base
+	if intoLevel < 0 {
+		intoLevel = 0
+	}
+	return intoLevel, next - base
 }
 
 // despawnCreatureLocked removes a creature from the world after death. Respawn cadence is a later

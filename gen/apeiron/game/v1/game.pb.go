@@ -1162,6 +1162,7 @@ type SnapshotEntity struct {
 	MovementReconciliation       *MovementReconciliationProfile `protobuf:"bytes,25,opt,name=movement_reconciliation,json=movementReconciliation,proto3" json:"movement_reconciliation,omitempty"`
 	CreatureAiState              *CreatureAIState               `protobuf:"bytes,26,opt,name=creature_ai_state,json=creatureAiState,proto3" json:"creature_ai_state,omitempty"`
 	CombatModeState              *CombatModeState               `protobuf:"bytes,27,opt,name=combat_mode_state,json=combatModeState,proto3" json:"combat_mode_state,omitempty"`
+	PlayerProgression            *PlayerProgressionState        `protobuf:"bytes,28,opt,name=player_progression,json=playerProgression,proto3" json:"player_progression,omitempty"`
 	unknownFields                protoimpl.UnknownFields
 	sizeCache                    protoimpl.SizeCache
 }
@@ -1385,6 +1386,140 @@ func (x *SnapshotEntity) GetCombatModeState() *CombatModeState {
 	return nil
 }
 
+func (x *SnapshotEntity) GetPlayerProgression() *PlayerProgressionState {
+	if x != nil {
+		return x.PlayerProgression
+	}
+	return nil
+}
+
+// PlayerProgressionState carries the player's character progression for the HUD (Slice 6). Only set
+// for player entities. experience_into_level / experience_for_next_level drive the XP bar (the latter
+// is 0 at the level cap).
+type PlayerProgressionState struct {
+	state                  protoimpl.MessageState `protogen:"open.v1"`
+	Level                  int32                  `protobuf:"varint,1,opt,name=level,proto3" json:"level,omitempty"`
+	Experience             int64                  `protobuf:"varint,2,opt,name=experience,proto3" json:"experience,omitempty"`
+	ExperienceIntoLevel    int64                  `protobuf:"varint,3,opt,name=experience_into_level,json=experienceIntoLevel,proto3" json:"experience_into_level,omitempty"`
+	ExperienceForNextLevel int64                  `protobuf:"varint,4,opt,name=experience_for_next_level,json=experienceForNextLevel,proto3" json:"experience_for_next_level,omitempty"`
+	AttributePoints        int32                  `protobuf:"varint,5,opt,name=attribute_points,json=attributePoints,proto3" json:"attribute_points,omitempty"`
+	Strength               float64                `protobuf:"fixed64,6,opt,name=strength,proto3" json:"strength,omitempty"`
+	Dexterity              float64                `protobuf:"fixed64,7,opt,name=dexterity,proto3" json:"dexterity,omitempty"`
+	Intelligence           float64                `protobuf:"fixed64,8,opt,name=intelligence,proto3" json:"intelligence,omitempty"`
+	Endurance              float64                `protobuf:"fixed64,9,opt,name=endurance,proto3" json:"endurance,omitempty"`
+	Coin                   int64                  `protobuf:"varint,10,opt,name=coin,proto3" json:"coin,omitempty"`
+	LevelCap               int32                  `protobuf:"varint,11,opt,name=level_cap,json=levelCap,proto3" json:"level_cap,omitempty"`
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
+}
+
+func (x *PlayerProgressionState) Reset() {
+	*x = PlayerProgressionState{}
+	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PlayerProgressionState) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PlayerProgressionState) ProtoMessage() {}
+
+func (x *PlayerProgressionState) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PlayerProgressionState.ProtoReflect.Descriptor instead.
+func (*PlayerProgressionState) Descriptor() ([]byte, []int) {
+	return file_proto_apeiron_game_v1_game_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *PlayerProgressionState) GetLevel() int32 {
+	if x != nil {
+		return x.Level
+	}
+	return 0
+}
+
+func (x *PlayerProgressionState) GetExperience() int64 {
+	if x != nil {
+		return x.Experience
+	}
+	return 0
+}
+
+func (x *PlayerProgressionState) GetExperienceIntoLevel() int64 {
+	if x != nil {
+		return x.ExperienceIntoLevel
+	}
+	return 0
+}
+
+func (x *PlayerProgressionState) GetExperienceForNextLevel() int64 {
+	if x != nil {
+		return x.ExperienceForNextLevel
+	}
+	return 0
+}
+
+func (x *PlayerProgressionState) GetAttributePoints() int32 {
+	if x != nil {
+		return x.AttributePoints
+	}
+	return 0
+}
+
+func (x *PlayerProgressionState) GetStrength() float64 {
+	if x != nil {
+		return x.Strength
+	}
+	return 0
+}
+
+func (x *PlayerProgressionState) GetDexterity() float64 {
+	if x != nil {
+		return x.Dexterity
+	}
+	return 0
+}
+
+func (x *PlayerProgressionState) GetIntelligence() float64 {
+	if x != nil {
+		return x.Intelligence
+	}
+	return 0
+}
+
+func (x *PlayerProgressionState) GetEndurance() float64 {
+	if x != nil {
+		return x.Endurance
+	}
+	return 0
+}
+
+func (x *PlayerProgressionState) GetCoin() int64 {
+	if x != nil {
+		return x.Coin
+	}
+	return 0
+}
+
+func (x *PlayerProgressionState) GetLevelCap() int32 {
+	if x != nil {
+		return x.LevelCap
+	}
+	return 0
+}
+
 type SnapshotEvent struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	EventId       string                 `protobuf:"bytes,1,opt,name=event_id,json=eventId,proto3" json:"event_id,omitempty"`
@@ -1400,7 +1535,7 @@ type SnapshotEvent struct {
 
 func (x *SnapshotEvent) Reset() {
 	*x = SnapshotEvent{}
-	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[17]
+	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1412,7 +1547,7 @@ func (x *SnapshotEvent) String() string {
 func (*SnapshotEvent) ProtoMessage() {}
 
 func (x *SnapshotEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[17]
+	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1425,7 +1560,7 @@ func (x *SnapshotEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SnapshotEvent.ProtoReflect.Descriptor instead.
 func (*SnapshotEvent) Descriptor() ([]byte, []int) {
-	return file_proto_apeiron_game_v1_game_proto_rawDescGZIP(), []int{17}
+	return file_proto_apeiron_game_v1_game_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *SnapshotEvent) GetEventId() string {
@@ -1505,7 +1640,7 @@ type PlayerCommand struct {
 
 func (x *PlayerCommand) Reset() {
 	*x = PlayerCommand{}
-	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[18]
+	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1517,7 +1652,7 @@ func (x *PlayerCommand) String() string {
 func (*PlayerCommand) ProtoMessage() {}
 
 func (x *PlayerCommand) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[18]
+	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1530,7 +1665,7 @@ func (x *PlayerCommand) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PlayerCommand.ProtoReflect.Descriptor instead.
 func (*PlayerCommand) Descriptor() ([]byte, []int) {
-	return file_proto_apeiron_game_v1_game_proto_rawDescGZIP(), []int{18}
+	return file_proto_apeiron_game_v1_game_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *PlayerCommand) GetContext() *RequestContext {
@@ -1755,7 +1890,7 @@ type MoveCommand struct {
 
 func (x *MoveCommand) Reset() {
 	*x = MoveCommand{}
-	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[19]
+	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1767,7 +1902,7 @@ func (x *MoveCommand) String() string {
 func (*MoveCommand) ProtoMessage() {}
 
 func (x *MoveCommand) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[19]
+	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1780,7 +1915,7 @@ func (x *MoveCommand) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MoveCommand.ProtoReflect.Descriptor instead.
 func (*MoveCommand) Descriptor() ([]byte, []int) {
-	return file_proto_apeiron_game_v1_game_proto_rawDescGZIP(), []int{19}
+	return file_proto_apeiron_game_v1_game_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *MoveCommand) GetDirection() *Vector3 {
@@ -1876,7 +2011,7 @@ type DodgeCommand struct {
 
 func (x *DodgeCommand) Reset() {
 	*x = DodgeCommand{}
-	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[20]
+	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1888,7 +2023,7 @@ func (x *DodgeCommand) String() string {
 func (*DodgeCommand) ProtoMessage() {}
 
 func (x *DodgeCommand) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[20]
+	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1901,7 +2036,7 @@ func (x *DodgeCommand) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DodgeCommand.ProtoReflect.Descriptor instead.
 func (*DodgeCommand) Descriptor() ([]byte, []int) {
-	return file_proto_apeiron_game_v1_game_proto_rawDescGZIP(), []int{20}
+	return file_proto_apeiron_game_v1_game_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *DodgeCommand) GetDirection() *Vector3 {
@@ -1921,7 +2056,7 @@ type LeapCommand struct {
 
 func (x *LeapCommand) Reset() {
 	*x = LeapCommand{}
-	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[21]
+	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1933,7 +2068,7 @@ func (x *LeapCommand) String() string {
 func (*LeapCommand) ProtoMessage() {}
 
 func (x *LeapCommand) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[21]
+	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1946,7 +2081,7 @@ func (x *LeapCommand) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LeapCommand.ProtoReflect.Descriptor instead.
 func (*LeapCommand) Descriptor() ([]byte, []int) {
-	return file_proto_apeiron_game_v1_game_proto_rawDescGZIP(), []int{21}
+	return file_proto_apeiron_game_v1_game_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *LeapCommand) GetDirection() *Vector3 {
@@ -1975,7 +2110,7 @@ type TurnCommand struct {
 
 func (x *TurnCommand) Reset() {
 	*x = TurnCommand{}
-	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[22]
+	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1987,7 +2122,7 @@ func (x *TurnCommand) String() string {
 func (*TurnCommand) ProtoMessage() {}
 
 func (x *TurnCommand) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[22]
+	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2000,7 +2135,7 @@ func (x *TurnCommand) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TurnCommand.ProtoReflect.Descriptor instead.
 func (*TurnCommand) Descriptor() ([]byte, []int) {
-	return file_proto_apeiron_game_v1_game_proto_rawDescGZIP(), []int{22}
+	return file_proto_apeiron_game_v1_game_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *TurnCommand) GetFacing() *Vector3 {
@@ -2044,7 +2179,7 @@ type CastSkillCommand struct {
 
 func (x *CastSkillCommand) Reset() {
 	*x = CastSkillCommand{}
-	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[23]
+	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2056,7 +2191,7 @@ func (x *CastSkillCommand) String() string {
 func (*CastSkillCommand) ProtoMessage() {}
 
 func (x *CastSkillCommand) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[23]
+	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2069,7 +2204,7 @@ func (x *CastSkillCommand) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CastSkillCommand.ProtoReflect.Descriptor instead.
 func (*CastSkillCommand) Descriptor() ([]byte, []int) {
-	return file_proto_apeiron_game_v1_game_proto_rawDescGZIP(), []int{23}
+	return file_proto_apeiron_game_v1_game_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *CastSkillCommand) GetSkillId() string {
@@ -2118,7 +2253,7 @@ type DefenseCommand struct {
 
 func (x *DefenseCommand) Reset() {
 	*x = DefenseCommand{}
-	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[24]
+	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2130,7 +2265,7 @@ func (x *DefenseCommand) String() string {
 func (*DefenseCommand) ProtoMessage() {}
 
 func (x *DefenseCommand) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[24]
+	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2143,7 +2278,7 @@ func (x *DefenseCommand) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DefenseCommand.ProtoReflect.Descriptor instead.
 func (*DefenseCommand) Descriptor() ([]byte, []int) {
-	return file_proto_apeiron_game_v1_game_proto_rawDescGZIP(), []int{24}
+	return file_proto_apeiron_game_v1_game_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *DefenseCommand) GetBlocking() bool {
@@ -2177,7 +2312,7 @@ type SwitchCombatModeCommand struct {
 
 func (x *SwitchCombatModeCommand) Reset() {
 	*x = SwitchCombatModeCommand{}
-	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[25]
+	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2189,7 +2324,7 @@ func (x *SwitchCombatModeCommand) String() string {
 func (*SwitchCombatModeCommand) ProtoMessage() {}
 
 func (x *SwitchCombatModeCommand) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[25]
+	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2202,7 +2337,7 @@ func (x *SwitchCombatModeCommand) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SwitchCombatModeCommand.ProtoReflect.Descriptor instead.
 func (*SwitchCombatModeCommand) Descriptor() ([]byte, []int) {
-	return file_proto_apeiron_game_v1_game_proto_rawDescGZIP(), []int{25}
+	return file_proto_apeiron_game_v1_game_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *SwitchCombatModeCommand) GetTargetCombatModeId() string {
@@ -2230,7 +2365,7 @@ type UseConsumableCommand struct {
 
 func (x *UseConsumableCommand) Reset() {
 	*x = UseConsumableCommand{}
-	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[26]
+	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2242,7 +2377,7 @@ func (x *UseConsumableCommand) String() string {
 func (*UseConsumableCommand) ProtoMessage() {}
 
 func (x *UseConsumableCommand) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[26]
+	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2255,7 +2390,7 @@ func (x *UseConsumableCommand) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UseConsumableCommand.ProtoReflect.Descriptor instead.
 func (*UseConsumableCommand) Descriptor() ([]byte, []int) {
-	return file_proto_apeiron_game_v1_game_proto_rawDescGZIP(), []int{26}
+	return file_proto_apeiron_game_v1_game_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *UseConsumableCommand) GetHotbarSlot() uint32 {
@@ -2289,7 +2424,7 @@ type InteractCommand struct {
 
 func (x *InteractCommand) Reset() {
 	*x = InteractCommand{}
-	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[27]
+	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2301,7 +2436,7 @@ func (x *InteractCommand) String() string {
 func (*InteractCommand) ProtoMessage() {}
 
 func (x *InteractCommand) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[27]
+	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2314,7 +2449,7 @@ func (x *InteractCommand) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InteractCommand.ProtoReflect.Descriptor instead.
 func (*InteractCommand) Descriptor() ([]byte, []int) {
-	return file_proto_apeiron_game_v1_game_proto_rawDescGZIP(), []int{27}
+	return file_proto_apeiron_game_v1_game_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *InteractCommand) GetTarget() *EntityRef {
@@ -2346,7 +2481,7 @@ type CommandAck struct {
 
 func (x *CommandAck) Reset() {
 	*x = CommandAck{}
-	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[28]
+	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2358,7 +2493,7 @@ func (x *CommandAck) String() string {
 func (*CommandAck) ProtoMessage() {}
 
 func (x *CommandAck) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[28]
+	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2371,7 +2506,7 @@ func (x *CommandAck) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CommandAck.ProtoReflect.Descriptor instead.
 func (*CommandAck) Descriptor() ([]byte, []int) {
-	return file_proto_apeiron_game_v1_game_proto_rawDescGZIP(), []int{28}
+	return file_proto_apeiron_game_v1_game_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *CommandAck) GetAccepted() bool {
@@ -2436,7 +2571,7 @@ type SkillRuntimeState struct {
 
 func (x *SkillRuntimeState) Reset() {
 	*x = SkillRuntimeState{}
-	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[29]
+	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2448,7 +2583,7 @@ func (x *SkillRuntimeState) String() string {
 func (*SkillRuntimeState) ProtoMessage() {}
 
 func (x *SkillRuntimeState) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[29]
+	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2461,7 +2596,7 @@ func (x *SkillRuntimeState) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SkillRuntimeState.ProtoReflect.Descriptor instead.
 func (*SkillRuntimeState) Descriptor() ([]byte, []int) {
-	return file_proto_apeiron_game_v1_game_proto_rawDescGZIP(), []int{29}
+	return file_proto_apeiron_game_v1_game_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *SkillRuntimeState) GetCurrentSkillId() string {
@@ -2516,7 +2651,7 @@ type MovementCorrection struct {
 
 func (x *MovementCorrection) Reset() {
 	*x = MovementCorrection{}
-	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[30]
+	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2528,7 +2663,7 @@ func (x *MovementCorrection) String() string {
 func (*MovementCorrection) ProtoMessage() {}
 
 func (x *MovementCorrection) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[30]
+	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2541,7 +2676,7 @@ func (x *MovementCorrection) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MovementCorrection.ProtoReflect.Descriptor instead.
 func (*MovementCorrection) Descriptor() ([]byte, []int) {
-	return file_proto_apeiron_game_v1_game_proto_rawDescGZIP(), []int{30}
+	return file_proto_apeiron_game_v1_game_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *MovementCorrection) GetCorrected() bool {
@@ -2617,7 +2752,7 @@ type MovementCurveSample struct {
 
 func (x *MovementCurveSample) Reset() {
 	*x = MovementCurveSample{}
-	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[31]
+	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2629,7 +2764,7 @@ func (x *MovementCurveSample) String() string {
 func (*MovementCurveSample) ProtoMessage() {}
 
 func (x *MovementCurveSample) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[31]
+	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2642,7 +2777,7 @@ func (x *MovementCurveSample) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MovementCurveSample.ProtoReflect.Descriptor instead.
 func (*MovementCurveSample) Descriptor() ([]byte, []int) {
-	return file_proto_apeiron_game_v1_game_proto_rawDescGZIP(), []int{31}
+	return file_proto_apeiron_game_v1_game_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *MovementCurveSample) GetT() float64 {
@@ -2736,7 +2871,7 @@ type LocomotionState struct {
 
 func (x *LocomotionState) Reset() {
 	*x = LocomotionState{}
-	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[32]
+	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2748,7 +2883,7 @@ func (x *LocomotionState) String() string {
 func (*LocomotionState) ProtoMessage() {}
 
 func (x *LocomotionState) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[32]
+	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2761,7 +2896,7 @@ func (x *LocomotionState) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LocomotionState.ProtoReflect.Descriptor instead.
 func (*LocomotionState) Descriptor() ([]byte, []int) {
-	return file_proto_apeiron_game_v1_game_proto_rawDescGZIP(), []int{32}
+	return file_proto_apeiron_game_v1_game_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *LocomotionState) GetMovementMode() string {
@@ -3263,7 +3398,7 @@ type MovementActionContractManifest struct {
 
 func (x *MovementActionContractManifest) Reset() {
 	*x = MovementActionContractManifest{}
-	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[33]
+	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3275,7 +3410,7 @@ func (x *MovementActionContractManifest) String() string {
 func (*MovementActionContractManifest) ProtoMessage() {}
 
 func (x *MovementActionContractManifest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[33]
+	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3288,7 +3423,7 @@ func (x *MovementActionContractManifest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MovementActionContractManifest.ProtoReflect.Descriptor instead.
 func (*MovementActionContractManifest) Descriptor() ([]byte, []int) {
-	return file_proto_apeiron_game_v1_game_proto_rawDescGZIP(), []int{33}
+	return file_proto_apeiron_game_v1_game_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *MovementActionContractManifest) GetContractId() string {
@@ -3409,7 +3544,7 @@ type MovementReconciliationProfile struct {
 
 func (x *MovementReconciliationProfile) Reset() {
 	*x = MovementReconciliationProfile{}
-	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[34]
+	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3421,7 +3556,7 @@ func (x *MovementReconciliationProfile) String() string {
 func (*MovementReconciliationProfile) ProtoMessage() {}
 
 func (x *MovementReconciliationProfile) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[34]
+	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3434,7 +3569,7 @@ func (x *MovementReconciliationProfile) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MovementReconciliationProfile.ProtoReflect.Descriptor instead.
 func (*MovementReconciliationProfile) Descriptor() ([]byte, []int) {
-	return file_proto_apeiron_game_v1_game_proto_rawDescGZIP(), []int{34}
+	return file_proto_apeiron_game_v1_game_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *MovementReconciliationProfile) GetProfileId() string {
@@ -3827,7 +3962,7 @@ type CombatModeSlot struct {
 
 func (x *CombatModeSlot) Reset() {
 	*x = CombatModeSlot{}
-	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[35]
+	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3839,7 +3974,7 @@ func (x *CombatModeSlot) String() string {
 func (*CombatModeSlot) ProtoMessage() {}
 
 func (x *CombatModeSlot) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[35]
+	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3852,7 +3987,7 @@ func (x *CombatModeSlot) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CombatModeSlot.ProtoReflect.Descriptor instead.
 func (*CombatModeSlot) Descriptor() ([]byte, []int) {
-	return file_proto_apeiron_game_v1_game_proto_rawDescGZIP(), []int{35}
+	return file_proto_apeiron_game_v1_game_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *CombatModeSlot) GetCombatModeId() string {
@@ -3900,7 +4035,7 @@ type CombatModeState struct {
 
 func (x *CombatModeState) Reset() {
 	*x = CombatModeState{}
-	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[36]
+	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3912,7 +4047,7 @@ func (x *CombatModeState) String() string {
 func (*CombatModeState) ProtoMessage() {}
 
 func (x *CombatModeState) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[36]
+	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3925,7 +4060,7 @@ func (x *CombatModeState) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CombatModeState.ProtoReflect.Descriptor instead.
 func (*CombatModeState) Descriptor() ([]byte, []int) {
-	return file_proto_apeiron_game_v1_game_proto_rawDescGZIP(), []int{36}
+	return file_proto_apeiron_game_v1_game_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *CombatModeState) GetWeaponCombinationId() string {
@@ -4060,7 +4195,7 @@ type CreatureAIState struct {
 
 func (x *CreatureAIState) Reset() {
 	*x = CreatureAIState{}
-	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[37]
+	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4072,7 +4207,7 @@ func (x *CreatureAIState) String() string {
 func (*CreatureAIState) ProtoMessage() {}
 
 func (x *CreatureAIState) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[37]
+	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4085,7 +4220,7 @@ func (x *CreatureAIState) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreatureAIState.ProtoReflect.Descriptor instead.
 func (*CreatureAIState) Descriptor() ([]byte, []int) {
-	return file_proto_apeiron_game_v1_game_proto_rawDescGZIP(), []int{37}
+	return file_proto_apeiron_game_v1_game_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *CreatureAIState) GetMovementTactic() string {
@@ -4525,7 +4660,7 @@ type HealthResponse struct {
 
 func (x *HealthResponse) Reset() {
 	*x = HealthResponse{}
-	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[38]
+	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4537,7 +4672,7 @@ func (x *HealthResponse) String() string {
 func (*HealthResponse) ProtoMessage() {}
 
 func (x *HealthResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[38]
+	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4550,7 +4685,7 @@ func (x *HealthResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HealthResponse.ProtoReflect.Descriptor instead.
 func (*HealthResponse) Descriptor() ([]byte, []int) {
-	return file_proto_apeiron_game_v1_game_proto_rawDescGZIP(), []int{38}
+	return file_proto_apeiron_game_v1_game_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *HealthResponse) GetHealthy() bool {
@@ -4577,7 +4712,7 @@ type ReadinessResponse struct {
 
 func (x *ReadinessResponse) Reset() {
 	*x = ReadinessResponse{}
-	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[39]
+	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4589,7 +4724,7 @@ func (x *ReadinessResponse) String() string {
 func (*ReadinessResponse) ProtoMessage() {}
 
 func (x *ReadinessResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[39]
+	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4602,7 +4737,7 @@ func (x *ReadinessResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReadinessResponse.ProtoReflect.Descriptor instead.
 func (*ReadinessResponse) Descriptor() ([]byte, []int) {
-	return file_proto_apeiron_game_v1_game_proto_rawDescGZIP(), []int{39}
+	return file_proto_apeiron_game_v1_game_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *ReadinessResponse) GetReady() bool {
@@ -4640,7 +4775,7 @@ type RuntimeStatsResponse struct {
 
 func (x *RuntimeStatsResponse) Reset() {
 	*x = RuntimeStatsResponse{}
-	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[40]
+	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4652,7 +4787,7 @@ func (x *RuntimeStatsResponse) String() string {
 func (*RuntimeStatsResponse) ProtoMessage() {}
 
 func (x *RuntimeStatsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[40]
+	mi := &file_proto_apeiron_game_v1_game_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4665,7 +4800,7 @@ func (x *RuntimeStatsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RuntimeStatsResponse.ProtoReflect.Descriptor instead.
 func (*RuntimeStatsResponse) Descriptor() ([]byte, []int) {
-	return file_proto_apeiron_game_v1_game_proto_rawDescGZIP(), []int{40}
+	return file_proto_apeiron_game_v1_game_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *RuntimeStatsResponse) GetTick() *ServerTick {
@@ -4838,8 +4973,7 @@ const file_proto_apeiron_game_v1_game_proto_rawDesc = "" +
 	"\x06region\x18\x02 \x01(\v2\x1a.apeiron.game.v1.RegionRefR\x06region\x12;\n" +
 	"\bentities\x18\x03 \x03(\v2\x1f.apeiron.game.v1.SnapshotEntityR\bentities\x126\n" +
 	"\x06events\x18\x04 \x03(\v2\x1e.apeiron.game.v1.SnapshotEventR\x06events\x12>\n" +
-	"\fcommand_acks\x18\x05 \x03(\v2\x1b.apeiron.game.v1.CommandAckR\vcommandAcks\"\xaf\n" +
-	"\n" +
+	"\fcommand_acks\x18\x05 \x03(\v2\x1b.apeiron.game.v1.CommandAckR\vcommandAcks\"\x87\v\n" +
 	"\x0eSnapshotEntity\x12,\n" +
 	"\x03ref\x18\x01 \x01(\v2\x1a.apeiron.game.v1.EntityRefR\x03ref\x12\x1f\n" +
 	"\vtemplate_id\x18\x02 \x01(\tR\n" +
@@ -4878,7 +5012,23 @@ const file_proto_apeiron_game_v1_game_proto_rawDesc = "" +
 	"locomotion\x12g\n" +
 	"\x17movement_reconciliation\x18\x19 \x01(\v2..apeiron.game.v1.MovementReconciliationProfileR\x16movementReconciliation\x12L\n" +
 	"\x11creature_ai_state\x18\x1a \x01(\v2 .apeiron.game.v1.CreatureAIStateR\x0fcreatureAiState\x12L\n" +
-	"\x11combat_mode_state\x18\x1b \x01(\v2 .apeiron.game.v1.CombatModeStateR\x0fcombatModeState\"\xfd\x02\n" +
+	"\x11combat_mode_state\x18\x1b \x01(\v2 .apeiron.game.v1.CombatModeStateR\x0fcombatModeState\x12V\n" +
+	"\x12player_progression\x18\x1c \x01(\v2'.apeiron.game.v1.PlayerProgressionStateR\x11playerProgression\"\x95\x03\n" +
+	"\x16PlayerProgressionState\x12\x14\n" +
+	"\x05level\x18\x01 \x01(\x05R\x05level\x12\x1e\n" +
+	"\n" +
+	"experience\x18\x02 \x01(\x03R\n" +
+	"experience\x122\n" +
+	"\x15experience_into_level\x18\x03 \x01(\x03R\x13experienceIntoLevel\x129\n" +
+	"\x19experience_for_next_level\x18\x04 \x01(\x03R\x16experienceForNextLevel\x12)\n" +
+	"\x10attribute_points\x18\x05 \x01(\x05R\x0fattributePoints\x12\x1a\n" +
+	"\bstrength\x18\x06 \x01(\x01R\bstrength\x12\x1c\n" +
+	"\tdexterity\x18\a \x01(\x01R\tdexterity\x12\"\n" +
+	"\fintelligence\x18\b \x01(\x01R\fintelligence\x12\x1c\n" +
+	"\tendurance\x18\t \x01(\x01R\tendurance\x12\x12\n" +
+	"\x04coin\x18\n" +
+	" \x01(\x03R\x04coin\x12\x1b\n" +
+	"\tlevel_cap\x18\v \x01(\x05R\blevelCap\"\xfd\x02\n" +
 	"\rSnapshotEvent\x12\x19\n" +
 	"\bevent_id\x18\x01 \x01(\tR\aeventId\x126\n" +
 	"\x04type\x18\x02 \x01(\x0e2\".apeiron.game.v1.SnapshotEventTypeR\x04type\x12\x16\n" +
@@ -5309,7 +5459,7 @@ func file_proto_apeiron_game_v1_game_proto_rawDescGZIP() []byte {
 }
 
 var file_proto_apeiron_game_v1_game_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_proto_apeiron_game_v1_game_proto_msgTypes = make([]protoimpl.MessageInfo, 44)
+var file_proto_apeiron_game_v1_game_proto_msgTypes = make([]protoimpl.MessageInfo, 45)
 var file_proto_apeiron_game_v1_game_proto_goTypes = []any{
 	(SnapshotEventType)(0),                 // 0: apeiron.game.v1.SnapshotEventType
 	(CommandType)(0),                       // 1: apeiron.game.v1.CommandType
@@ -5330,33 +5480,34 @@ var file_proto_apeiron_game_v1_game_proto_goTypes = []any{
 	(*SnapshotRequest)(nil),                // 16: apeiron.game.v1.SnapshotRequest
 	(*SnapshotResponse)(nil),               // 17: apeiron.game.v1.SnapshotResponse
 	(*SnapshotEntity)(nil),                 // 18: apeiron.game.v1.SnapshotEntity
-	(*SnapshotEvent)(nil),                  // 19: apeiron.game.v1.SnapshotEvent
-	(*PlayerCommand)(nil),                  // 20: apeiron.game.v1.PlayerCommand
-	(*MoveCommand)(nil),                    // 21: apeiron.game.v1.MoveCommand
-	(*DodgeCommand)(nil),                   // 22: apeiron.game.v1.DodgeCommand
-	(*LeapCommand)(nil),                    // 23: apeiron.game.v1.LeapCommand
-	(*TurnCommand)(nil),                    // 24: apeiron.game.v1.TurnCommand
-	(*CastSkillCommand)(nil),               // 25: apeiron.game.v1.CastSkillCommand
-	(*DefenseCommand)(nil),                 // 26: apeiron.game.v1.DefenseCommand
-	(*SwitchCombatModeCommand)(nil),        // 27: apeiron.game.v1.SwitchCombatModeCommand
-	(*UseConsumableCommand)(nil),           // 28: apeiron.game.v1.UseConsumableCommand
-	(*InteractCommand)(nil),                // 29: apeiron.game.v1.InteractCommand
-	(*CommandAck)(nil),                     // 30: apeiron.game.v1.CommandAck
-	(*SkillRuntimeState)(nil),              // 31: apeiron.game.v1.SkillRuntimeState
-	(*MovementCorrection)(nil),             // 32: apeiron.game.v1.MovementCorrection
-	(*MovementCurveSample)(nil),            // 33: apeiron.game.v1.MovementCurveSample
-	(*LocomotionState)(nil),                // 34: apeiron.game.v1.LocomotionState
-	(*MovementActionContractManifest)(nil), // 35: apeiron.game.v1.MovementActionContractManifest
-	(*MovementReconciliationProfile)(nil),  // 36: apeiron.game.v1.MovementReconciliationProfile
-	(*CombatModeSlot)(nil),                 // 37: apeiron.game.v1.CombatModeSlot
-	(*CombatModeState)(nil),                // 38: apeiron.game.v1.CombatModeState
-	(*CreatureAIState)(nil),                // 39: apeiron.game.v1.CreatureAIState
-	(*HealthResponse)(nil),                 // 40: apeiron.game.v1.HealthResponse
-	(*ReadinessResponse)(nil),              // 41: apeiron.game.v1.ReadinessResponse
-	(*RuntimeStatsResponse)(nil),           // 42: apeiron.game.v1.RuntimeStatsResponse
-	nil,                                    // 43: apeiron.game.v1.SnapshotEvent.MetadataEntry
-	nil,                                    // 44: apeiron.game.v1.CommandAck.MetadataEntry
-	nil,                                    // 45: apeiron.game.v1.RuntimeStatsResponse.PhaseStatusEntry
+	(*PlayerProgressionState)(nil),         // 19: apeiron.game.v1.PlayerProgressionState
+	(*SnapshotEvent)(nil),                  // 20: apeiron.game.v1.SnapshotEvent
+	(*PlayerCommand)(nil),                  // 21: apeiron.game.v1.PlayerCommand
+	(*MoveCommand)(nil),                    // 22: apeiron.game.v1.MoveCommand
+	(*DodgeCommand)(nil),                   // 23: apeiron.game.v1.DodgeCommand
+	(*LeapCommand)(nil),                    // 24: apeiron.game.v1.LeapCommand
+	(*TurnCommand)(nil),                    // 25: apeiron.game.v1.TurnCommand
+	(*CastSkillCommand)(nil),               // 26: apeiron.game.v1.CastSkillCommand
+	(*DefenseCommand)(nil),                 // 27: apeiron.game.v1.DefenseCommand
+	(*SwitchCombatModeCommand)(nil),        // 28: apeiron.game.v1.SwitchCombatModeCommand
+	(*UseConsumableCommand)(nil),           // 29: apeiron.game.v1.UseConsumableCommand
+	(*InteractCommand)(nil),                // 30: apeiron.game.v1.InteractCommand
+	(*CommandAck)(nil),                     // 31: apeiron.game.v1.CommandAck
+	(*SkillRuntimeState)(nil),              // 32: apeiron.game.v1.SkillRuntimeState
+	(*MovementCorrection)(nil),             // 33: apeiron.game.v1.MovementCorrection
+	(*MovementCurveSample)(nil),            // 34: apeiron.game.v1.MovementCurveSample
+	(*LocomotionState)(nil),                // 35: apeiron.game.v1.LocomotionState
+	(*MovementActionContractManifest)(nil), // 36: apeiron.game.v1.MovementActionContractManifest
+	(*MovementReconciliationProfile)(nil),  // 37: apeiron.game.v1.MovementReconciliationProfile
+	(*CombatModeSlot)(nil),                 // 38: apeiron.game.v1.CombatModeSlot
+	(*CombatModeState)(nil),                // 39: apeiron.game.v1.CombatModeState
+	(*CreatureAIState)(nil),                // 40: apeiron.game.v1.CreatureAIState
+	(*HealthResponse)(nil),                 // 41: apeiron.game.v1.HealthResponse
+	(*ReadinessResponse)(nil),              // 42: apeiron.game.v1.ReadinessResponse
+	(*RuntimeStatsResponse)(nil),           // 43: apeiron.game.v1.RuntimeStatsResponse
+	nil,                                    // 44: apeiron.game.v1.SnapshotEvent.MetadataEntry
+	nil,                                    // 45: apeiron.game.v1.CommandAck.MetadataEntry
+	nil,                                    // 46: apeiron.game.v1.RuntimeStatsResponse.PhaseStatusEntry
 }
 var file_proto_apeiron_game_v1_game_proto_depIdxs = []int32{
 	6,  // 0: apeiron.game.v1.Transform.position:type_name -> apeiron.game.v1.Vector3
@@ -5364,90 +5515,91 @@ var file_proto_apeiron_game_v1_game_proto_depIdxs = []int32{
 	4,  // 2: apeiron.game.v1.OpenSessionRequest.context:type_name -> apeiron.game.v1.RequestContext
 	3,  // 3: apeiron.game.v1.OpenSessionResponse.result:type_name -> apeiron.game.v1.Result
 	5,  // 4: apeiron.game.v1.OpenSessionResponse.tick:type_name -> apeiron.game.v1.ServerTick
-	35, // 5: apeiron.game.v1.OpenSessionResponse.movement_action_contracts:type_name -> apeiron.game.v1.MovementActionContractManifest
-	34, // 6: apeiron.game.v1.OpenSessionResponse.movement_action_contract_payloads:type_name -> apeiron.game.v1.LocomotionState
+	36, // 5: apeiron.game.v1.OpenSessionResponse.movement_action_contracts:type_name -> apeiron.game.v1.MovementActionContractManifest
+	35, // 6: apeiron.game.v1.OpenSessionResponse.movement_action_contract_payloads:type_name -> apeiron.game.v1.LocomotionState
 	4,  // 7: apeiron.game.v1.AttachPlayerRequest.context:type_name -> apeiron.game.v1.RequestContext
 	3,  // 8: apeiron.game.v1.AttachPlayerResponse.result:type_name -> apeiron.game.v1.Result
 	10, // 9: apeiron.game.v1.AttachPlayerResponse.player:type_name -> apeiron.game.v1.PlayerRef
 	9,  // 10: apeiron.game.v1.AttachPlayerResponse.region:type_name -> apeiron.game.v1.RegionRef
 	5,  // 11: apeiron.game.v1.AttachPlayerResponse.tick:type_name -> apeiron.game.v1.ServerTick
 	8,  // 12: apeiron.game.v1.AttachPlayerResponse.spawn_transform:type_name -> apeiron.game.v1.Transform
-	35, // 13: apeiron.game.v1.AttachPlayerResponse.movement_action_contracts:type_name -> apeiron.game.v1.MovementActionContractManifest
-	34, // 14: apeiron.game.v1.AttachPlayerResponse.movement_action_contract_payloads:type_name -> apeiron.game.v1.LocomotionState
+	36, // 13: apeiron.game.v1.AttachPlayerResponse.movement_action_contracts:type_name -> apeiron.game.v1.MovementActionContractManifest
+	35, // 14: apeiron.game.v1.AttachPlayerResponse.movement_action_contract_payloads:type_name -> apeiron.game.v1.LocomotionState
 	4,  // 15: apeiron.game.v1.SnapshotRequest.context:type_name -> apeiron.game.v1.RequestContext
 	5,  // 16: apeiron.game.v1.SnapshotResponse.tick:type_name -> apeiron.game.v1.ServerTick
 	9,  // 17: apeiron.game.v1.SnapshotResponse.region:type_name -> apeiron.game.v1.RegionRef
 	18, // 18: apeiron.game.v1.SnapshotResponse.entities:type_name -> apeiron.game.v1.SnapshotEntity
-	19, // 19: apeiron.game.v1.SnapshotResponse.events:type_name -> apeiron.game.v1.SnapshotEvent
-	30, // 20: apeiron.game.v1.SnapshotResponse.command_acks:type_name -> apeiron.game.v1.CommandAck
+	20, // 19: apeiron.game.v1.SnapshotResponse.events:type_name -> apeiron.game.v1.SnapshotEvent
+	31, // 20: apeiron.game.v1.SnapshotResponse.command_acks:type_name -> apeiron.game.v1.CommandAck
 	11, // 21: apeiron.game.v1.SnapshotEntity.ref:type_name -> apeiron.game.v1.EntityRef
 	8,  // 22: apeiron.game.v1.SnapshotEntity.transform:type_name -> apeiron.game.v1.Transform
 	6,  // 23: apeiron.game.v1.SnapshotEntity.velocity:type_name -> apeiron.game.v1.Vector3
-	31, // 24: apeiron.game.v1.SnapshotEntity.skill_runtime_state:type_name -> apeiron.game.v1.SkillRuntimeState
+	32, // 24: apeiron.game.v1.SnapshotEntity.skill_runtime_state:type_name -> apeiron.game.v1.SkillRuntimeState
 	11, // 25: apeiron.game.v1.SnapshotEntity.target:type_name -> apeiron.game.v1.EntityRef
-	32, // 26: apeiron.game.v1.SnapshotEntity.movement_correction:type_name -> apeiron.game.v1.MovementCorrection
-	34, // 27: apeiron.game.v1.SnapshotEntity.locomotion:type_name -> apeiron.game.v1.LocomotionState
-	36, // 28: apeiron.game.v1.SnapshotEntity.movement_reconciliation:type_name -> apeiron.game.v1.MovementReconciliationProfile
-	39, // 29: apeiron.game.v1.SnapshotEntity.creature_ai_state:type_name -> apeiron.game.v1.CreatureAIState
-	38, // 30: apeiron.game.v1.SnapshotEntity.combat_mode_state:type_name -> apeiron.game.v1.CombatModeState
-	0,  // 31: apeiron.game.v1.SnapshotEvent.type:type_name -> apeiron.game.v1.SnapshotEventType
-	11, // 32: apeiron.game.v1.SnapshotEvent.source:type_name -> apeiron.game.v1.EntityRef
-	11, // 33: apeiron.game.v1.SnapshotEvent.target:type_name -> apeiron.game.v1.EntityRef
-	43, // 34: apeiron.game.v1.SnapshotEvent.metadata:type_name -> apeiron.game.v1.SnapshotEvent.MetadataEntry
-	4,  // 35: apeiron.game.v1.PlayerCommand.context:type_name -> apeiron.game.v1.RequestContext
-	1,  // 36: apeiron.game.v1.PlayerCommand.type:type_name -> apeiron.game.v1.CommandType
-	21, // 37: apeiron.game.v1.PlayerCommand.move:type_name -> apeiron.game.v1.MoveCommand
-	22, // 38: apeiron.game.v1.PlayerCommand.dodge:type_name -> apeiron.game.v1.DodgeCommand
-	23, // 39: apeiron.game.v1.PlayerCommand.leap:type_name -> apeiron.game.v1.LeapCommand
-	24, // 40: apeiron.game.v1.PlayerCommand.turn:type_name -> apeiron.game.v1.TurnCommand
-	25, // 41: apeiron.game.v1.PlayerCommand.cast_skill:type_name -> apeiron.game.v1.CastSkillCommand
-	26, // 42: apeiron.game.v1.PlayerCommand.defense:type_name -> apeiron.game.v1.DefenseCommand
-	27, // 43: apeiron.game.v1.PlayerCommand.switch_combat_mode:type_name -> apeiron.game.v1.SwitchCombatModeCommand
-	28, // 44: apeiron.game.v1.PlayerCommand.use_consumable:type_name -> apeiron.game.v1.UseConsumableCommand
-	29, // 45: apeiron.game.v1.PlayerCommand.interact:type_name -> apeiron.game.v1.InteractCommand
-	6,  // 46: apeiron.game.v1.MoveCommand.direction:type_name -> apeiron.game.v1.Vector3
-	6,  // 47: apeiron.game.v1.MoveCommand.desired_position:type_name -> apeiron.game.v1.Vector3
-	6,  // 48: apeiron.game.v1.MoveCommand.handoff_position:type_name -> apeiron.game.v1.Vector3
-	6,  // 49: apeiron.game.v1.MoveCommand.handoff_velocity:type_name -> apeiron.game.v1.Vector3
-	6,  // 50: apeiron.game.v1.DodgeCommand.direction:type_name -> apeiron.game.v1.Vector3
-	6,  // 51: apeiron.game.v1.LeapCommand.direction:type_name -> apeiron.game.v1.Vector3
-	6,  // 52: apeiron.game.v1.TurnCommand.facing:type_name -> apeiron.game.v1.Vector3
-	6,  // 53: apeiron.game.v1.CastSkillCommand.target_position:type_name -> apeiron.game.v1.Vector3
-	6,  // 54: apeiron.game.v1.CastSkillCommand.aim_direction:type_name -> apeiron.game.v1.Vector3
-	6,  // 55: apeiron.game.v1.DefenseCommand.facing:type_name -> apeiron.game.v1.Vector3
-	11, // 56: apeiron.game.v1.InteractCommand.target:type_name -> apeiron.game.v1.EntityRef
-	44, // 57: apeiron.game.v1.CommandAck.metadata:type_name -> apeiron.game.v1.CommandAck.MetadataEntry
-	6,  // 58: apeiron.game.v1.MovementCorrection.server_position:type_name -> apeiron.game.v1.Vector3
-	6,  // 59: apeiron.game.v1.MovementCorrection.client_position:type_name -> apeiron.game.v1.Vector3
-	33, // 60: apeiron.game.v1.LocomotionState.speed_curve_samples:type_name -> apeiron.game.v1.MovementCurveSample
-	33, // 61: apeiron.game.v1.LocomotionState.vertical_curve_samples:type_name -> apeiron.game.v1.MovementCurveSample
-	6,  // 62: apeiron.game.v1.LocomotionState.entry_direction:type_name -> apeiron.game.v1.Vector3
-	6,  // 63: apeiron.game.v1.LocomotionState.action_start_position:type_name -> apeiron.game.v1.Vector3
-	6,  // 64: apeiron.game.v1.LocomotionState.action_projected_position:type_name -> apeiron.game.v1.Vector3
-	6,  // 65: apeiron.game.v1.LocomotionState.landing_exit_direction:type_name -> apeiron.game.v1.Vector3
-	37, // 66: apeiron.game.v1.CombatModeState.mode_slots:type_name -> apeiron.game.v1.CombatModeSlot
-	6,  // 67: apeiron.game.v1.CreatureAIState.tactical_destination:type_name -> apeiron.game.v1.Vector3
-	5,  // 68: apeiron.game.v1.RuntimeStatsResponse.tick:type_name -> apeiron.game.v1.ServerTick
-	45, // 69: apeiron.game.v1.RuntimeStatsResponse.phase_status:type_name -> apeiron.game.v1.RuntimeStatsResponse.PhaseStatusEntry
-	12, // 70: apeiron.game.v1.SessionService.OpenSession:input_type -> apeiron.game.v1.OpenSessionRequest
-	14, // 71: apeiron.game.v1.SessionService.AttachPlayer:input_type -> apeiron.game.v1.AttachPlayerRequest
-	16, // 72: apeiron.game.v1.SnapshotService.GetSnapshot:input_type -> apeiron.game.v1.SnapshotRequest
-	20, // 73: apeiron.game.v1.CommandService.SubmitCommand:input_type -> apeiron.game.v1.PlayerCommand
-	2,  // 74: apeiron.game.v1.ObservabilityService.Health:input_type -> apeiron.game.v1.Empty
-	2,  // 75: apeiron.game.v1.ObservabilityService.Readiness:input_type -> apeiron.game.v1.Empty
-	2,  // 76: apeiron.game.v1.ObservabilityService.RuntimeStats:input_type -> apeiron.game.v1.Empty
-	13, // 77: apeiron.game.v1.SessionService.OpenSession:output_type -> apeiron.game.v1.OpenSessionResponse
-	15, // 78: apeiron.game.v1.SessionService.AttachPlayer:output_type -> apeiron.game.v1.AttachPlayerResponse
-	17, // 79: apeiron.game.v1.SnapshotService.GetSnapshot:output_type -> apeiron.game.v1.SnapshotResponse
-	30, // 80: apeiron.game.v1.CommandService.SubmitCommand:output_type -> apeiron.game.v1.CommandAck
-	40, // 81: apeiron.game.v1.ObservabilityService.Health:output_type -> apeiron.game.v1.HealthResponse
-	41, // 82: apeiron.game.v1.ObservabilityService.Readiness:output_type -> apeiron.game.v1.ReadinessResponse
-	42, // 83: apeiron.game.v1.ObservabilityService.RuntimeStats:output_type -> apeiron.game.v1.RuntimeStatsResponse
-	77, // [77:84] is the sub-list for method output_type
-	70, // [70:77] is the sub-list for method input_type
-	70, // [70:70] is the sub-list for extension type_name
-	70, // [70:70] is the sub-list for extension extendee
-	0,  // [0:70] is the sub-list for field type_name
+	33, // 26: apeiron.game.v1.SnapshotEntity.movement_correction:type_name -> apeiron.game.v1.MovementCorrection
+	35, // 27: apeiron.game.v1.SnapshotEntity.locomotion:type_name -> apeiron.game.v1.LocomotionState
+	37, // 28: apeiron.game.v1.SnapshotEntity.movement_reconciliation:type_name -> apeiron.game.v1.MovementReconciliationProfile
+	40, // 29: apeiron.game.v1.SnapshotEntity.creature_ai_state:type_name -> apeiron.game.v1.CreatureAIState
+	39, // 30: apeiron.game.v1.SnapshotEntity.combat_mode_state:type_name -> apeiron.game.v1.CombatModeState
+	19, // 31: apeiron.game.v1.SnapshotEntity.player_progression:type_name -> apeiron.game.v1.PlayerProgressionState
+	0,  // 32: apeiron.game.v1.SnapshotEvent.type:type_name -> apeiron.game.v1.SnapshotEventType
+	11, // 33: apeiron.game.v1.SnapshotEvent.source:type_name -> apeiron.game.v1.EntityRef
+	11, // 34: apeiron.game.v1.SnapshotEvent.target:type_name -> apeiron.game.v1.EntityRef
+	44, // 35: apeiron.game.v1.SnapshotEvent.metadata:type_name -> apeiron.game.v1.SnapshotEvent.MetadataEntry
+	4,  // 36: apeiron.game.v1.PlayerCommand.context:type_name -> apeiron.game.v1.RequestContext
+	1,  // 37: apeiron.game.v1.PlayerCommand.type:type_name -> apeiron.game.v1.CommandType
+	22, // 38: apeiron.game.v1.PlayerCommand.move:type_name -> apeiron.game.v1.MoveCommand
+	23, // 39: apeiron.game.v1.PlayerCommand.dodge:type_name -> apeiron.game.v1.DodgeCommand
+	24, // 40: apeiron.game.v1.PlayerCommand.leap:type_name -> apeiron.game.v1.LeapCommand
+	25, // 41: apeiron.game.v1.PlayerCommand.turn:type_name -> apeiron.game.v1.TurnCommand
+	26, // 42: apeiron.game.v1.PlayerCommand.cast_skill:type_name -> apeiron.game.v1.CastSkillCommand
+	27, // 43: apeiron.game.v1.PlayerCommand.defense:type_name -> apeiron.game.v1.DefenseCommand
+	28, // 44: apeiron.game.v1.PlayerCommand.switch_combat_mode:type_name -> apeiron.game.v1.SwitchCombatModeCommand
+	29, // 45: apeiron.game.v1.PlayerCommand.use_consumable:type_name -> apeiron.game.v1.UseConsumableCommand
+	30, // 46: apeiron.game.v1.PlayerCommand.interact:type_name -> apeiron.game.v1.InteractCommand
+	6,  // 47: apeiron.game.v1.MoveCommand.direction:type_name -> apeiron.game.v1.Vector3
+	6,  // 48: apeiron.game.v1.MoveCommand.desired_position:type_name -> apeiron.game.v1.Vector3
+	6,  // 49: apeiron.game.v1.MoveCommand.handoff_position:type_name -> apeiron.game.v1.Vector3
+	6,  // 50: apeiron.game.v1.MoveCommand.handoff_velocity:type_name -> apeiron.game.v1.Vector3
+	6,  // 51: apeiron.game.v1.DodgeCommand.direction:type_name -> apeiron.game.v1.Vector3
+	6,  // 52: apeiron.game.v1.LeapCommand.direction:type_name -> apeiron.game.v1.Vector3
+	6,  // 53: apeiron.game.v1.TurnCommand.facing:type_name -> apeiron.game.v1.Vector3
+	6,  // 54: apeiron.game.v1.CastSkillCommand.target_position:type_name -> apeiron.game.v1.Vector3
+	6,  // 55: apeiron.game.v1.CastSkillCommand.aim_direction:type_name -> apeiron.game.v1.Vector3
+	6,  // 56: apeiron.game.v1.DefenseCommand.facing:type_name -> apeiron.game.v1.Vector3
+	11, // 57: apeiron.game.v1.InteractCommand.target:type_name -> apeiron.game.v1.EntityRef
+	45, // 58: apeiron.game.v1.CommandAck.metadata:type_name -> apeiron.game.v1.CommandAck.MetadataEntry
+	6,  // 59: apeiron.game.v1.MovementCorrection.server_position:type_name -> apeiron.game.v1.Vector3
+	6,  // 60: apeiron.game.v1.MovementCorrection.client_position:type_name -> apeiron.game.v1.Vector3
+	34, // 61: apeiron.game.v1.LocomotionState.speed_curve_samples:type_name -> apeiron.game.v1.MovementCurveSample
+	34, // 62: apeiron.game.v1.LocomotionState.vertical_curve_samples:type_name -> apeiron.game.v1.MovementCurveSample
+	6,  // 63: apeiron.game.v1.LocomotionState.entry_direction:type_name -> apeiron.game.v1.Vector3
+	6,  // 64: apeiron.game.v1.LocomotionState.action_start_position:type_name -> apeiron.game.v1.Vector3
+	6,  // 65: apeiron.game.v1.LocomotionState.action_projected_position:type_name -> apeiron.game.v1.Vector3
+	6,  // 66: apeiron.game.v1.LocomotionState.landing_exit_direction:type_name -> apeiron.game.v1.Vector3
+	38, // 67: apeiron.game.v1.CombatModeState.mode_slots:type_name -> apeiron.game.v1.CombatModeSlot
+	6,  // 68: apeiron.game.v1.CreatureAIState.tactical_destination:type_name -> apeiron.game.v1.Vector3
+	5,  // 69: apeiron.game.v1.RuntimeStatsResponse.tick:type_name -> apeiron.game.v1.ServerTick
+	46, // 70: apeiron.game.v1.RuntimeStatsResponse.phase_status:type_name -> apeiron.game.v1.RuntimeStatsResponse.PhaseStatusEntry
+	12, // 71: apeiron.game.v1.SessionService.OpenSession:input_type -> apeiron.game.v1.OpenSessionRequest
+	14, // 72: apeiron.game.v1.SessionService.AttachPlayer:input_type -> apeiron.game.v1.AttachPlayerRequest
+	16, // 73: apeiron.game.v1.SnapshotService.GetSnapshot:input_type -> apeiron.game.v1.SnapshotRequest
+	21, // 74: apeiron.game.v1.CommandService.SubmitCommand:input_type -> apeiron.game.v1.PlayerCommand
+	2,  // 75: apeiron.game.v1.ObservabilityService.Health:input_type -> apeiron.game.v1.Empty
+	2,  // 76: apeiron.game.v1.ObservabilityService.Readiness:input_type -> apeiron.game.v1.Empty
+	2,  // 77: apeiron.game.v1.ObservabilityService.RuntimeStats:input_type -> apeiron.game.v1.Empty
+	13, // 78: apeiron.game.v1.SessionService.OpenSession:output_type -> apeiron.game.v1.OpenSessionResponse
+	15, // 79: apeiron.game.v1.SessionService.AttachPlayer:output_type -> apeiron.game.v1.AttachPlayerResponse
+	17, // 80: apeiron.game.v1.SnapshotService.GetSnapshot:output_type -> apeiron.game.v1.SnapshotResponse
+	31, // 81: apeiron.game.v1.CommandService.SubmitCommand:output_type -> apeiron.game.v1.CommandAck
+	41, // 82: apeiron.game.v1.ObservabilityService.Health:output_type -> apeiron.game.v1.HealthResponse
+	42, // 83: apeiron.game.v1.ObservabilityService.Readiness:output_type -> apeiron.game.v1.ReadinessResponse
+	43, // 84: apeiron.game.v1.ObservabilityService.RuntimeStats:output_type -> apeiron.game.v1.RuntimeStatsResponse
+	78, // [78:85] is the sub-list for method output_type
+	71, // [71:78] is the sub-list for method input_type
+	71, // [71:71] is the sub-list for extension type_name
+	71, // [71:71] is the sub-list for extension extendee
+	0,  // [0:71] is the sub-list for field type_name
 }
 
 func init() { file_proto_apeiron_game_v1_game_proto_init() }
@@ -5455,7 +5607,7 @@ func file_proto_apeiron_game_v1_game_proto_init() {
 	if File_proto_apeiron_game_v1_game_proto != nil {
 		return
 	}
-	file_proto_apeiron_game_v1_game_proto_msgTypes[18].OneofWrappers = []any{
+	file_proto_apeiron_game_v1_game_proto_msgTypes[19].OneofWrappers = []any{
 		(*PlayerCommand_Move)(nil),
 		(*PlayerCommand_Dodge)(nil),
 		(*PlayerCommand_Leap)(nil),
@@ -5466,14 +5618,14 @@ func file_proto_apeiron_game_v1_game_proto_init() {
 		(*PlayerCommand_UseConsumable)(nil),
 		(*PlayerCommand_Interact)(nil),
 	}
-	file_proto_apeiron_game_v1_game_proto_msgTypes[19].OneofWrappers = []any{}
+	file_proto_apeiron_game_v1_game_proto_msgTypes[20].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_apeiron_game_v1_game_proto_rawDesc), len(file_proto_apeiron_game_v1_game_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   44,
+			NumMessages:   45,
 			NumExtensions: 0,
 			NumServices:   4,
 		},

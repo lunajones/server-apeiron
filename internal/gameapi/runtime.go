@@ -2488,6 +2488,7 @@ func (e *entityState) snapshot(contracts RuntimeContracts) *gamev1.SnapshotEntit
 		MovementReconciliation:       cloneMovementReconciliationProfile(contracts.MovementProfile),
 		CreatureAiState:              cloneCreatureAIState(e.creatureAI),
 		CombatModeState:              cloneCombatModeState(e.combatMode),
+		PlayerProgression:            playerProgressionSnapshot(e),
 	}
 }
 
