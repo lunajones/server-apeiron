@@ -328,6 +328,7 @@ func (r *Runtime) AttachPlayer(ctx context.Context, req *gamev1.AttachPlayerRequ
 	if !alreadyAttached && progression != nil {
 		applyPlayerProgressionLocked(player, progression)
 	}
+	r.applyAttributeDerivedStatsLocked(player)
 	r.clearExpiredOwnedRootMotionForAttachLocked(player, time.Now())
 	resetPlayerCommandReplayState(player)
 	if r.creaturesEnabled() {

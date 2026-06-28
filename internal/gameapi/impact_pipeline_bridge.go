@@ -162,11 +162,16 @@ func (r *Runtime) resolveRuntimeSkillImpact(source *entityState, target *entityS
 	if err != nil {
 		return runtimeSkillImpact{}, false
 	}
+	// Slice 5: Strength scales a player's outgoing physical damage (additive over the resolved base).
+	finalDamage := result.FinalDamage
+	if source.entityType == "player" && source.progression != nil {
+		finalDamage *= attributePhysicalDamageMultiplier(source.progression)
+	}
 	if target.entityType == "player" && apeironDodgeDebugEnabled() {
 		r.logDodgeDebugStateLocked("impact_resolved_against_player", target, map[string]string{
 			"source_id": strconv.FormatUint(source.id, 10),
 			"skill_id":  skill.SkillID,
-			"damage":    strconv.FormatFloat(result.FinalDamage, 'f', 3, 64),
+			"damage":    strconv.FormatFloat(finalDamage, 'f', 3, 64),
 			"posture":   strconv.FormatFloat(result.PostureDamage, 'f', 3, 64),
 			"blocked":   strconv.FormatBool(result.Blocked),
 			"parried":   strconv.FormatBool(result.Parried),
@@ -192,7 +197,7 @@ func (r *Runtime) resolveRuntimeSkillImpact(source *entityState, target *entityS
 		ControlDistanceCM:      controlDistance,
 		ControlSpeedCMS:        controlSpeed,
 		ControlDirectionPolicy: controlDirection,
-		DamageApplied:          result.FinalDamage,
+		DamageApplied:          finalDamage,
 		DamageType:             result.DamageType,
 		DamageFamily:           result.DamageFamily,
 		PostureApplied:         result.PostureDamage,
@@ -310,11 +315,22 @@ func (r *Runtime) runtimeCombatCoreProfile(entity *entityState) *dbv1.CombatCore
 	if profile == nil {
 		return nil
 	}
-	if entity == nil || entity.maxPosture <= 0 || entity.maxPosture == profile.GetMaxPosture() {
+	needsPostureCopy := entity != nil && entity.maxPosture > 0 && entity.maxPosture != profile.GetMaxPosture()
+	// Slice 5: Strength adds to a player's physical resistance rating (additive over the base profile).
+	resistanceBonus := 0.0
+	if entity != nil && entity.entityType == "player" && entity.progression != nil {
+		resistanceBonus = attributePhysicalResistanceBonus(entity.progression)
+	}
+	if !needsPostureCopy && resistanceBonus == 0 {
 		return profile
 	}
 	copy := *profile
-	copy.MaxPosture = entity.maxPosture
+	if needsPostureCopy {
+		copy.MaxPosture = entity.maxPosture
+	}
+	if resistanceBonus != 0 {
+		copy.PhysicalResistanceRating = profile.GetPhysicalResistanceRating() + resistanceBonus
+	}
 	return &copy
 }
 

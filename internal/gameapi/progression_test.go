@@ -1,6 +1,46 @@
 package gameapi
 
-import "testing"
+import (
+	"math"
+	"testing"
+)
+
+// TestStrengthScalesDerivedCombatStats locks Progression Slice 5: Strength adds max health, outgoing
+// physical damage and physical resistance, additively over the base (base attribute 1.0 = no bonus).
+func TestStrengthScalesDerivedCombatStats(t *testing.T) {
+	runtime := NewRuntimeWithOptions(DevFixtureRuntimeContracts(), RuntimeOptions{DisableCreatures: true})
+	player := runtime.ensurePlayerLocked("p1")
+
+	if got := attributeMaxHealth(player.progression); got != 100 {
+		t.Fatalf("base max health = %.0f, want 100", got)
+	}
+	if got := attributePhysicalDamageMultiplier(player.progression); math.Abs(got-1) > 1e-9 {
+		t.Fatalf("base dmg mult = %.4f, want 1", got)
+	}
+	if got := attributePhysicalResistanceBonus(player.progression); got != 0 {
+		t.Fatalf("base resist bonus = %.1f, want 0", got)
+	}
+
+	// Strength 6 → +50 HP (10/pt), +25% physical damage (0.05/pt), +10 physical resistance (2/pt).
+	player.progression.strength = 6
+	runtime.applyAttributeDerivedStatsLocked(player)
+	if player.maxHealth != 150 || player.health != 150 {
+		t.Fatalf("str6 health = %.0f/%.0f, want 150/150", player.health, player.maxHealth)
+	}
+	if got := attributePhysicalDamageMultiplier(player.progression); math.Abs(got-1.25) > 1e-9 {
+		t.Fatalf("str6 dmg mult = %.4f, want 1.25", got)
+	}
+	if got := attributePhysicalResistanceBonus(player.progression); got != 10 {
+		t.Fatalf("str6 resist bonus = %.1f, want 10", got)
+	}
+	if cp := runtime.runtimeCombatCoreProfile(player); cp != nil {
+		if base := runtime.contracts.combatCoreProfileForEntity(player); base != nil {
+			if delta := cp.GetPhysicalResistanceRating() - base.GetPhysicalResistanceRating(); math.Abs(delta-10) > 1e-9 {
+				t.Fatalf("resolved resistance bonus = %.1f, want 10", delta)
+			}
+		}
+	}
+}
 
 // TestKillingCreatureAwardsLevelXP locks Progression Slice 2: killing a creature credits the killer
 // level XP equal to the creature's experience_value, and despawns the creature.

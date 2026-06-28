@@ -24,6 +24,64 @@ const (
 
 var cumulativeCharacterXP = []int64{0, 0, 1200, 2800, 4900, 7600, 11000, 15200, 20300, 26400, 33700}
 
+// Attribute -> derived combat stats (Slice 5). Additive over the base profile, never a rewrite.
+// Strength scales physical damage, max health and physical resistance (the only one visible in v1,
+// since all skills are physical); Dexterity (armor pen) and Intelligence (chem/bio) bind when those
+// damage families exist. Attributes start at 1.0, so only points ABOVE the base scale anything.
+// Constants are tunable starting values.
+const (
+	baseAttributeValue             = 1.0
+	basePlayerMaxHealth            = 100.0
+	strengthMaxHealthPerPoint      = 10.0 // +HP per Strength point above base
+	strengthPhysicalDamagePerPoint = 0.05 // +5% physical damage per Strength point above base
+	strengthPhysicalResistPerPoint = 2.0  // +physical resistance rating per Strength point above base
+)
+
+func strengthAboveBase(prog *playerProgression) float64 {
+	if prog == nil || prog.strength <= baseAttributeValue {
+		return 0
+	}
+	return prog.strength - baseAttributeValue
+}
+
+// attributePhysicalDamageMultiplier scales outgoing physical damage by Strength (1.0 at base).
+func attributePhysicalDamageMultiplier(prog *playerProgression) float64 {
+	return 1 + strengthAboveBase(prog)*strengthPhysicalDamagePerPoint
+}
+
+// attributePhysicalResistanceBonus is the additive physical resistance rating from Strength.
+func attributePhysicalResistanceBonus(prog *playerProgression) float64 {
+	return strengthAboveBase(prog) * strengthPhysicalResistPerPoint
+}
+
+// attributeMaxHealth is the player's max health: base + Strength bonus.
+func attributeMaxHealth(prog *playerProgression) float64 {
+	return basePlayerMaxHealth + strengthAboveBase(prog)*strengthMaxHealthPerPoint
+}
+
+// applyAttributeDerivedStatsLocked recomputes a player's derived stats (max health) from attributes.
+// Called on attach (and after progression changes) so Strength visibly raises the health pool.
+func (r *Runtime) applyAttributeDerivedStatsLocked(player *entityState) {
+	if player == nil || player.entityType != "player" || player.progression == nil {
+		return
+	}
+	newMax := attributeMaxHealth(player.progression)
+	if newMax <= 0 {
+		newMax = basePlayerMaxHealth
+	}
+	// Preserve the current health ratio so a max-health change scales fairly: a full-health player
+	// (e.g. fresh on attach) ends full at the new max; a wounded one keeps the same percentage.
+	ratio := 1.0
+	if player.maxHealth > 0 && player.health > 0 {
+		ratio = player.health / player.maxHealth
+	}
+	if ratio > 1 {
+		ratio = 1
+	}
+	player.maxHealth = newMax
+	player.health = ratio * newMax
+}
+
 // Character progression — XP on kill (Slice 2) + persistence (Slice 1b).
 // See docs/roadmap/aaa-character-progression-roadmap.md.
 // Level XP is credited only on a creature's death, split across damage contributors by damage share.
