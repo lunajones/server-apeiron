@@ -59,6 +59,39 @@ type Runtime struct {
 	aiSystem  *creatureai.RegionBrainSystem
 	impact    *combatpipeline.ImpactResolutionPipeline
 	impacts   *damagegroup.Runtime[skillImpactSchedule]
+
+	playerSource PlayerProgressionSource
+}
+
+// PlayerProgressionSource loads persisted player progression (level/xp/attributes/coin) from the
+// data service. The live runtime sets it from the db-apeiron client and reads it on attach; tests
+// leave it nil and keep entity defaults. Signature matches dbv1.PlayerDataServiceClient.GetPlayer.
+type PlayerProgressionSource interface {
+	GetPlayer(ctx context.Context, in *dbv1.IdRequest, opts ...grpc.CallOption) (*dbv1.PlayerResponse, error)
+}
+
+// playerProgression holds the DB-authoritative character progression for a player entity. nil for
+// creatures.
+type playerProgression struct {
+	level           int32
+	experience      int64
+	attributePoints int32
+	strength        float64
+	dexterity       float64
+	intelligence    float64
+	endurance       float64
+	coin            int64
+}
+
+func defaultPlayerProgression() *playerProgression {
+	return &playerProgression{level: 1, strength: 1, dexterity: 1, intelligence: 1, endurance: 1}
+}
+
+// SetPlayerProgressionSource wires the data service used to load player progression on attach.
+func (r *Runtime) SetPlayerProgressionSource(source PlayerProgressionSource) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.playerSource = source
 }
 
 type RuntimeOptions struct {
@@ -97,6 +130,7 @@ type entityState struct {
 	aggroState                  string
 	aggression                  float64
 	impactResponseProfile       string
+	progression                 *playerProgression
 	groundRootZ                 float64
 	groundRootKnown             bool
 	lastSequence                uint64
@@ -255,13 +289,16 @@ func (r *Runtime) OpenSession(ctx context.Context, req *gamev1.OpenSessionReques
 }
 
 func (r *Runtime) AttachPlayer(ctx context.Context, req *gamev1.AttachPlayerRequest) (*gamev1.AttachPlayerResponse, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
 	playerID := req.GetPlayerId()
 	if playerID == "" {
 		playerID = "local_player"
 	}
+	// Load persisted progression before taking the lock — the gRPC call must not block the runtime.
+	progression := r.fetchPlayerProgression(ctx, playerID)
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	sessionID := req.GetContext().GetSessionId()
 	if sessionID != "" {
 		if session := r.sessions[sessionID]; session != nil {
@@ -272,7 +309,11 @@ func (r *Runtime) AttachPlayer(ctx context.Context, req *gamev1.AttachPlayerRequ
 		}
 	}
 
+	_, alreadyAttached := r.players[playerID]
 	player := r.ensurePlayerLocked(playerID)
+	if !alreadyAttached && progression != nil {
+		applyPlayerProgressionLocked(player, progression)
+	}
 	r.clearExpiredOwnedRootMotionForAttachLocked(player, time.Now())
 	resetPlayerCommandReplayState(player)
 	if r.creaturesEnabled() {
@@ -730,9 +771,50 @@ func (r *Runtime) ensurePlayerLocked(playerID string) *entityState {
 	}
 	entity.locomotion = r.locomotion("grounded", "idle", "", "idle", entity.position, entity.position, 0)
 	entity.combatMode = swordShieldCombatMode("mode_sword_shield_bulwark", r.contracts.CombatModes)
+	entity.progression = defaultPlayerProgression()
 	r.players[playerID] = entity
 	r.entities[entity.id] = entity
 	return entity
+}
+
+// fetchPlayerProgression loads persisted progression for playerID. It is nil-safe (no source / no
+// player / error → nil, caller keeps defaults) and must be called WITHOUT holding r.mu.
+func (r *Runtime) fetchPlayerProgression(ctx context.Context, playerID string) *dbv1.Player {
+	r.mu.Lock()
+	source := r.playerSource
+	r.mu.Unlock()
+	if source == nil || playerID == "" {
+		return nil
+	}
+	resp, err := source.GetPlayer(ctx, &dbv1.IdRequest{Id: playerID})
+	if err != nil {
+		logging.WithComponent("gameapi").Warn().Err(err).Str("player_id", playerID).
+			Msg("player progression load failed; using defaults")
+		return nil
+	}
+	if !resp.GetFound() {
+		return nil
+	}
+	return resp.GetPlayer()
+}
+
+// applyPlayerProgressionLocked copies DB-authoritative progression onto the player entity.
+func applyPlayerProgressionLocked(player *entityState, p *dbv1.Player) {
+	if player == nil || p == nil {
+		return
+	}
+	if player.progression == nil {
+		player.progression = defaultPlayerProgression()
+	}
+	prog := player.progression
+	prog.level = p.GetLevel()
+	prog.experience = p.GetExperience()
+	prog.attributePoints = p.GetAttributePoints()
+	prog.strength = p.GetStrength()
+	prog.dexterity = p.GetDexterity()
+	prog.intelligence = p.GetIntelligence()
+	prog.endurance = p.GetEndurance()
+	prog.coin = p.GetCoin()
 }
 
 func (r *Runtime) ensureWolfLocked(player *entityState) *entityState {
